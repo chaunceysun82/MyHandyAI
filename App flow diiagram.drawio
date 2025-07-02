@@ -19,7 +19,7 @@
         <mxCell id="6" value="Show Login Screen" style="whiteSpace=wrap;strokeWidth=2;" parent="1" vertex="1">
           <mxGeometry x="767" y="469" width="193" height="54" as="geometry" />
         </mxCell>
-        <mxCell id="7" value="Enter Credentials" style="whiteSpace=wrap;strokeWidth=2;" parent="1" vertex="1">
+        <mxCell id="7" value="Enter Credentials (include Face ID)" style="whiteSpace=wrap;strokeWidth=2;" parent="1" vertex="1">
           <mxGeometry x="696" y="573" width="185" height="54" as="geometry" />
         </mxCell>
         <mxCell id="8" value="Credentials Valid?" style="rhombus;strokeWidth=2;whiteSpace=wrap;" parent="1" vertex="1">
