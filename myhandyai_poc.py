@@ -2,7 +2,7 @@ import streamlit as st
 from openai import OpenAI
 
 client = OpenAI()
-#  OpenAI_API_KEY = "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"
+#  OpenAI_API_KEY = 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
 
 st.title("MyHandyAI POC")
 st.write("Test: Upload an image and ask your DIY question")
@@ -31,7 +31,7 @@ else:
 if image and user_query:
     st.write("Generating step-by-step instructions...")
     response = client.chat.completions.create(
-        model="gpt-4-vision-preview",
+        model="gpt-4o",
         messages=[
             {
                 "role": "user",
