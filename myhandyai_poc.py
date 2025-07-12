@@ -2,7 +2,6 @@ import streamlit as st
 from openai import OpenAI
 
 client = OpenAI()
-#  OpenAI_API_KEY = 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
 
 st.title("MyHandyAI POC")
 st.write("Test: Upload an image and ask your DIY question")
