@@ -17,4 +17,8 @@ except Exception as e:
 
 db = client["MyHandyDB"]
 users_collection = db["Users"]
+project_collection = db["Project"]
+steps_collection = db["ProjectSteps"]
+conversations_collection = db["Conversations"]
+
 
