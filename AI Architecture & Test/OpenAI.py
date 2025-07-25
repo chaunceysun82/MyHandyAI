@@ -1,1 +1,0 @@
-## Testing with OpenAI Models
