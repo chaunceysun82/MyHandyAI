@@ -15,7 +15,7 @@ except Exception as e:
     print("❌ ERROR:", str(e))
     raise HTTPException(status_code=500, detail="Internal Server Error")
 
-db = client["MyHandyDB"]
+db = client["MainHandyDB"]
 users_collection = db["Users"]
 project_collection = db["Project"]
 steps_collection = db["ProjectSteps"]
