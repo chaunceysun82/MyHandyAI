@@ -39,7 +39,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWSKEYID }}
           aws-secret-access-key: ${{ secrets.AWSACCESSKEY }}
-          aws-region: us-east-1
+          aws-region: us-east-2
 
       - name: Upload ZIP to S3
         run: |
