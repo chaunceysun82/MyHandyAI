@@ -1,4 +1,4 @@
-name: Deploy FastAPI Backend to AWS Lambda
+name: Deploy FastAPI Backend to AWS Lambda Endpoints
 
 on:
   push:
