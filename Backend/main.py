@@ -2,7 +2,6 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes.user import router as user_router
 #from routes.profile_creation import router as profile_router
 from routes import user, project
 from mangum import Mangum
@@ -24,8 +23,6 @@ def root():
     return {"message": "Hello, FastAPI!"}
 
 # Register routes
-app.include_router(user_router)
-# app.include_router(profile_router)
 app.include_router(user.router)
 app.include_router(project.router)
 
