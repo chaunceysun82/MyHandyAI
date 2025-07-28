@@ -24,7 +24,7 @@ def create_user(user: User):
 
     return {"id": str(result.inserted_id)}
 
-@router.get("/user-login")
+@router.get("/login")
 def login_user(email: str, password: str):
     user = users_collection.find_one({"_id": ObjectId(email)})
     if not user:
@@ -35,7 +35,7 @@ def login_user(email: str, password: str):
 
     user["_id"] = str(user["_id"])
 
-    return user
+    return {"message": "Login successful", "id":user["_id"] }
 
 @router.get("/users/{user_id}")
 def get_user(user_id: str):
