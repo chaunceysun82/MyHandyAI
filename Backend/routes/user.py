@@ -6,10 +6,10 @@ from bson import ObjectId
 router = APIRouter()
 
 class User(BaseModel):
-    firstName: str
-    lastName: str
+    firstname: str
+    lastname: str
+    password: str
     email: EmailStr
-    age: int
 
 @router.post("/users")
 def create_user(user: User):
@@ -22,6 +22,19 @@ def create_user(user: User):
     conversations_collection.insert_one({ "userId": result.inserted_id })
 
     return {"id": str(result.inserted_id)}
+
+@router.get("/user-login")
+def login_user(email: str, password: str):
+    user = users_collection.find_one({"_id": ObjectId(email)})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if user.get("password")!= password:
+        raise HTTPException(status_code=404, detail="Incorrect Password")
+
+    user["_id"] = str(user["_id"])
+
+    return user
 
 @router.get("/users/{user_id}")
 def get_user(user_id: str):

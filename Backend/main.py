@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes.authentication import router as auth_router
+from routes.user import router as user_router
 #from routes.profile_creation import router as profile_router
 from mangum import Mangum
 
@@ -19,11 +19,11 @@ app.add_middleware(
 )
 
 @app.get("/")
-async def root():
+def root():
     return {"message": "Hello, FastAPI!"}
 
 # Register routes
-app.include_router(auth_router)
+app.include_router(user_router)
 # app.include_router(profile_router)
 
 #handler for aws
