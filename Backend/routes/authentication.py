@@ -6,9 +6,10 @@ router = APIRouter()
 
 
 class AccountData(BaseModel):
-    name: str
-    age: int
+    firstName: str
+    lastName: str
     email: EmailStr
+    password: str
 
 @router.post("/create-profile")
 def create_user_profile(data: AccountData):
@@ -16,10 +17,11 @@ def create_user_profile(data: AccountData):
     if users_collection.find_one({"email": data.email}):
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    user= {
-        "name": data.name,
-        "age":data.age,
-        "email":data.email
+    user = {
+        "firstName": data.firstName,
+        "lastName": data.lastName,
+        "email": data.email,
+        "password": data.password
     }
     
     result = users_collection.insert_one(user)
