@@ -11,6 +11,10 @@ class User(BaseModel):
     password: str
     email: EmailStr
 
+class LoginData(BaseModel):
+    email: EmailStr
+    password: str
+
 @router.post("/users")
 def create_user(user: User):
     if users_collection.find_one({"email": user.email}):
@@ -23,19 +27,6 @@ def create_user(user: User):
     conversations_collection.insert_one({ "userId": result.inserted_id })
 
     return {"id": str(result.inserted_id)}
-
-@router.get("/login")
-def login_user(email: str, password: str):
-    user = users_collection.find_one({"email": email})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    if user.get("password")!= password:
-        raise HTTPException(status_code=404, detail="Incorrect Password")
-
-    user["_id"] = str(user["_id"])
-
-    return {"message": "Login successful", "id":user["_id"] }
 
 @router.get("/users/{user_id}")
 def get_user(user_id: str):
@@ -51,3 +42,20 @@ def delete_user(user_id: str):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
     return {"message": "User deleted"}
+
+@router.post("/login")
+def login(data: LoginData):
+    user = users_collection.find_one({"email": data.email})
+    if not user or user.get("password") != data.password:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return {"message": "Login successful", "id": str(user["_id"])}
+
+@router.put("/users/{user_id}")
+def update_user(user_id: str, update_data: dict):
+    result = users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": update_data}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="User not found or no changes")
+    return {"message": "User updated"}
