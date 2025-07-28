@@ -43,7 +43,7 @@ def delete_user(user_id: str):
         raise HTTPException(status_code=404, detail="User not found")
     return {"message": "User deleted"}
 
-@router.post("/login")
+@router.get("/login")
 def login(data: LoginData):
     user = users_collection.find_one({"email": data.email})
     if not user or user.get("password") != data.password:
