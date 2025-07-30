@@ -6,11 +6,10 @@ from bson import ObjectId
 router = APIRouter()
 
 class User(BaseModel):
-    firstName: str
-    lastName: str
-    email: EmailStr
+    firstname: str
+    lastname: str
     password: str
-    age: int
+    email: EmailStr
 
 class LoginData(BaseModel):
     email: EmailStr
@@ -20,7 +19,8 @@ class LoginData(BaseModel):
 def create_user(user: User):
     if users_collection.find_one({"email": user.email}):
         raise HTTPException(status_code=400, detail="Email already exists")
-    
+    if not user.password:
+        raise HTTPException(status_code=400, detail="invalid password")
     new_user = user.dict()
     result = users_collection.insert_one(new_user)
 
