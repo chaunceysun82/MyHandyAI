@@ -13,44 +13,39 @@ from langchain_openai import ChatOpenAI
 from langchain_xai import ChatXAI
 
 load_dotenv()
-GOOGLE_API_KEY=os.getenv("GOOGLE_API_KEY")
-OPENAI_API_KEY=os.getenv("OPENAI_API_KEY")
 GROK_API_KEY=os.getenv("GROK_API_KEY")
 
 MODELS={
-    "Google": [
-        ("Gemini 2.5 Flash", "gemini-2.5-flash"),
-        ("Gemini 2.5 Pro", "gemini-2.5-pro"),
-        ("Gemini 2.5 Flash Lite", "gemini-2.5-flash-lite")
-    ],
-    "OpenAI": [
-        ("GPT-4.1", "gpt-4.1"),
-        ("GPT-4.1 mini", "gpt-4.1-mini"),
-        ("GPT-4.1 nano", "gpt-4.1-nano"),
-        ("GPT-4o mini", "gpt-4o-mini"),
-        ("GPT-4o", "gpt-4o")
-    ],
+    
     "Grok": [
-        ("Grok-4", "grok-4")
+        ("grok-4",               "grok-4-0709"),
+        ("grok-3",                    "grok-3"),
+        ("grok-3-mini",               "grok-3-mini"),
+        ("grok-3-fast",   "grok-3-fast-us-east-1"),
+        ("grok-3-mini-fast",          "grok-3-mini-fast")
         
     ]
 }
 
+def load_prompt(filename):
+    path = os.path.join("prompts", filename)
+    with open(path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    # Remove lines starting with #
+    return "".join(line for line in lines if not line.strip().startswith("#"))
+
+# Load prompt texts
+summary_prompt_text   = load_prompt("summary_prompt.txt")
+qa_prompt_text        = load_prompt("qa_prompt.txt")
+auth_prompt_text      = load_prompt("auth_prompt.txt")
+explain_prompt_text   = load_prompt("explain_prompt.txt")
+tools_prompt_text     = load_prompt("tools_prompt.txt")
+steps_prompt_text     = load_prompt("steps_prompt.txt")
+chat_system_prompt_text = load_prompt("chat_system_prompt.txt")
+
 def get_llm(model_choice):
     provider, model_name=model_choice
-    
-    if provider=="Google":
-        return ChatGoogleGenerativeAI(
-            model=model_name, 
-            api_key=GOOGLE_API_KEY
-        )
-    elif provider=="OpenAI":
-        return ChatOpenAI(
-            model=model_name,
-            api_key=OPENAI_API_KEY,
-            temperature=0
-        )
-    elif provider=="Grok":
+    if provider=="Grok":
         return ChatXAI(
             model_name=model_name,
             api_key=GROK_API_KEY,
@@ -150,9 +145,10 @@ def model_selector(label, key):
     return provider, [m[1] for m in MODELS[provider] if m[0] == model_name][0]
 
 df_img=st.file_uploader("Upload image", type=["jpg","jpeg","png"])
-mode= st.radio("Input mode", ["Text","Voice"])
-query=st.text_input("Describe the problem:") if mode=="Text" else ""
-info=st.text_input("Description of the problem (optional):")
+query=st.text_input("Describe the problem:")
+info=""
+if df_img:
+    info=st.text_input("Description of the image (optional):")
 
 ss=st.session_state
 ss.setdefault("stage", "summary")
@@ -268,8 +264,19 @@ if df_img and query:
                         if not ss.explanation:
                             ss.explanation={}
                         ss.explanation[ss.current_q]=expl
+                
+                def skip_quest():
+                    ss.current_q+=1
+                    if ss.explanation:
+                        ss.explanation.pop(ss.current_q, None)
+                    if ss.current_q>=len(ss.questions):
+                        ss.stage="tools"
                         
                 st.button("Submit Answer", on_click=submit_ans)
+                st.button("Skip Question", on_click=skip_quest)
+
+            else:
+                ss.stage="tools"
 
     if ss.stage in ["tools", "steps", "chat"]:
         st.subheader("3. Tools & Materials")
