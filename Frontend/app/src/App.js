@@ -7,7 +7,7 @@ function App() {
       <header className="App-header">
         <img src={logo} className="App-logo" alt="logo" />
         <p className = "text-white">
-          Edit <code>src/App.js</code> and save to reload.
+          My HandyAI Application!
         </p>
         <a
           className="App-link"
