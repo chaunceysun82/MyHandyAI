@@ -30,7 +30,6 @@ class Step(BaseModel):
     referenceLinks: Optional[List[str]] = []
     completed: bool = False
 
-# Routes
 @router.post("/steps")
 def create_step(step: Step):
     step_dict = step.dict()
