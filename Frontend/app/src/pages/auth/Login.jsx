@@ -3,6 +3,8 @@ import { Link, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { loginUser } from "../../services/auth";
 import { useNavigate } from "react-router-dom";
+import {ReactComponent as Google} from '../../assets/google.svg';
+import {ReactComponent as Facebook} from '../../assets/Facebook.svg';
 
 const Login = () => {
 	const location = useLocation();
@@ -12,6 +14,7 @@ const Login = () => {
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState("");
 	const navigate = useNavigate();
+
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
@@ -26,23 +29,25 @@ const Login = () => {
 		}
 	};
 
+
+
 	return (
-		<div className="min-h-screen flex flex-col items-center justify-center p-4">
-			<h1 className="text-[24px]  text-semibold p-10">Welcome back!</h1>
+		<div className="h-auto flex flex-col items-center p-4">
+			<h1 className="text-[20px] mt-[-24px] font-semibold p-10">Welcome back!</h1>
 			<div className="relative w-full max-w-sm mx-auto mb-8">
 				{/* Tab buttons */}
 				<div className="flex">
 					<Link
 						to="/login"
-						className={`w-1/2 text-center text-lg font-medium pb-2 ${
-							isLogin ? "text-purple-600" : "text-gray-500"
+						className={`w-1/2 text-[16px] text-center font-medium pb-2 ${
+							isLogin ? "text-black-600" : "text-black-500"
 						}`}>
 						Login
 					</Link>
 					<Link
 						to="/signup"
-						className={`w-1/2 text-center text-lg font-medium pb-2 ${
-							!isLogin ? "text-purple-600" : "text-gray-500"
+						className={`w-1/2 text-[16px] text-center font-medium pb-2 ${
+							!isLogin ? "text-black-600" : "text-black-500"
 						}`}>
 						Signup
 					</Link>
@@ -51,13 +56,14 @@ const Login = () => {
 				{/* Underline */}
 				<div className="absolute bottom-0 left-0 w-full h-0.5">
 					<div
-						className={`w-1/2 h-full bg-purple-600 transform transition-transform duration-300 ease-in-out ${
+						style = {{backgroundColor: "#D9D9D9"}}
+						className={`w-1/2 h-full transform transition-transform duration-300 ease-in-out ${
 							isLogin ? "translate-x-0" : "translate-x-full"
 						}`}
 					/>
 				</div>
 			</div>
-			<form className="w-full mb-5" onSubmit={handleSubmit}>
+			<form className="w-full " onSubmit={handleSubmit}>
 				<label className="block mb-2 text-sm font-medium text-gray-700">
 					Email <span className="text-red-500">*</span>
 				</label>
@@ -65,8 +71,9 @@ const Login = () => {
 					type="email"
 					value={email}
 					onChange={(e) => setEmail(e.target.value)}
-					className="w-full p-2 mb-7 border border-gray-300 rounded-lg"
-					placeholder="Enter your email"
+					style={{backgroundColor: '#F7F7F7'}}
+					className="w-full p-2 mb-7 border text-[12px] border-gray-300 rounded-[20px]"
+					placeholder="hello@example.com"
 				/>
 				<label className="block mb-2 text-sm font-medium text-gray-700">
 					Password <span className="text-red-500">*</span>
@@ -76,8 +83,9 @@ const Login = () => {
 						value={password}
 						onChange={(e) => setPassword(e.target.value)}
 						type={showPassword ? "text" : "password"}
-						placeholder="Enter your password"
-						className="w-full p-2 pr-10 border border-gray-300 rounded-lg"
+						placeholder="Password"
+						style={{backgroundColor: '#F7F7F7'}}
+						className="w-full p-2 pr-10 border border-gray-300 text-[12px] rounded-[20px]"
 					/>
 					<div
 						className="absolute inset-y-0 right-3 flex items-center cursor-pointer text-gray-500"
@@ -87,28 +95,55 @@ const Login = () => {
 				</div>
 
 				<div className="flex justify-between items-center">
-					<label className="flex items-center text-sm text-gray-700">
+					<label className="flex text-[12px] items-center text-sm text-gray-700">
 						<input
 							type="checkbox"
 							className="mr-2 size-4 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
 						/>
-						Remember me
+						<p className="font-light">Remember Me</p>
 					</label>
 					<Link
 						to="/forgot-password"
-						className="text-sm text-blue-600 hover:underline">
+						style={{color: '#595959'}}
+						className="text-sm font-light hover:underline">
 						Forgot password?
 					</Link>
 				</div>
 
 				<button
-					className="w-full p-2 mt-14 text-[16px] bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+					className="w-full p-2 mt-5 text-[16px] text-white rounded-[20px] bg-[#6FCBAE] hover:bg-green-600 duration-200"
 					type="submit">
 					Login
 				</button>
-			</form>
 
-			<p className="text-xs text-center mt-auto mb-6 text-gray-500">
+			</form>
+			<p className="mt-5 text-[12px] font-light">Or</p>
+
+			<div className="h-auto flex flex-col items-center p-4">
+					
+					<button className="rounded-[20px] text-[14px] flex items-center justify-center gap-3 font-bold mb-3 p-2 w-[350px] bg-[#F2F2F5] hover:bg-gray-200 transition duration-200">
+						<Google width={28} height={28}/>
+						Continue with Google
+					</button>
+					
+
+					<button className="rounded-[20px] text-[14px] text-white flex items-center justify-center gap-3 font-bold mb-3 p-2 w-[350px] bg-[#1877F2] hover:text-blue-600 hover:bg-gray-100 transition duration-200">
+						<Facebook width={28} height={28} />
+						Continue with Facebook
+					</button>
+
+					<button className="rounded-[20px] text-[14px] font-bold mb-3 p-2 w-[350px] bg-[#F2F2F5] hover:bg-gray-200 transition duration-200">
+						Use Face ID
+					</button>
+			</div>
+			
+			<div className="flex flex-row gap-6">
+				<p className="text-[12px] text-[#595959] font-light">Don't have an account?</p>
+				<a href = "/signup" className="text-[12px] text-[#55D468] hover:underline font-semibold">Sign up</a>
+			</div>
+			
+
+			{/* <p className="text-xs text-center mt-auto mb-6 text-gray-500">
 				By login, you agree to our{" "}
 				<a href="/" className="text-blue-600 hover:underline">
 					Terms of Conditions
@@ -118,7 +153,7 @@ const Login = () => {
 					Privacy Policy
 				</a>
 				.
-			</p>
+			</p> */}
 		</div>
 	);
 };
