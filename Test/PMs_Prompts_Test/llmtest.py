@@ -4,12 +4,10 @@ import streamlit as st
 
 from dotenv import load_dotenv
 import os, base64, json
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain, ConversationChain
 from langchain.output_parsers import StructuredOutputParser, ResponseSchema
 from langchain.memory import ConversationBufferMemory
-from langchain_openai import ChatOpenAI
 from langchain_xai import ChatXAI
 
 load_dotenv()
