@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from db import users_collection, conversations_collection
 from pydantic import BaseModel, EmailStr
 from bson import ObjectId
+from typing import Optional
 
 router = APIRouter()
 
@@ -10,6 +11,13 @@ class User(BaseModel):
     lastname: str
     password: str
     email: EmailStr
+    describe: Optional[str] = None
+    experienceLevel: Optional[str] = None
+    confidence: Optional[int] = None
+    tools: Optional[str] = None
+    interestedProjects: Optional[str] = None
+    country: Optional[str] = None
+    state: Optional[str] = None
 
 class LoginData(BaseModel):
     email: EmailStr
