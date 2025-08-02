@@ -28,11 +28,20 @@ MODELS={
 }
 
 def load_prompt(filename):
-    path = os.path.join("prompts", filename)
-    with open(path, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-    # Remove lines starting with #
-    return "".join(line for line in lines if not line.strip().startswith("#"))
+    # Get the directory where this script is located
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(script_dir, "prompts", filename)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        # Remove lines starting with #
+        return "".join(line for line in lines if not line.strip().startswith("#"))
+    except FileNotFoundError:
+        print(f"❌ Could not find prompt file: {path}")
+        return f"Error: Could not load {filename}"
+    except Exception as e:
+        print(f"❌ Error loading prompt file {filename}: {e}")
+        return f"Error: Could not load {filename}"
 
 # Load prompt texts
 summary_prompt_text   = load_prompt("summary_prompt.txt")
@@ -57,12 +66,7 @@ summary_parser=StructuredOutputParser.from_response_schemas(summary_schema)
 summary_prompt=PromptTemplate(
     input_variables=["query","info","img_b64"],
     partial_variables={"format_instructions": summary_parser.get_format_instructions()},
-    template=(
-        "You are an assistant. Using the problem, description and Image try to summarize the problems of the user. Also provide a detailed view of the image related to the problem and description.{format_instructions}\n"
-        "Problem: {query}\n"
-        "Description of the Problem: {info}\n"
-        "Image (base64): {img_b64}"
-    )
+    template=summary_prompt_text + "\n\n{format_instructions}\nProblem: {query}\nDescription of the Problem: {info}\nImage (base64): {img_b64}"
 )
 
 qa_schema=[ResponseSchema(name="questions", description="JSON list of questions with 'text' and optional 'choices'")]
@@ -70,10 +74,7 @@ qa_parser=StructuredOutputParser.from_response_schemas(qa_schema)
 qa_prompt=PromptTemplate(
     input_variables=["summary"],
     partial_variables={"format_instructions": qa_parser.get_format_instructions()},
-    template=(
-        "Based on this summary, generate 3-5 clarifying questions. Return JSON array of questions. {format_instructions}\n"
-        "Summary: {summary}"
-    )
+    template=qa_prompt_text + "\n\n{format_instructions}\nSummary: {summary}"
 )
 
 auth_schema=[ResponseSchema(name="valid", description="true if answer fits the question, otherwise false")]
@@ -81,48 +82,27 @@ auth_parser=StructuredOutputParser.from_response_schemas(auth_schema)
 auth_prompt=PromptTemplate(
     input_variables=["question","answer"],
     partial_variables={"format_instructions": auth_parser.get_format_instructions()},
-    template=(
-        "Classify: does this answer is nearly not a doubt or answerable to the question? {format_instructions}\n"
-        "Question: {question}\nAnswer: {answer}"
-    )
+    template=auth_prompt_text + "\n\n{format_instructions}\nQuestion: {question}\nAnswer: {answer}"
 )
 
 explain_prompt=PromptTemplate(
     input_variables=["question"],
-    template=(
-        "The following question may be unclear. Provide a friendly explanation of what is being asked and how to think about it: {question}"
-    )
+    template=explain_prompt_text + "\n\nQuestion: {question}"
 )
 
 tools_prompt=PromptTemplate(
     input_variables=["summary","qa_history"],
-    template=(
-        "Based on summary and Q&A, recommend only the missing tools and materials needed for the task.\n"
-        "Summary: {summary}\nQ&A: {qa_history}"
-    )
+    template=tools_prompt_text + "\n\nSummary: {summary}\nQ&A: {qa_history}"
 )
 
 steps_prompt=PromptTemplate(
     input_variables=["summary","qa_history","tools"],
-    template=(
-        "Based on summary, Q&A, and tools, provide step-by-step approach, risk factors, and safety measures.\n"
-        "Summary: {summary}\nQ&A: {qa_history}\nTools: {tools}"
-    )
+    template=steps_prompt_text + "\n\nSummary: {summary}\nQ&A: {qa_history}\nTools: {tools}"
 )
 
 chat_system_prompt=PromptTemplate(
-    input_variables=["input", "history"],
-    template=(
-        "You are an assistant for home repair and improvement tasks. You have answer the user queries in brief and in a simple way. Below is the context for the current task:\n"
-        "Summary: {summary}\n"
-        "Q&A: {qa_history}\n"
-        "Tools: {tools}\n"
-        "Steps: {steps}\n\n"
-        "Current conversation:\n"
-        "{history}\n"
-        "Human: {input}\n"
-        "Assistant:"
-    )
+    input_variables=["input", "history", "summary", "qa_history", "tools", "steps"],
+    template=chat_system_prompt_text + "\n\nBelow is the context for the current task:\nSummary: {summary}\nQ&A: {qa_history}\nTools: {tools}\nSteps: {steps}\n\nCurrent conversation:\n{history}\nHuman: {input}\nAssistant:"
 )
 
 st.set_page_config(page_title="MyHandyAI Full Flow")
