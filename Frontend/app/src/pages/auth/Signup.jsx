@@ -4,7 +4,7 @@ import { signupUser } from "../../services/auth";
 
 const Signup = () => {
 	const location = useLocation();
-	const isSignup = location.pathname === "/Signup";
+	const isSignup = location.pathname === "/signup";
 	const [showPassword, setShowPassword] = useState(false);
 	const [formData, setFormData] = useState({
 		firstname: "",
@@ -73,20 +73,20 @@ const Signup = () => {
 
 	return (
 		<div className="min-h-screen flex flex-col items-center justify-center py-2 px-4">
-			<h1 className="text-[24px] font-semibold p-10">Welcome MyHandyAI!</h1>
+			<h1 className="text-[20px] text-semibold p-10">Getting Started</h1>
 			<div className="relative w-full max-w-sm mx-auto mb-8">
 				<div className="flex">
 					<Link
 						to="/login"
-						className={`w-1/2 text-center text-lg font-medium pb-2 ${
-							isSignup ? "text-gray-500" : "text-purple-600"
+						className={`w-1/2 text-[16px] text-center font-medium pb-2 ${
+							isSignup ? "text-black-500" : "text-black-600"
 						}`}>
 						Login
 					</Link>
 					<Link
 						to="/signup"
-						className={`w-1/2 text-center text-lg font-medium pb-2 ${
-							isSignup ? "text-purple-600" : "text-gray-500"
+						className={`w-1/2 text-[16px] text-center font-medium pb-2 ${
+							isSignup ? "text-black-600" : "text-black-500"
 						}`}>
 						Signup
 					</Link>
@@ -94,8 +94,9 @@ const Signup = () => {
 
 				<div className="absolute bottom-0 left-0 w-full h-0.5">
 					<div
-						className={`w-1/2 h-full bg-purple-600 transform transition-transform duration-300 ease-in-out ${
-							isSignup ? "translate-x-0" : "translate-x-full"
+						style = {{backgroundColor: "#D9D9D9"}}
+						className={`w-1/2 h-full transform transition-transform duration-300 ease-in-out ${
+							isSignup ? "translate-x-full" : "translate-x-0"
 						}`}
 					/>
 				</div>
