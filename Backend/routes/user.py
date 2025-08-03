@@ -41,6 +41,8 @@ def get_onbording():
     questions = list(questions_collection.find())
     if not questions:
         raise HTTPException(status_code=404, detail="No questions")
+    for q in questions:
+        q["_id"] = str(q["_id"])
     return questions
 
 @router.delete("/users/{user_id}")
