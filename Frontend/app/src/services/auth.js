@@ -15,6 +15,8 @@ export async function loginUser(email, password) {
 		});
 
 		if (!response.ok) {
+			alert("Invalid credentials. Please try again");
+			console.log("Invalid credentials.");
 			const errorData = await response.json();
 			throw new Error(errorData.detail || "Login failed");
 		}
