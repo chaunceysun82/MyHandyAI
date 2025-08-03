@@ -38,7 +38,7 @@ def get_user(user_id: str):
 
 @router.get("/onboarding")
 def get_onbording():
-    questions = questions_collection.find().__dict__
+    questions = list(questions_collection.find())
     if not questions:
         raise HTTPException(status_code=404, detail="No questions")
     return questions
