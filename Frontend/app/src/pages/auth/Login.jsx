@@ -5,6 +5,8 @@ import { loginUser } from "../../services/auth";
 import { useNavigate } from "react-router-dom";
 import {ReactComponent as Google} from '../../assets/google.svg';
 import {ReactComponent as Facebook} from '../../assets/Facebook.svg';
+import {getAuth, GoogleAuthProvider, signInWithPopup} from "firebase/auth";
+import { app } from "../../firebase";
 
 const Login = () => {
 	const location = useLocation();
@@ -12,20 +14,44 @@ const Login = () => {
 	const [showPassword, setShowPassword] = useState(false);
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
-	const [error, setError] = useState("");
+	// const [error, setError] = useState("");
 	const navigate = useNavigate();
 
+	const auth = getAuth(app);
+	const googleProvider = new GoogleAuthProvider();
+
+
+	// const signInValidation = () => {
+	// 	if(email === '' || password === '')
+	// 	{
+	// 		console.log("Please enter both email and password to proceed.");
+	// 		return false;
+	// 	}
+	// 	return true;
+	// }
+
+
+	const signUpWithGoogle = () => {
+		signInWithPopup(auth, googleProvider).then((result) => {
+			const user = result.user;
+			console.log("User:", user.id)
+			console.log("Google login successful");
+			navigate("/");
+		}).catch((error) => {
+			console.log("An Error occured while google sign in.");
+		});
+	};
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
-		setError("");
-
 		try {
-			const result = await loginUser(email, password);
-			console.log("Logged in:", result);
-			navigate("/"); // Redirect to home page on successful login
-		} catch (err) {
-			setError(err.message);
+			console.log("Calling loginUser");
+			const res = await loginUser(email, password);
+			console.log("Login result: ", res);
+			navigate("/")
+		}
+		catch (err) {
+			console.log("Login error: ", err.message);
 		}
 	};
 
@@ -121,7 +147,7 @@ const Login = () => {
 
 			<div className="h-auto flex flex-col items-center p-4">
 					
-					<button className="rounded-[20px] text-[14px] flex items-center justify-center gap-3 font-bold mb-3 p-2 w-[350px] bg-[#F2F2F5] hover:bg-gray-200 transition duration-200">
+					<button onClick={signUpWithGoogle} className="rounded-[20px] text-[14px] flex items-center justify-center gap-3 font-bold mb-3 p-2 w-[350px] bg-[#F2F2F5] hover:bg-gray-200 transition duration-200">
 						<Google width={28} height={28}/>
 						Continue with Google
 					</button>
