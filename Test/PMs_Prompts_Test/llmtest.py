@@ -1,9 +1,9 @@
 
 import streamlit as st
 
-
+from PIL import Image
 from dotenv import load_dotenv
-import os, base64, json
+import os, base64, json, io
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain, ConversationChain
 from langchain.output_parsers import StructuredOutputParser, ResponseSchema
@@ -19,7 +19,7 @@ MODELS={
         ("grok-4",               "grok-4-0709"),
         ("grok-3",                    "grok-3"),
         ("grok-3-mini",               "grok-3-mini"),
-        ("grok-3-fast",   "grok-3-fast-us-east-1"),
+        ("grok-3-fast",   "grok-3-fast"),
         ("grok-3-mini-fast",          "grok-3-mini-fast")
         
     ]
@@ -122,6 +122,18 @@ def model_selector(label, key):
         )
     return provider, [m[1] for m in MODELS[provider] if m[0] == model_name][0]
 
+def resize_image_streamlit(uploaded_file, output_size=(512, 512), quality=85):
+    # Open image from the uploaded file (BytesIO)
+    image = Image.open(uploaded_file)
+    image.thumbnail(output_size)
+    buffered = io.BytesIO()
+    image.save(buffered, format="JPEG", quality=quality, optimize=True)
+    img_bytes = buffered.getvalue()
+    img_b64 = base64.b64encode(img_bytes).decode()
+    st.write(f"Compressed image size: {len(img_bytes)//1024} KB")
+    return img_b64
+
+
 df_img=st.file_uploader("Upload image", type=["jpg","jpeg","png"])
 query=st.text_input("Describe the problem:")
 info=""
@@ -140,8 +152,10 @@ ss.setdefault("chat_chain", None)
 ss.setdefault("explanation", None)  
 ss.setdefault("chat_history", "")  
 
-if df_img and query:
-    img_b64=base64.b64encode(df_img.read()).decode()
+if query:
+    img_b64=""
+    if df_img:
+        img_b64=resize_image_streamlit(df_img)
 
     st.subheader("1. Summary")
     if ss.summary:
