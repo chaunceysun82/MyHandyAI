@@ -3,25 +3,50 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from bson import ObjectId
 from db import conversations_collection
+from datetime import datetime
 
 router = APIRouter()
 
 class UserMessage(BaseModel):
     userId: str
     projectId: str
+    type: str = "firstBot"
     message: str
 
 @router.post("/chat/user-message")
-def store_user_message(data: UserMessage):
-    message_data = {
-        "userId": ObjectId(data.userId),
-        "projectId": ObjectId(data.projectId),
-        "message": data.message,
-        "sender": "user",
-        "status": "in-progress"
+def create_or_append_user_message(data: UserMessage):
+    user_obj = ObjectId(data.userId)
+    project_obj = ObjectId(data.projectId)
+
+    # Check if a conversation already exists
+    conversation = conversations_collection.find_one({
+        "userId": user_obj,
+        "projectId": project_obj,
+        "type": data.type
+    })
+
+    message_entry = {
+        "user": data.message,
+        "llm": "",
+        "status": "in-progress",
+        "timestamp": datetime.utcnow()
     }
-    result = conversations_collection.insert_one(message_data)
-    return {"conversationId": str(result.inserted_id)}
+
+    if conversation:
+        conversations_collection.update_one(
+            {"_id": conversation["_id"]},
+            {"$push": {"messages": message_entry}}
+        )
+        return {"conversationId": str(conversation["_id"]), "message": "Message appended"}
+    else:
+        new_conv = {
+            "userId": user_obj,
+            "projectId": project_obj,
+            "type": data.type,
+            "messages": [message_entry]
+        }
+        result = conversations_collection.insert_one(new_conv)
+        return {"conversationId": str(result.inserted_id), "message": "New conversation created"}
 
 class LLMResponse(BaseModel):
     conversationId: str
@@ -29,15 +54,22 @@ class LLMResponse(BaseModel):
 
 @router.post("/chat/llm-response")
 def store_llm_response(data: LLMResponse):
-    conversation = conversations_collection.find_one({"_id": ObjectId(data.conversationId)})
+    conv_id = ObjectId(data.conversationId)
+    conversation = conversations_collection.find_one({"_id": conv_id})
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    result = conversations_collection.insert_one({
-        "userId": conversation["userId"],
-        "projectId": conversation["projectId"],
-        "message": data.response,
-        "sender": "llm",
-        "status": "complete"
-    })
-    return {"llmResponseId": str(result.inserted_id)}
+    for i in reversed(range(len(conversation["messages"]))):
+        if conversation["messages"][i]["status"] == "in-progress":
+            conversation["messages"][i]["llm"] = data.response
+            conversation["messages"][i]["status"] = "complete"
+            break
+    else:
+        raise HTTPException(status_code=400, detail="No message in progress to update")
+
+    conversations_collection.update_one(
+        {"_id": conv_id},
+        {"$set": {"messages": conversation["messages"]}}
+    )
+
+    return {"message": "LLM response updated"}
