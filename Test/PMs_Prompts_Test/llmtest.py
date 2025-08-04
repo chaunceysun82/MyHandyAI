@@ -9,12 +9,20 @@ from langchain.chains import LLMChain, ConversationChain
 from langchain.output_parsers import StructuredOutputParser, ResponseSchema
 from langchain.memory import ConversationBufferMemory
 from langchain_xai import ChatXAI
+from langchain_openai import ChatOpenAI
 
 load_dotenv()
 GROK_API_KEY=os.getenv("GROK_API_KEY")
+OPENAI_API_KEY=os.getenv("OPENAI_API_KEY")
 
 MODELS={
-    
+    "OpenAI": [
+        ("GPT-4.1", "gpt-4.1"),
+        ("GPT-4.1 mini", "gpt-4.1-mini"),
+        ("GPT-4.1 nano", "gpt-4.1-nano"),
+        ("GPT-4o mini", "gpt-4o-mini"),
+        ("GPT-4o", "gpt-4o")
+    ],
     "Grok": [
         ("grok-4",               "grok-4-0709"),
         ("grok-3",                    "grok-3"),
@@ -56,6 +64,12 @@ def get_llm(model_choice):
         return ChatXAI(
             model_name=model_name,
             api_key=GROK_API_KEY,
+            temperature=0
+        )
+    if provider=="OpenAI":
+        return ChatOpenAI(
+            model_name=model_name,
+            api_key=OPENAI_API_KEY,
             temperature=0
         )
 
