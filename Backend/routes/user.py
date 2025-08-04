@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from db import users_collection, conversations_collection
+from db import users_collection, conversations_collection, questions_collection
 from pydantic import BaseModel, EmailStr
 from bson import ObjectId
 
@@ -35,6 +35,15 @@ def get_user(user_id: str):
         raise HTTPException(status_code=404, detail="User not found")
     user["_id"] = str(user["_id"])
     return user
+
+@router.get("/onboarding")
+def get_onbording():
+    questions = list(questions_collection.find())
+    if not questions:
+        raise HTTPException(status_code=404, detail="No questions")
+    for q in questions:
+        q["_id"] = str(q["_id"])
+    return questions
 
 @router.delete("/users/{user_id}")
 def delete_user(user_id: str):
