@@ -45,7 +45,7 @@ const Login = () => {
 	const handleSubmit = async (e) => {
 		e.preventDefault();
 		try {
-			console.log("Calling loginUser");
+			console.log("Calling the loginUser function");
 			const res = await loginUser(email, password);
 			console.log("Login result: ", res);
 			navigate("/")
