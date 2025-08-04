@@ -28,8 +28,9 @@ def create_project(project: Project):
 
     # Create conversation tied to this project
     conversations_collection.insert_one({
-        "projectId": project_id
-    })
+    "projectId": project_id,
+    "type": "agent1"
+})
 
     return {"id": str(project_id)}
 
