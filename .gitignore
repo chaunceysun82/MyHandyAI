@@ -1,2 +1,30 @@
+# Python
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+*.db
+
+# Environment
 *.env
+.env.*
+
+# macOS
 .DS_Store
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# React build
+/build
+/dist
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
