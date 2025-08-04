@@ -7,6 +7,12 @@ const Home = () => {
 	// const auth = getAuth();
 	const navigate = useNavigate();
 
+	const handleLogOut = () => {
+		localStorage.removeItem("authToken");
+		sessionStorage.removeItem("authToken");
+		navigate("/login");
+	};
+
 	return (
 		<div>
 			<h1 className="text-2xl text-red-700 font-bold">Home Page</h1>
@@ -20,7 +26,7 @@ const Home = () => {
 			// 	}
 			
 			// }
-			onClick={() => navigate("/login")}
+			onClick={handleLogOut}
 				className="text-sm text-red-500 mt-3"
 			>
 				Sign Out
