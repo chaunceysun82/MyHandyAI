@@ -31,6 +31,7 @@ def load_prompt(filename):
 # Load the prompts
 qa_prompt_text = load_prompt("qa_prompt.txt")
 summary_prompt_text = load_prompt("summary_prompt.txt")
+question_clarification_prompt_text = load_prompt("question_clarification_prompt.txt")
 
 class ProblemRecognitionAgent:
     """Agent 1: Recognizes problems and requests relevant photos"""
@@ -325,6 +326,97 @@ Please create a summary of this DIY problem."""
         return f"I understand you have a {problem_type.replace('_', ' ')} issue. Based on the image and your answers, I can help you resolve this problem."
 
 
+class QuestionClarificationAgent:
+    """Agent 4: Handles user confusion about questions and provides explanations"""
+    
+    def __init__(self):
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_url = "https://api.openai.com/v1/chat/completions"
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+    
+    def handle_user_response(self, current_question: str, user_response: str) -> tuple[str, bool]:
+        """
+        Handle user response to a question.
+        Returns: (response_message, should_skip_question)
+        """
+        
+        # Check for skip commands
+        skip_commands = ['skip', 's', 'pass', 'next', 'i want to skip', 'skip this']
+        if user_response.lower().strip() in skip_commands:
+            return "Got it! I'll skip this question and consider the most common possibilities.", True
+        
+        # Check for confusion indicators
+        confusion_indicators = [
+            'i don\'t know', 'i dont know', 'idk', 'not sure', 'unsure',
+            'what does', 'what is', 'explain', 'i don\'t understand',
+            'i dont understand', 'what do you mean', 'clarify', 'what are',
+            'what\'s', 'whats', 'how do i', 'how to', 'can you explain'
+        ]
+        
+        # Clean the user response for better detection
+        cleaned_response = user_response.lower().strip()
+        
+        # Check for confusion indicators
+        is_confused = any(indicator in cleaned_response for indicator in confusion_indicators)
+        
+        # Additional check for question patterns that indicate confusion
+        question_patterns = [
+            'what are', 'what is', 'what\'s', 'whats', 'how do i', 'how to',
+            'can you explain', 'what does', 'what do you mean'
+        ]
+        
+        # Check if the response contains multiple question marks (indicates confusion)
+        has_multiple_questions = cleaned_response.count('?') >= 2
+        
+        # Check if response starts with a question word
+        starts_with_question = any(cleaned_response.startswith(pattern) for pattern in question_patterns)
+        
+        is_confused = is_confused or has_multiple_questions or starts_with_question
+        
+        if is_confused:
+            # Use AI to provide helpful clarification
+            system_prompt = f"""{question_clarification_prompt_text}
+
+Current question: {current_question}
+User response: {user_response}
+
+Please provide a helpful clarification or explanation."""
+            
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"User said: {user_response}"}
+            ]
+            
+            try:
+                r = requests.post(
+                    self.api_url, headers=self.headers,
+                    json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 200},
+                    timeout=15
+                )
+                if r.status_code == 200:
+                    clarification = r.json()["choices"][0]["message"]["content"].strip()
+                    return clarification, False
+            except Exception:
+                pass
+            
+            # Fallback clarification
+            return (
+                f"I understand this question might be unclear. Let me help:\n\n"
+                f"**Question:** {current_question}\n\n"
+                f"You can:\n"
+                f"• Try to answer as best you can\n"
+                f"• Type 'skip' to move to the next question\n"
+                f"• Ask me to explain any terms you don't understand\n\n"
+                f"What would you like to do?"
+            ), False
+        
+        # Normal response - no clarification needed
+        return "", False
+
+
 class AgenticChatbot:
     """Main chatbot that coordinates between agents"""
     
@@ -332,6 +424,7 @@ class AgenticChatbot:
         self.problem_agent = ProblemRecognitionAgent()
         self.image_agent = ImageAnalysisAgent()
         self.summary_agent = SummaryAgent()
+        self.clarification_agent = QuestionClarificationAgent()
         self.current_state = "waiting_for_problem"
         self.problem_type = None
         self.questions = []
@@ -418,34 +511,72 @@ class AgenticChatbot:
                 return (
                     f"Great, thanks for the photo!\n\n{analysis_text}\n\n"
                     "I'll ask a few quick questions one-by-one so I can give you "
-                    "the safest fix.\n\n" + first_question
+                    "the safest fix.\n\n"
+                    "💡 **Tip:** If you don't understand a question or don't know the answer, "
+                    "just let me know! You can also type 'skip' to move to the next question.\n\n"
+                    f"**{first_question}**"
                 )
             else:
                 return "Please upload the requested photo so I can analyse it."
         
         elif self.current_state == "asking_questions":
-            # Store user's answer
-            self.user_answers[self.current_question_index] = user_message
+            current_question = self.questions[self.current_question_index]
             
-            # Move to next question
-            self.current_question_index += 1
+            # Check if user needs clarification
+            clarification_response, should_skip = self.clarification_agent.handle_user_response(
+                current_question, user_message
+            )
             
-            if self.current_question_index < len(self.questions):
-                return f"Thank you! Next up:\n\n{self.questions[self.current_question_index]}"
+            if should_skip:
+                # Skip this question and move to next
+                self.user_answers[self.current_question_index] = "skipped"
+                self.current_question_index += 1
+                
+                if self.current_question_index < len(self.questions):
+                    next_question = self.questions[self.current_question_index]
+                    return f"{clarification_response}\n\n**Next question:**\n{next_question}"
+                else:
+                    # All questions answered, create summary
+                    self.current_state = "showing_summary"
+                    summary = self.summary_agent.create_summary(
+                        self.problem_type, 
+                        self.image_analysis, 
+                        self.user_answers
+                    )
+                    return (
+                        f"{clarification_response}\n\n"
+                        f"Perfect! Let me summarize what I understand about your problem:\n\n"
+                        f"**{summary}**\n\n"
+                        f"Does this sound correct? Please reply with 'yes' if this is accurate, "
+                        f"or 'no' if I misunderstood something."
+                    )
+            
+            elif clarification_response:
+                # User needs clarification, provide it and ask the same question again
+                return f"{clarification_response}\n\n**Please answer:**\n{current_question}"
+            
             else:
-                # All questions answered, create summary
-                self.current_state = "showing_summary"
-                summary = self.summary_agent.create_summary(
-                    self.problem_type, 
-                    self.image_analysis, 
-                    self.user_answers
-                )
-                return (
-                    f"Perfect! Let me summarize what I understand about your problem:\n\n"
-                    f"**{summary}**\n\n"
-                    f"Does this sound correct? Please reply with 'yes' if this is accurate, "
-                    f"or 'no' if I misunderstood something."
-                )
+                # Normal response - store answer and move to next question
+                self.user_answers[self.current_question_index] = user_message
+                self.current_question_index += 1
+                
+                if self.current_question_index < len(self.questions):
+                    next_question = self.questions[self.current_question_index]
+                    return f"Thank you! Next up:\n\n**{next_question}**"
+                else:
+                    # All questions answered, create summary
+                    self.current_state = "showing_summary"
+                    summary = self.summary_agent.create_summary(
+                        self.problem_type, 
+                        self.image_analysis, 
+                        self.user_answers
+                    )
+                    return (
+                        f"Perfect! Let me summarize what I understand about your problem:\n\n"
+                        f"**{summary}**\n\n"
+                        f"Does this sound correct? Please reply with 'yes' if this is accurate, "
+                        f"or 'no' if I misunderstood something."
+                    )
         
         elif self.current_state == "showing_summary":
             user_response = user_message.lower().strip()
