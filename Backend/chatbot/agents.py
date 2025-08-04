@@ -35,8 +35,8 @@ class ProblemRecognitionAgent:
     """Agent 1: Recognizes problems and requests relevant photos"""
     
     def __init__(self):
-        self.api_key = os.getenv("GROK_API_KEY")
-        self.api_url = "https://api.x.ai/v1/chat/completions"
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_url = "https://api.openai.com/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -68,7 +68,7 @@ Be specific about what photos would help diagnose the problem."""
             response = requests.post(
                 self.api_url,
                 headers=self.headers,
-                json={"model": "grok-3", "messages": messages, "max_tokens": 500}
+                json={"model": "gpt-4.1", "messages": messages, "max_tokens": 500}
             )
             
             if response.status_code == 200:
@@ -114,7 +114,7 @@ Be specific about what photos would help diagnose the problem."""
             response = requests.post(
                 self.api_url,
                 headers=self.headers,
-                json={"model": "grok-3-mini", "messages": messages, "max_tokens": 300}
+                json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 300}
             )
             
             if response.status_code == 200:
@@ -152,15 +152,15 @@ class ImageAnalysisAgent:
     """Agent 2: analyses an uploaded image and returns clarifying questions"""
 
     def __init__(self):
-        self.api_key = os.getenv("GROK_API_KEY")
-        self.api_url = "https://api.x.ai/v1/chat/completions"
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_url = "https://api.openai.com/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type":  "application/json",
         }
 
     def analyze_image(self, image_data: bytes, problem_type: str) -> Dict[str, Any]:
-        """Call Grok-4 Vision with a base64-encoded image and get back questions"""
+        """Call GPT-4o Vision with a base64-encoded image and get back questions"""
 
         b64 = base64.b64encode(image_data).decode("utf-8")
 
@@ -189,7 +189,7 @@ class ImageAnalysisAgent:
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "grok-4", "messages": messages, "max_tokens": 800},
+                json={"model": "gpt-4o", "messages": messages, "max_tokens": 800},
                 timeout=20
             )
             if r.status_code == 200:
