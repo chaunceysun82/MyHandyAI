@@ -28,8 +28,9 @@ def load_prompt(filename):
         print(f"❌ Error loading prompt file {filename}: {e}")
         return f"Error: Could not load {filename}"
 
-# Load the qa_prompt
+# Load the prompts
 qa_prompt_text = load_prompt("qa_prompt.txt")
+summary_prompt_text = load_prompt("summary_prompt.txt")
 
 class ProblemRecognitionAgent:
     """Agent 1: Recognizes problems and requests relevant photos"""
@@ -194,7 +195,17 @@ class ImageAnalysisAgent:
             )
             if r.status_code == 200:
                 txt = r.json()["choices"][0]["message"]["content"].strip()
-                return json.loads(txt)          # may raise → caught below
+                try:
+                    result = json.loads(txt)
+                    # Validate the result has the expected structure
+                    if isinstance(result, dict) and "analysis" in result and "questions" in result:
+                        return result
+                    else:
+                        # If structure is wrong, fall back
+                        return self._get_fallback_questions(problem_type)
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    # If JSON parsing fails, fall back
+                    return self._get_fallback_questions(problem_type)
         except Exception:
             pass                                # fall through to fallback
 
@@ -266,17 +277,67 @@ class ImageAnalysisAgent:
             "first_question": "What are the dimensions of the area you're working with?"
         })
 
+class SummaryAgent:
+    """Agent 3: Creates a summary of the problem based on image and user answers"""
+    
+    def __init__(self):
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_url = "https://api.openai.com/v1/chat/completions"
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+    
+    def create_summary(self, problem_type: str, image_analysis: str, user_answers: Dict[int, str]) -> str:
+        """Create a comprehensive summary of the problem"""
+        
+        # Format user answers for the prompt
+        answers_text = ""
+        for i, answer in user_answers.items():
+            answers_text += f"Q{i+1}: {answer}\n"
+        
+        system_prompt = f"""{summary_prompt_text}
+
+Problem type: {problem_type}
+Image analysis: {image_analysis}
+User's answers to clarifying questions:
+{answers_text}
+
+Please create a summary of this DIY problem."""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": "Please create a summary of this DIY problem."}
+        ]
+        
+        try:
+            r = requests.post(
+                self.api_url, headers=self.headers,
+                json={"model": "gpt-4.1", "messages": messages, "max_tokens": 300},
+                timeout=20
+            )
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"].strip()
+        except Exception:
+            pass
+        
+        # Fallback summary
+        return f"I understand you have a {problem_type.replace('_', ' ')} issue. Based on the image and your answers, I can help you resolve this problem."
+
+
 class AgenticChatbot:
     """Main chatbot that coordinates between agents"""
     
     def __init__(self):
         self.problem_agent = ProblemRecognitionAgent()
         self.image_agent = ImageAnalysisAgent()
+        self.summary_agent = SummaryAgent()
         self.current_state = "waiting_for_problem"
         self.problem_type = None
         self.questions = []
         self.current_question_index = 0
         self.user_answers = {}
+        self.image_analysis = None
     
     def process_message(self, user_message: str, uploaded_image: Optional[bytes] = None) -> str:
         """Process user message and return appropriate response"""
@@ -292,13 +353,72 @@ class AgenticChatbot:
         elif self.current_state == "waiting_for_photos":
             if uploaded_image:
                 result = self.image_agent.analyze_image(uploaded_image, self.problem_type)
-                self.questions = result["questions"]
+                
+                # Debug: Print the result structure
+                print(f"DEBUG: result type: {type(result)}")
+                print(f"DEBUG: result keys: {result.keys() if isinstance(result, dict) else 'Not a dict'}")
+                print(f"DEBUG: result: {result}")
+                
+                # Validate result structure
+                if not isinstance(result, dict) or "analysis" not in result or "questions" not in result:
+                    return "Sorry, I had trouble analyzing the image. Please try uploading it again."
+                
+                # Handle questions structure - they might be strings or dicts with 'text' key
+                questions_raw = result["questions"]
+                self.questions = []
+                for q in questions_raw:
+                    if isinstance(q, str):
+                        self.questions.append(q)
+                    elif isinstance(q, dict) and "text" in q:
+                        self.questions.append(q["text"])
+                    else:
+                        self.questions.append(str(q))
+                
                 self.current_question_index = 0
                 self.current_state = "asking_questions"
+
+                # analysis might be str or dict → normalise to string
+                analysis_text = result.get("analysis", "")
+                
+                # Debug: Print the type and value
+                print(f"DEBUG: analysis_text type: {type(analysis_text)}")
+                print(f"DEBUG: analysis_text value: {analysis_text}")
+                
+                # Force conversion to string with multiple fallbacks
+                if not isinstance(analysis_text, str):
+                    try:
+                        analysis_text = json.dumps(analysis_text, indent=2)
+                    except (TypeError, ValueError):
+                        try:
+                            analysis_text = str(analysis_text)
+                        except:
+                            analysis_text = "I can see your image and will help you with your project."
+                
+                # Final safety check - ensure it's a string
+                if not isinstance(analysis_text, str):
+                    analysis_text = "I can see your image and will help you with your project."
+                
+                # Debug: Print the final type and value
+                print(f"DEBUG: Final analysis_text type: {type(analysis_text)}")
+                print(f"DEBUG: Final analysis_text value: {analysis_text}")
+
+                # Store the image analysis for later use
+                self.image_analysis = analysis_text
+                
+                # Safety check for questions
+                if not self.questions:
+                    return (
+                        "Great, thanks for the photo!\n\n"
+                        f"{analysis_text}\n\n"
+                        "I can see your project. Let me provide you with some general guidance based on what I observe."
+                    )
+                
+                first_question = self.questions[0]
+                
                 return (
-                    f"Great, thanks for the photo!\n\n{result['analysis']}\n\n"
+                    f"Great, thanks for the photo!\n\n{analysis_text}\n\n"
                     "I'll ask a few quick questions one-by-one so I can give you "
-                    "the safest fix.\n\n" + self.questions[0]
+                    "the safest fix.\n\n" + first_question
                 )
             else:
                 return "Please upload the requested photo so I can analyse it."
@@ -313,9 +433,40 @@ class AgenticChatbot:
             if self.current_question_index < len(self.questions):
                 return f"Thank you! Next up:\n\n{self.questions[self.current_question_index]}"
             else:
-                # All questions answered, provide solution
+                # All questions answered, create summary
+                self.current_state = "showing_summary"
+                summary = self.summary_agent.create_summary(
+                    self.problem_type, 
+                    self.image_analysis, 
+                    self.user_answers
+                )
+                return (
+                    f"Perfect! Let me summarize what I understand about your problem:\n\n"
+                    f"**{summary}**\n\n"
+                    f"Does this sound correct? Please reply with 'yes' if this is accurate, "
+                    f"or 'no' if I misunderstood something."
+                )
+        
+        elif self.current_state == "showing_summary":
+            user_response = user_message.lower().strip()
+            
+            if user_response in ['yes', 'y', 'correct', 'right', 'accurate']:
+                # User confirms summary, proceed to solution
                 self.current_state = "waiting_for_problem"
                 return self._generate_solution()
+            elif user_response in ['no', 'n', 'incorrect', 'wrong', 'not right']:
+                # User disagrees with summary, restart the process
+                self.reset()
+                return (
+                    "I apologize for misunderstanding. Let's start over. "
+                    "Please describe your problem again, and I'll make sure to get it right this time."
+                )
+            else:
+                # Unclear response, ask for clarification
+                return (
+                    "I need a clear yes or no answer. Does my summary of your problem sound correct?\n\n"
+                    "Please reply with 'yes' if it's accurate, or 'no' if I misunderstood something."
+                )
     
     def _generate_solution(self) -> str:
         """Generate solution based on collected information"""
@@ -331,4 +482,5 @@ class AgenticChatbot:
         self.problem_type = None
         self.questions = []
         self.current_question_index = 0
-        self.user_answers = {} 
+        self.user_answers = {}
+        self.image_analysis = None 
