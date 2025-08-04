@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import base64
 from PIL import Image
 import io
+import json
 
 load_dotenv()
 
@@ -148,115 +149,57 @@ Be specific about what photos would help diagnose the problem."""
             }
 
 class ImageAnalysisAgent:
-    """Agent 2: Analyzes images and generates specific questions"""
-    
+    """Agent 2: analyses an uploaded image and returns clarifying questions"""
+
     def __init__(self):
         self.api_key = os.getenv("GROK_API_KEY")
         self.api_url = "https://api.x.ai/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
+            "Content-Type":  "application/json",
         }
-    
+
     def analyze_image(self, image_data: bytes, problem_type: str) -> Dict[str, Any]:
-        """Analyze uploaded image and generate specific questions"""
-        
-        # Convert image to base64
-        image_base64 = base64.b64encode(image_data).decode('utf-8')
-        
-        system_prompt = f"""You are an expert DIY image analysis agent. Analyze the uploaded image for a {problem_type} problem and {qa_prompt_text}
+        """Call Grok-4 Vision with a base64-encoded image and get back questions"""
 
-Return a JSON response with:
-- "analysis": Brief analysis of what you see in the image
-- "questions": List of specific questions to ask (one by one)
-- "first_question": The first question to ask immediately
+        b64 = base64.b64encode(image_data).decode("utf-8")
 
-Be specific and practical. Ask about things that would help provide better DIY advice."""
-
-        messages = [
-            {
-                "role": "system", 
-                "content": system_prompt
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": f"Please analyze this image for a {problem_type} problem:"
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_base64}"
-                        }
-                    }
-                ]
-            }
-        ]
-        
-        try:
-            response = requests.post(
-                self.api_url,
-                headers=self.headers,
-                json={"model": "grok-4", "messages": messages, "max_tokens": 800}
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                text = data["choices"][0]["message"]["content"].strip()
-                
-                try:
-                    import json
-                    result = json.loads(text)
-                    return result
-                except:
-                    return self._get_fallback_questions(problem_type)
-            else:
-                return self._get_fallback_questions(problem_type)
-                
-        except Exception as e:
-            return self._get_fallback_questions(problem_type)
-    
-    def analyze_image_without_image(self, problem_type: str) -> Dict[str, Any]:
-        """Analyze problem type and generate questions without actual image"""
-        
-        system_prompt = f"""You are an expert DIY analysis agent. Based on the problem type "{problem_type}", {qa_prompt_text}
-
-Return a JSON response with:
-- "analysis": Brief analysis of the problem type
-- "questions": List of 3-5 specific questions to ask (one by one)
-- "first_question": The first question to ask immediately
-
-Be specific and practical. Ask about things that would help provide better DIY advice."""
+        system_prompt = (
+            f"You are an expert DIY vision agent. Analyse the image for a "
+            f"'{problem_type}' problem and {qa_prompt_text}\n\n"
+            "Return JSON with:\n"
+            '- "analysis": brief description of what you see\n'
+            '- "questions": list of questions (ask one-by-one)\n'
+            '- "first_question": the first question to ask'
+        )
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Generate questions for a {problem_type} problem"}
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text",
+                     "text": f"Please analyse this image for a {problem_type} issue:"},
+                    {"type": "image_url",
+                     "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+                ]
+            }
         ]
-        
+
         try:
-            response = requests.post(
-                self.api_url,
-                headers=self.headers,
-                json={"model": "grok-3", "messages": messages, "max_tokens": 600}
+            r = requests.post(
+                self.api_url, headers=self.headers,
+                json={"model": "grok-4", "messages": messages, "max_tokens": 800},
+                timeout=20
             )
-            
-            if response.status_code == 200:
-                data = response.json()
-                text = data["choices"][0]["message"]["content"].strip()
-                
-                try:
-                    import json
-                    result = json.loads(text)
-                    return result
-                except:
-                    return self._get_fallback_questions(problem_type)
-            else:
-                return self._get_fallback_questions(problem_type)
-                
-        except Exception as e:
-            return self._get_fallback_questions(problem_type)
+            if r.status_code == 200:
+                txt = r.json()["choices"][0]["message"]["content"].strip()
+                return json.loads(txt)          # may raise → caught below
+        except Exception:
+            pass                                # fall through to fallback
+
+        # ─── fallback set ───
+        return self._get_fallback_questions(problem_type)
     
     def _get_fallback_questions(self, problem_type: str) -> Dict[str, Any]:
         """Fallback questions if image analysis fails"""
@@ -347,17 +290,18 @@ class AgenticChatbot:
             return result["response_message"]
         
         elif self.current_state == "waiting_for_photos":
-            # Check if user says they uploaded an image or wants to proceed
-            if uploaded_image or any(phrase in user_message.lower() for phrase in ["image uploaded", "photo uploaded", "uploaded", "image", "photo", "picture", "yes", "ok", "proceed", "continue"]):
-                # Agent 2: Image Analysis (simulated for now)
-                result = self.image_agent.analyze_image_without_image(self.problem_type)
+            if uploaded_image:
+                result = self.image_agent.analyze_image(uploaded_image, self.problem_type)
                 self.questions = result["questions"]
                 self.current_question_index = 0
                 self.current_state = "asking_questions"
-                
-                return f"Thank you! Now let's properly address your {self.problem_type.replace('_', ' ')}. MyHandyAI will ask a few questions to better understand your project.\n\nLet's start with one question at a time.\n\n{self.questions[0]}"
+                return (
+                    f"Great, thanks for the photo!\n\n{result['analysis']}\n\n"
+                    "I'll ask a few quick questions one-by-one so I can give you "
+                    "the safest fix.\n\n" + self.questions[0]
+                )
             else:
-                return "Please upload a photo so I can better understand your project, or type 'image uploaded' to proceed."
+                return "Please upload the requested photo so I can analyse it."
         
         elif self.current_state == "asking_questions":
             # Store user's answer

@@ -1,256 +1,181 @@
-import os
+import os, json, requests
 import streamlit as st
-import requests
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain.memory import ConversationBufferMemory
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 from agents import AgenticChatbot
 
-# Load environment variables
 load_dotenv()
 
 
 class GrokChatbot:
+    """Top-level orchestrator: decides ‘agentic flow’ vs ‘plain chat’."""
+
+    # ─────────────────────── initialisation ────────────────────────────
     def __init__(self):
-        """Initialize the Grok chatbot with agentic system"""
         self.api_key = os.getenv("GROK_API_KEY")
         self.api_url = "https://api.x.ai/v1/chat/completions"
-
         if not self.api_key:
-            st.error("❌ GROK_API_KEY not found in environment variables")
-            return
+            st.error("❌ GROK_API_KEY missing"); return
+        self.headers = {"Authorization": f"Bearer {self.api_key}",
+                        "Content-Type":  "application/json"}
 
-        self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-
-        # Available Grok models
         self.models = {
-            "Grok 3 Mini": "grok-3-mini",
-            "Grok 3": "grok-3",
-            "Grok 3 Fast": "grok-3-fast-us-east-1",
-            "Grok 4": "grok-4-0709"
+            "Grok 3 Mini":  "grok-3-mini",
+            "Grok 3":       "grok-3",
+            "Grok 3 Fast":  "grok-3-fast-us-east-1",
+            "Grok 4":       "grok-4-0709",
         }
 
-        # Initialize agentic system
-        self.agentic_chatbot = AgenticChatbot()
-        
-        # Initialize memory for traditional chat
-        self.memory = ConversationBufferMemory()
-
-        # Start conversation with intro messages
+        self.agentic_chatbot = AgenticChatbot()          # DIY pipeline
+        self.memory = ConversationBufferMemory()         # fallback chat
         self._initialize_conversation()
 
+    # ─────────────────────── intro helpers ────────────────────────────
     def _initialize_conversation(self):
-        intro_messages = [
-            "Thanks for using MyHandyAI chat! Could you please describe what you would like to do today? You can also upload a photo for your problem.",
-            "Hi User! Let's get started with your project!",
-            "What home project or home problem can we help with today?"
-        ]
-
-        for msg in intro_messages:
+        for msg in (
+            "Thanks for using MyHandyAI! Tell me what you’d like to do or fix.",
+            "Hi User! Let’s get started with your project!",
+            "What home project can we help with today?"
+        ):
             self.memory.chat_memory.add_ai_message(msg)
 
     def get_intro_messages(self) -> List[Dict[str, Any]]:
-        return [
-            {"role": "assistant", "content": msg}
-            for msg in [
-                "Thanks for using MyHandyAI chat! Could you please describe what you would like to do today? You can also upload a photo for your problem.",
-                "Hi User! Let's get started with your project!",
-                "What home project or home problem can we help with today?"
-            ]
-        ]
+        return [{"role": "assistant", "content": m.content}
+                for m in self.memory.chat_memory.messages[:3]]
 
-    def call_grok_chat(self, model: str, messages: list, max_tokens: int = 500):
+    # ─────────────────────── low-level Grok call ──────────────────────
+    def call_grok_chat(self, model_key: str, messages, max_tokens=500):
         try:
-            response = requests.post(
-                self.api_url,
-                headers=self.headers,
-                json={"model": model, "messages": messages, "max_tokens": max_tokens}
+            r = requests.post(
+                self.api_url, headers=self.headers,
+                json={"model": model_key, "messages": messages,
+                      "max_tokens": max_tokens},
+                timeout=20
             )
-
-            if response.status_code != 200:
-                st.error(f"❌ API error {response.status_code}:\n{response.text}")
-                return None
-
-            data = response.json()
-            msg = data["choices"][0]["message"]
-            text = (msg.get("content") or msg.get("reasoning_content") or "").strip()
-            return text
-
+            if r.status_code == 200:
+                msg = r.json()["choices"][0]["message"]
+                return (msg.get("content") or msg.get("reasoning_content") or "").strip()
         except Exception as e:
-            st.error(f"❌ Error calling Grok API: {str(e)}")
-            return None
+            st.error(f"❌ Grok API error: {e}")
+        return None
 
-    def _should_use_agentic_system(self, user_message: str) -> bool:
-        """Use AI to determine if the user message describes a problem that needs the agentic system"""
-        
-        system_prompt = """You are a problem classifier for a DIY home improvement chatbot. 
+    # ─────────────────────── improved classifier ──────────────────────
+    def _should_use_agentic_system(self, user_msg: str) -> bool:
+        key = f"classify::{user_msg}"
+        if key in st.session_state:                 # cached?
+            return st.session_state[key]
 
-Determine if the user's message describes a specific home improvement problem or project that would benefit from:
-1. Asking for photos/images of the problem area
-2. Asking clarifying questions one by one
-3. Providing step-by-step DIY instructions
-
-Return ONLY "true" if the message describes a specific problem/project, or "false" if it's:
-- General conversation
-- Questions about the chatbot itself
-- Non-DIY topics
-- Vague statements without specific problems
-
-Examples:
-- "I have a pipe which is leaking" → true
-- "I want to hang a mirror" → true  
-- "How are you?" → false
-- "What can you help me with?" → false
-- "I need help" → false (too vague)
-- "My sink is clogged" → true"""
-
+        sys_prompt = """
+You are a classifier for a DIY assistant.  Reply with **ONLY**:
+  {"use_agentic": true}   – if the message describes a concrete DIY problem
+  {"use_agentic": false}  – otherwise (chit-chat, meta, vague, etc.)
+"""
         messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"User message: {user_message}"}
+            {"role": "system", "content": sys_prompt.strip()},
+            {"role": "user",   "content": user_msg.strip()}
         ]
-        
         try:
-            response = requests.post(
-                self.api_url,
-                headers=self.headers,
-                json={"model": "grok-3-mini", "messages": messages, "max_tokens": 10}
+            r = requests.post(
+                self.api_url, headers=self.headers,
+                json={"model": "grok-3-mini", "messages": messages, "max_tokens": 20},
+                timeout=10
             )
-            
-            if response.status_code == 200:
-                data = response.json()
-                text = data["choices"][0]["message"]["content"].strip().lower()
-                return "true" in text
-            else:
-                # Fallback: use simple heuristics if API fails
-                problem_indicators = ["problem", "issue", "broken", "leaking", "clogged", "not working", "need help", "fix", "repair"]
-                return any(indicator in user_message.lower() for indicator in problem_indicators)
-                
-        except Exception as e:
-            # Fallback: use simple heuristics if API fails
-            problem_indicators = ["problem", "issue", "broken", "leaking", "clogged", "not working", "need help", "fix", "repair"]
-            return any(indicator in user_message.lower() for indicator in problem_indicators)
+            if r.status_code == 200:
+                content = r.json()["choices"][0]["message"]["content"].strip()
+                result  = json.loads(content)
+                flag    = bool(result.get("use_agentic", False))
+                st.session_state[key] = flag
+                return flag
+        except Exception:
+            pass
 
-    def chat(self, user_message: str, model: str = "Grok 3", uploaded_image: bytes = None) -> str:
-        try:
-            # Use agentic system for problem-specific interactions
-            if self.agentic_chatbot.current_state != "waiting_for_problem":
-                return self.agentic_chatbot.process_message(user_message, uploaded_image)
-            
-            # Use AI to determine if this is a problem that needs the agentic system
-            if self._should_use_agentic_system(user_message):
-                return self.agentic_chatbot.process_message(user_message, uploaded_image)
-            
-            # Fall back to traditional chat
-            self.memory.chat_memory.add_user_message(user_message)
+        # heuristic fallback
+        words = ["problem", "issue", "broken", "leak", "clog", "hang",
+                 "install", "fix", "repair", "not working", "mount"]
+        flag = any(w in user_msg.lower() for w in words)
+        st.session_state[key] = flag
+        return flag
 
-            messages = [
-                {
-                    "role": "system",
-                    "content": "You are MyHandyAI, a helpful DIY assistant. You help users with home improvement projects and problems. Be friendly, knowledgeable, and provide practical advice."
-                }
-            ]
+    # ─────────────────────── master chat method ───────────────────────
+    def chat(self, user_msg: str, model="Grok 3", uploaded_image: bytes = None):
+        # already inside agentic flow?
+        if self.agentic_chatbot.current_state != "waiting_for_problem":
+            return self.agentic_chatbot.process_message(user_msg, uploaded_image)
 
-            for msg in self.memory.chat_memory.messages:
-                if isinstance(msg, HumanMessage):
-                    messages.append({"role": "user", "content": msg.content})
-                elif isinstance(msg, AIMessage):
-                    messages.append({"role": "assistant", "content": msg.content})
+        # first turn → decide
+        if self._should_use_agentic_system(user_msg):
+            return self.agentic_chatbot.process_message(user_msg, uploaded_image)
 
-            response = self.call_grok_chat(self.models[model], messages)
+        # fallback plain chat
+        self.memory.chat_memory.add_user_message(user_msg)
+        msgs = [{"role": "system",
+                 "content":
+                 "You are MyHandyAI, a friendly DIY helper. Give clear, practical advice."}]
+        for m in self.memory.chat_memory.messages:
+            msgs.append({"role": "user" if isinstance(m, HumanMessage) else "assistant",
+                         "content": m.content})
+        resp = self.call_grok_chat(self.models[model], msgs)
+        if resp:
+            self.memory.chat_memory.add_ai_message(resp)
+            return resp
+        return "Sorry, I hit an error trying to answer that."
 
-            if response:
-                self.memory.chat_memory.add_ai_message(response)
-                return response
-            else:
-                return "Sorry, I encountered an error processing your request."
-
-        except Exception as e:
-            return f"Sorry, I encountered an error: {str(e)}"
-
-    def get_conversation_history(self) -> List[Dict[str, Any]]:
-        history = self.get_intro_messages()
-        for message in self.memory.chat_memory.messages:
-            if isinstance(message, HumanMessage):
-                history.append({"role": "user", "content": message.content})
-            elif isinstance(message, AIMessage):
-                history.append({"role": "assistant", "content": message.content})
-        return history
+    # ─────────────────────── house-keeping helpers ────────────────────
+    def get_conversation_history(self):
+        hist = self.get_intro_messages()
+        for m in self.memory.chat_memory.messages[3:]:
+            hist.append({"role": "user" if isinstance(m, HumanMessage) else "assistant",
+                         "content": m.content})
+        return hist
 
     def reset_conversation(self):
         self.memory.chat_memory.messages.clear()
+        self.agentic_chatbot.reset()
         self._initialize_conversation()
 
 
+# ─────────────────────────── Streamlit UI ─────────────────────────────
 def create_streamlit_app():
-    st.set_page_config(
-        page_title="MyHandyAI Assistant",
-        page_icon="🔧",
-        layout="wide"
-    )
-
+    st.set_page_config("MyHandyAI Assistant", "🔧", layout="wide")
     st.title("MyHandyAI Assistant")
 
-    # Initialize chatbot
-    if 'chatbot' not in st.session_state:
+    if "chatbot" not in st.session_state:
         st.session_state.chatbot = GrokChatbot()
 
-    # Sidebar controls
     with st.sidebar:
         st.header("Controls")
-        st.subheader("Model Selection")
-        model_options = list(st.session_state.chatbot.models.keys())
-        selected_model = st.selectbox(
-            "Choose Grok Model:",
-            model_options,
-            index=1
-        )
-
-        if st.button("Reset Conversation"):
+        model_name = st.selectbox("Grok model", list(st.session_state.chatbot.models.keys()), index=1)
+        if st.button("Reset conversation"):
             st.session_state.chatbot.reset_conversation()
-            st.session_state.chatbot.agentic_chatbot.reset()
             st.session_state.messages = st.session_state.chatbot.get_intro_messages()
             st.rerun()
+        st.markdown("Upload an image below *before* sending your answer to photo requests.")
 
-        st.header("About")
-        st.markdown("""
-        This is a test interface for the MyHandyAI Assistant chatbot.
-        
-        The chatbot uses:
-        - **Grok API** from xAI for LLM capabilities  
-        - **LangChain** for memory handling  
-        - **Streamlit** for quick testing interface
-
-        Features:
-        - Conversation memory
-        - Introductory messages
-        - Home improvement help
-        - Grok model selection
-        """)
-
-    # Initialize chat history
-    if 'messages' not in st.session_state:
+    if "messages" not in st.session_state:
         st.session_state.messages = st.session_state.chatbot.get_intro_messages()
 
-    # Display chat messages
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    # ─── render history ───
+    for m in st.session_state.messages:
+        with st.chat_message(m["role"]):
+            st.markdown(m["content"])
 
-    # Chat input
-    if prompt := st.chat_input("What would you like to do today?"):
+    # ─── file uploader (image bytes) ───
+    uploaded_file = st.file_uploader("Upload problem photo (jpg / png)", type=["jpg", "jpeg", "png"])
+    img_bytes = uploaded_file.read() if uploaded_file else None
+
+    # ─── user input ───
+    if prompt := st.chat_input("Describe your project or reply…"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            response = st.session_state.chatbot.chat(prompt, model=selected_model)
-            st.markdown(response)
+            reply = st.session_state.chatbot.chat(prompt, model=model_name, uploaded_image=img_bytes)
+            st.markdown(reply)
 
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.session_state.messages.append({"role": "assistant", "content": reply})
 
 
 if __name__ == "__main__":
