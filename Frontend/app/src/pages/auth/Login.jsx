@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { loginUser } from "../../services/auth";
@@ -14,6 +14,7 @@ const Login = () => {
 	const [showPassword, setShowPassword] = useState(false);
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
+	const [rememberMe, setRememberMe] = useState(false);
 	// const [error, setError] = useState("");
 	const navigate = useNavigate();
 
@@ -30,6 +31,10 @@ const Login = () => {
 	// 	return true;
 	// }
 
+	useEffect(() => {
+		setEmail("");
+		setPassword("");
+	}, [location.pathname]);
 
 	const signUpWithGoogle = () => {
 		signInWithPopup(auth, googleProvider).then((result) => {
@@ -45,8 +50,21 @@ const Login = () => {
 	const handleSubmit = async (e) => {
 		e.preventDefault();
 		try {
-			console.log("Calling loginUser");
+			console.log("Calling the loginUser function");
 			const res = await loginUser(email, password);
+			
+			if(res.id)
+			{
+				if(rememberMe)
+				{
+					localStorage.setItem("authToken", res.id);
+				}
+				else
+				{
+					sessionStorage.setItem("authToken", res.id);
+				}
+			}
+
 			console.log("Login result: ", res);
 			navigate("/")
 		}
@@ -116,14 +134,25 @@ const Login = () => {
 					<div
 						className="absolute inset-y-0 right-3 flex items-center cursor-pointer text-gray-500"
 						onClick={() => setShowPassword((prev) => !prev)}>
-						{showPassword ? "--" : "X"}
+						{showPassword ? 
+							<img 
+								alt = "opening eye" 
+								src="https://cdn-icons-png.flaticon.com/128/159/159604.png"
+								className="w-5 h-5"
+							/> : <img 
+									src="https://cdn-icons-png.flaticon.com/128/2767/2767146.png" 	
+									alt = "eye-closing" 
+									className="w-5 h-5"
+								/>
+						}
 					</div>
 				</div>
-
 				<div className="flex justify-between items-center">
 					<label className="flex text-[12px] items-center text-sm text-gray-700">
 						<input
 							type="checkbox"
+							checked={rememberMe}
+							onChange={() => setRememberMe((prev) => !prev)}
 							className="mr-2 size-4 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
 						/>
 						<p className="font-light">Remember Me</p>

@@ -17,6 +17,7 @@ const Signup = () => {
 		password: "",
 	});
 	const [error, setError] = useState("");
+	
 	const [passwordStrength, setPasswordStrength] = useState({
 		lengthRequirement: false,
 		uppercaseRequirement: false,
@@ -181,7 +182,17 @@ const Signup = () => {
 					<div
 						className="absolute inset-y-0 right-3 flex items-center cursor-pointer text-gray-500"
 						onClick={() => setShowPassword((prev) => !prev)}>
-						{showPassword ? "--" : "X"}
+						{showPassword ? 
+							<img 
+								alt = "opening eye" 
+								src="https://cdn-icons-png.flaticon.com/128/159/159604.png"
+								className="w-5 h-5"
+							/> : <img 
+									src="https://cdn-icons-png.flaticon.com/128/2767/2767146.png" 	
+									alt = "eye-closing" 
+									className="w-5 h-5"
+								/>
+						}
 					</div>
 				</div>
 
