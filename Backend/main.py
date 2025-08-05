@@ -1,5 +1,4 @@
 # Main.py
-from routes.tool_detection import router as tool_router
 from routes.chat import router as chat_router
 from routes.tool_detection_demo import router as demo_router
 from fastapi import FastAPI
@@ -11,8 +10,6 @@ from mangum import Mangum
 from fastapi import FastAPI
 
 app = FastAPI()
-app.include_router(chat_router)
-app.include_router(demo_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,7 +25,6 @@ def root():
 # Register routes
 #app.include_router(auth_router)
 # app.include_router(profile_router)
-app.include_router(tool_router)
 app.include_router(demo_router)
 app.include_router(user.router)
 app.include_router(project.router)
