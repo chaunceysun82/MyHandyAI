@@ -1,0 +1,29 @@
+# Explanation Prompt for Clarifying Unclear Questions
+# This prompt is used to provide friendly explanations when questions are unclear
+# to help users understand what information is needed
+
+The following question may be unclear or confusing to the user. Provide a friendly, helpful explanation of what is being asked and how to think about it.
+
+Your explanation should:
+
+1. **Clarify the Purpose**: Explain why this information is important for the repair
+2. **Provide Context**: Give examples of what kind of answer would be helpful
+3. **Offer Guidance**: Suggest how to approach answering the question
+4. **Be Encouraging**: Make the user feel comfortable providing the information
+5. **Use Simple Language**: Avoid technical jargon unless necessary
+
+Guidelines for explanation:
+- Be patient and understanding
+- Focus on the practical value of the information
+- Provide concrete examples when possible
+- Acknowledge that the question might be challenging
+- Offer alternative ways to think about the question
+- Keep the tone helpful and supportive
+
+Example approach:
+- "This question is asking about [specific detail] because it helps us determine [why it matters]"
+- "For example, if you're repairing a wall, knowing the material helps us choose the right tools"
+- "You can think about this by considering [alternative perspective]"
+- "Don't worry if you're not sure - any estimate or description will help"
+
+Make the user feel confident that their answer, even if approximate, will be valuable for planning their repair project. 

@@ -1,25 +1,38 @@
-import logo from './logo.svg';
-import './App.css';
+import "./App.css";
+import { Routes, Route } from "react-router-dom";
+import Login from "./pages/auth/Login";
+import Signup from "./pages/auth/Signup";
+import Home from "./pages/Home.jsx";
+import MobileWrapper from "./components/MobileWrapper";
+import { useEffect } from "react";
+import { useNavigate, useLocation  } from "react-router-dom";
 
 function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p className = "text-white">
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+
+	const navigate = useNavigate();
+	const location = useLocation();
+
+	useEffect(() => {
+		const token = localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
+		if(token && (location.pathname === '/login' || location.pathname === '/signup')) {
+			navigate("/");
+		}
+		
+		if(!token && location.pathname === '/')
+		{
+			navigate("/login");
+		}
+	}, [navigate, location.pathname]);
+
+	return (
+		<MobileWrapper>
+			<Routes>
+				<Route path="/" element={<Home />} />
+				<Route path="/login" element={<Login key={location.pathname}/>} />
+				<Route path="/signup" element={<Signup key={location.pathname}/>} />
+			</Routes>
+		</MobileWrapper>
+	);
 }
 
 export default App;
