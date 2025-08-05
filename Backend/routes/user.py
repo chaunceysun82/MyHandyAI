@@ -3,6 +3,7 @@ from db import users_collection, conversations_collection, questions_collection
 from pydantic import BaseModel, EmailStr
 from bson import ObjectId
 from typing import Optional
+from datetime import datetime
 
 router = APIRouter()
 
@@ -30,6 +31,7 @@ def create_user(user: User):
     if not user.password:
         raise HTTPException(status_code=400, detail="invalid password")
     new_user = user.dict()
+    new_user["createdAt"] = datetime.utcnow()
     result = users_collection.insert_one(new_user)
 
     conversations_collection.insert_one({ "userId": result.inserted_id })
