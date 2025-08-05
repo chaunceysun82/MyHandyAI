@@ -26,7 +26,7 @@ def root():
     return {"message": "Hello, FastAPI!"}
 
 # Register routes
-app.include_router(auth_router)
+#app.include_router(auth_router)
 # app.include_router(profile_router)
 app.include_router(tool_router)
 app.include_router(demo_router)
