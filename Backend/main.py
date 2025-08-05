@@ -1,6 +1,6 @@
 # Main.py
 from routes.chat import router as chat_router
-from routes.tool_detection_demo import router as demo_router
+#from routes.tool_detection_demo import router as demo_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 #from routes.profile_creation import router as profile_router
@@ -25,7 +25,7 @@ def root():
 # Register routes
 #app.include_router(auth_router)
 # app.include_router(profile_router)
-app.include_router(demo_router)
+#app.include_router(demo_router)
 app.include_router(user.router)
 app.include_router(project.router)
 app.include_router(steps.router)
