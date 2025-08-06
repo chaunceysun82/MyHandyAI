@@ -13,6 +13,10 @@ const Home = () => {
 		navigate("/login");
 	};
 
+	const headChat = () => {
+		navigate("/chat");
+	};
+
 	return (
 		<div>
 			<h1 className="text-2xl text-red-700 font-bold">Home Page</h1>
@@ -30,6 +34,13 @@ const Home = () => {
 				className="text-sm text-red-500 mt-3"
 			>
 				Sign Out
+			</button>
+			
+			<button
+			onClick={headChat}
+				className="text-sm text-red-500 mt-3"
+			>
+				Chatbot!
 			</button>
 
 		</div>

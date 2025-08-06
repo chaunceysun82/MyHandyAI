@@ -39,8 +39,15 @@ const Login = () => {
 	const signUpWithGoogle = () => {
 		signInWithPopup(auth, googleProvider).then((result) => {
 			const user = result.user;
-			console.log("User:", user.id)
 			console.log("Google login successful");
+			if(rememberMe)
+			{
+				localStorage.setItem("authToken", user.uid);
+			}
+			else
+			{
+				sessionStorage.setItem("authToken", user.uid);
+			}
 			navigate("/");
 		}).catch((error) => {
 			console.log("An Error occured while google sign in.");
