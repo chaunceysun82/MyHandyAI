@@ -1,5 +1,4 @@
 
-
 const BASE_URL = process.env.REACT_APP_BASE_URL;
 
 if (!BASE_URL) {

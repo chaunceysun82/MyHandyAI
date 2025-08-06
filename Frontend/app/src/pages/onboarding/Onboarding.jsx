@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
 	submitOnboardingAnswers,
 	fetchOnboardingQuestions,
@@ -16,6 +16,8 @@ const Onboarding = () => {
 	const navigate = useNavigate();
 	const stepIndex = Number(step) - 1;
 
+	const location = useLocation();
+
 	useEffect(() => {
 		const fetchData = async () => {
 			try {
@@ -23,7 +25,8 @@ const Onboarding = () => {
 				setQuestions(data);
 				setLoading(false);
 
-				if (!step || isNaN(step) || stepIndex < 0 || stepIndex >= data.length) {
+				if ((!step || isNaN(step) || stepIndex < 0 || stepIndex >= data.length ) && 
+				location.pathname !== "/onboarding/1") {
 					navigate("/onboarding/1", { replace: true });
 				}
 			} catch (err) {
@@ -32,7 +35,7 @@ const Onboarding = () => {
 		};
 
 		fetchData();
-	}, [step, stepIndex, navigate]);
+	}, [step, stepIndex, navigate, location.pathname]);
 
 	const handleAnswer = (stepId, value) => {
 		setAnswers((prev) => ({
@@ -41,7 +44,7 @@ const Onboarding = () => {
 		}));
 	};
 
-	const handleNext = () => {
+	const handleNext = async () => {
 		if (stepIndex < questions.length - 1) {
 			navigate(`/onboarding/${stepIndex + 2}`);
 		} else {
@@ -51,8 +54,9 @@ const Onboarding = () => {
 	};
 
 	const handleBack = () => {
-		if (stepIndex > 0) {
-			navigate(`/onboarding/${stepIndex}`);
+		const prevStep = Number(step) - 1;
+		if (prevStep > 0) {
+			navigate(`/onboarding/${prevStep}`);
 		}
 	};
 

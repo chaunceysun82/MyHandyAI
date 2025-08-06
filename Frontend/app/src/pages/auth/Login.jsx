@@ -39,9 +39,16 @@ const Login = () => {
 	const signUpWithGoogle = () => {
 		signInWithPopup(auth, googleProvider).then((result) => {
 			const user = result.user;
-			console.log("User:", user.id)
 			console.log("Google login successful");
-			navigate("/");
+			if(rememberMe)
+			{
+				localStorage.setItem("authToken", user.uid);
+			}
+			else
+			{
+				sessionStorage.setItem("authToken", user.uid);
+			}
+			navigate("/onboarding/");
 		}).catch((error) => {
 			console.log("An Error occured while google sign in.");
 		});
@@ -66,7 +73,7 @@ const Login = () => {
 			}
 
 			console.log("Login result: ", res);
-			navigate("/")
+			navigate("/onboarding/")
 		}
 		catch (err) {
 			console.log("Login error: ", err.message);
@@ -76,7 +83,7 @@ const Login = () => {
 
 
 	return (
-		<div className="h-auto flex flex-col items-center p-4">
+		<div className="min-h-screen flex flex-col items-center p-4">
 			<h1 className="text-[20px] mt-[-24px] font-semibold p-10">Welcome back!</h1>
 			<div className="relative w-full max-w-sm mx-auto mb-8">
 				{/* Tab buttons */}
