@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from bson import ObjectId
 from db import steps_collection
+from datetime import datetime
 
 router = APIRouter()
 
@@ -34,6 +35,7 @@ class Step(BaseModel):
 def create_step(step: Step):
     step_dict = step.dict()
     step_dict["projectId"] = ObjectId(step.projectId)
+    step_dict["createdAt"] = datetime.utcnow()
     result = steps_collection.insert_one(step_dict)
     return {"id": str(result.inserted_id)}
 
