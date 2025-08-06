@@ -29,6 +29,11 @@ class StartChat(BaseModel):
     user: str
     project: str
 
+class ResetChat(BaseModel):
+    user: str
+    project: str
+    session: str
+
 class ChatResponse(BaseModel):
     response: str
     session_id: str
@@ -163,11 +168,11 @@ async def get_session_info(session_id: str):
     )
 
 @router.post("/session/{session_id}/reset")
-async def reset_conversation(session_id: str, user: str, project: str):
+async def reset_conversation(payload: ResetChat):
     """
     Resets a session and logs the reset.
     """
-    chatbot = reset_session(session_id, user, project)
+    chatbot = reset_session(payload.session, payload.user, payload.project)
     intro_messages = [
         {"role": "assistant", "content": "Thanks for using MyHandyAI! Tell me what you'd like to do or fix."},
         {"role": "assistant", "content": "Hi User! Let's get started with your project!"},
