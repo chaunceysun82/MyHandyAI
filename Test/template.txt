@@ -1,0 +1,47 @@
+Project Title: 
+## Short, descriptive title
+
+Short Description:
+## Short description of the project
+
+Difficulty: 
+## e.g. Easy/Medium/Hard
+
+Safety Precautions:
+## List any necessary warnings
+
+Tools Required:
+- 
+-
+
+Materials Required:
+- 
+-
+
+Steps:
+## Numbered or bulleted
+
+Step 1:
+    - Description: 
+    - Tools: 
+    - Materials: 
+    - Image: ##reference the name in "/images"
+
+Step 2:
+    - Description: 
+    - Tools: 
+    - Materials: 
+    - Image: ##reference the name in "/images"
+
+...
+
+Common Mistakes to Avoid:
+## Tips
+
+Expected Results/Outcome:
+## What should the user expect if completed correctly?
+
+Reference Links:
+## List links here
+
+
