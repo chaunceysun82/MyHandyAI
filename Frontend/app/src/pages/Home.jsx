@@ -1,50 +1,92 @@
-import React from "react";
-// import { getAuth, signOut } from "firebase/auth";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import Header from "../components/Header";
+import ProjectCard from "../components/ProjectCard";
+import LoadingPlaceholder from "../components/LoadingPlaceholder";
+import { fetchProjects } from "../services/projects";
 
-const Home = () => {
+export default function Home() {
+  const navigate = useNavigate();
 
-	// const auth = getAuth();
-	const navigate = useNavigate();
+  // treat authToken as userId
+  const token =
+    localStorage.getItem("authToken") ||
+    sessionStorage.getItem("authToken");
+  const userName = "User"; // or decode token to get real name
 
-	const handleLogOut = () => {
-		localStorage.removeItem("authToken");
-		sessionStorage.removeItem("authToken");
-		navigate("/login");
-	};
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-	const headChat = () => {
-		navigate("/chat");
-	};
+  useEffect(() => {
+    if (!token) {
+      navigate("/login", { replace: true });
+      return;
+    }
 
-	return (
-		<div>
-			<h1 className="text-2xl text-red-700 font-bold">Home Page</h1>
+    fetchProjects(token)
+      .then((data) => {
+        setProjects(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Error fetching projects:", err);
+        // fallback if endpoint isn’t ready
+        if (err.message.includes("Method Not Allowed")) {
+          setProjects([]);
+          setLoading(false);
+        } else {
+          setError(err.message);
+          setLoading(false);
+        }
+      });
+  }, [token, navigate]);
 
-			<button
-			// 	onClick={() => {
-			// 		signOut(auth).then(() => {
-			// 			console.log("Signed out from Firebase");
-			// 		});
-			// 		navigate("/login");
-			// 	}
-			
-			// }
-			onClick={handleLogOut}
-				className="text-sm text-red-500 mt-3"
-			>
-				Sign Out
-			</button>
-			
-			<button
-			onClick={headChat}
-				className="text-sm text-red-500 mt-3"
-			>
-				Chatbot!
-			</button>
+  function handleSignOut() {
+    localStorage.removeItem("authToken");
+    sessionStorage.removeItem("authToken");
+    navigate("/login", { replace: true });
+  }
 
-		</div>
-	);
-};
+  if (loading) return <LoadingPlaceholder />;
+  if (error)
+    return <div className="p-4 text-red-500">Error loading projects: {error}</div>;
 
-export default Home;
+  return (
+    <div className="max-w-md mx-auto p-4">
+      {/* Header with avatar, greeting, gear & sign-out */}
+      <Header userName={userName} onSignOut={handleSignOut} />
+
+      {/* Call to Action */}
+      <p className="text-lg font-medium mb-2">
+        Need help solving household problem?
+      </p>
+      <button
+        className="w-full bg-gray-300 py-2 rounded-lg font-semibold mb-6 flex items-center justify-center"
+        onClick={() => navigate("/chat")}
+      >
+        <span className="text-2xl mr-2">+</span> Start New Project
+      </button>
+
+      {/* Ongoing Projects Section */}
+      <h2 className="text-xl font-semibold mb-2">Ongoing Projects</h2>
+      {projects.length === 0 ? (
+        <div className="text-gray-500">You have no ongoing projects.</div>
+      ) : (
+        <div className="space-y-2 overflow-y-auto" style={{ maxHeight: "60vh" }}>
+          {projects.map((p) => (
+            <ProjectCard
+              key={p._id}
+              id={p._id}
+              projectTitle={p.projectTitle}
+              projectImages={p.projectImages}
+              lastActivity={p.lastActivity}
+              percentComplete={p.percentComplete}
+              onClick={() => navigate(`/projects/${p._id}`)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
