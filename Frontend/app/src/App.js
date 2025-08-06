@@ -34,9 +34,9 @@ function App() {
 				<Route path="/home" element={<Home />} />
 				<Route path="/login" element={<Login key={location.pathname}/>} />
 				<Route path="/signup" element={<Signup key={location.pathname}/>} />
-					<Route path="/onboarding/" element={<OnboardingWelcome />} />
-					<Route path="/onboarding/:step" element={<Onboarding />} />
-					<Route path="/onboarding/complete" element={<OnboardingComplete />} />
+				<Route path="/onboarding/" element={<OnboardingWelcome />} />
+				<Route path="/onboarding/:step" element={<Onboarding />} />
+				<Route path="/onboarding/complete" element={<OnboardingComplete />} />
 				<Route path="/chat" element={<Chat />} />
 			</Routes>
 		</MobileWrapper>
