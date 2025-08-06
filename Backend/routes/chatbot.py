@@ -25,6 +25,10 @@ class ChatMessage(BaseModel):
     session_id: Optional[str] = None
     uploaded_image: Optional[str] = None
 
+class StartChat(BaseModel):
+    user: str
+    project: str
+
 class ChatResponse(BaseModel):
     response: str
     session_id: str
@@ -115,7 +119,7 @@ async def chat_with_bot(chat_message: ChatMessage):
         raise HTTPException(status_code=500, detail=f"Chatbot error: {str(e)}")
 
 @router.post("/start", response_model=ChatSession)
-async def start_new_session(user: str, project: str):
+async def start_new_session(payload: StartChat):
     """
     Starts a new chat session and returns the session_id and intro messages.
     """
@@ -126,7 +130,7 @@ async def start_new_session(user: str, project: str):
         {"role": "assistant", "content": "Hi User! Let's get started with your project!"},
         {"role": "assistant", "content": "What home project can we help with today?"}
     ]
-    log_message(session_id, "assistant", intro_messages[0]["content"], chatbot, user, project, message_type="intro")
+    log_message(session_id, "assistant", intro_messages[0]["content"], chatbot, payload.user, payload.project, message_type="intro")
     return ChatSession(session_id=session_id, intro_messages=intro_messages)
 
 @router.get("/session/{session_id}/history")
