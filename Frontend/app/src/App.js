@@ -7,6 +7,9 @@ import Chat from "./pages/Chat.jsx";
 import MobileWrapper from "./components/MobileWrapper";
 import { useEffect } from "react";
 import { useNavigate, useLocation  } from "react-router-dom";
+import Onboarding from "./pages/onboarding/Onboarding.jsx";
+import OnboardingWelcome from "./pages/onboarding/OnboardingWelcome.jsx";
+import OnboardingComplete from "./pages/onboarding/OnboardingComplete.jsx";
 
 function App() {
 
@@ -28,9 +31,12 @@ function App() {
 	return (
 		<MobileWrapper>
 			<Routes>
-				<Route path="/" element={<Home />} />
+				<Route path="/home" element={<Home />} />
 				<Route path="/login" element={<Login key={location.pathname}/>} />
 				<Route path="/signup" element={<Signup key={location.pathname}/>} />
+					<Route path="/onboarding/" element={<OnboardingWelcome />} />
+					<Route path="/onboarding/:step" element={<Onboarding />} />
+					<Route path="/onboarding/complete" element={<OnboardingComplete />} />
 				<Route path="/chat" element={<Chat />} />
 			</Routes>
 		</MobileWrapper>

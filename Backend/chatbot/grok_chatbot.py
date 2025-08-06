@@ -9,23 +9,23 @@ from agents import AgenticChatbot
 load_dotenv()
 
 
-class GrokChatbot:
-    """Top-level orchestrator: decides ‘agentic flow’ vs ‘plain chat’."""
+class OpenAIChatbot:
+    """Top-level orchestrator: decides 'agentic flow' vs 'plain chat'."""
 
     # ─────────────────────── initialisation ────────────────────────────
     def __init__(self):
-        self.api_key = os.getenv("GROK_API_KEY")
-        self.api_url = "https://api.x.ai/v1/chat/completions"
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_url = "https://api.openai.com/v1/chat/completions"
         if not self.api_key:
-            st.error("❌ GROK_API_KEY missing"); return
+            st.error("❌ OPENAI_API_KEY missing"); return
         self.headers = {"Authorization": f"Bearer {self.api_key}",
                         "Content-Type":  "application/json"}
 
         self.models = {
-            "Grok 3 Mini":  "grok-3-mini",
-            "Grok 3":       "grok-3",
-            "Grok 3 Fast":  "grok-3-fast-us-east-1",
-            "Grok 4":       "grok-4-0709",
+            "GPT-4.1":       "gpt-4.1",
+            "GPT-4.1 Mini":  "gpt-4.1-mini",
+            "GPT-4o":        "gpt-4o",
+            "GPT-4o Mini":   "gpt-4o-mini",
         }
 
         self.agentic_chatbot = AgenticChatbot()          # DIY pipeline
@@ -35,8 +35,8 @@ class GrokChatbot:
     # ─────────────────────── intro helpers ────────────────────────────
     def _initialize_conversation(self):
         for msg in (
-            "Thanks for using MyHandyAI! Tell me what you’d like to do or fix.",
-            "Hi User! Let’s get started with your project!",
+            "Thanks for using MyHandyAI! Tell me what you'd like to do or fix.",
+            "Hi User! Let's get started with your project!",
             "What home project can we help with today?"
         ):
             self.memory.chat_memory.add_ai_message(msg)
@@ -45,8 +45,8 @@ class GrokChatbot:
         return [{"role": "assistant", "content": m.content}
                 for m in self.memory.chat_memory.messages[:3]]
 
-    # ─────────────────────── low-level Grok call ──────────────────────
-    def call_grok_chat(self, model_key: str, messages, max_tokens=500):
+    # ─────────────────────── low-level OpenAI call ──────────────────────
+    def call_openai_chat(self, model_key: str, messages, max_tokens=500):
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
@@ -56,9 +56,9 @@ class GrokChatbot:
             )
             if r.status_code == 200:
                 msg = r.json()["choices"][0]["message"]
-                return (msg.get("content") or msg.get("reasoning_content") or "").strip()
+                return msg.get("content", "").strip()
         except Exception as e:
-            st.error(f"❌ Grok API error: {e}")
+            st.error(f"❌ OpenAI API error: {e}")
         return None
 
     # ─────────────────────── improved classifier ──────────────────────
@@ -79,7 +79,7 @@ You are a classifier for a DIY assistant.  Reply with **ONLY**:
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "grok-3-mini", "messages": messages, "max_tokens": 20},
+                json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 20},
                 timeout=10
             )
             if r.status_code == 200:
@@ -99,7 +99,7 @@ You are a classifier for a DIY assistant.  Reply with **ONLY**:
         return flag
 
     # ─────────────────────── master chat method ───────────────────────
-    def chat(self, user_msg: str, model="Grok 3", uploaded_image: bytes = None):
+    def chat(self, user_msg: str, model="GPT-4.1", uploaded_image: bytes = None):
         # already inside agentic flow?
         if self.agentic_chatbot.current_state != "waiting_for_problem":
             return self.agentic_chatbot.process_message(user_msg, uploaded_image)
@@ -116,7 +116,7 @@ You are a classifier for a DIY assistant.  Reply with **ONLY**:
         for m in self.memory.chat_memory.messages:
             msgs.append({"role": "user" if isinstance(m, HumanMessage) else "assistant",
                          "content": m.content})
-        resp = self.call_grok_chat(self.models[model], msgs)
+        resp = self.call_openai_chat(self.models[model], msgs)
         if resp:
             self.memory.chat_memory.add_ai_message(resp)
             return resp
@@ -136,43 +136,86 @@ You are a classifier for a DIY assistant.  Reply with **ONLY**:
         self._initialize_conversation()
 
 
-# ─────────────────────────── Streamlit UI ─────────────────────────────
+# ───────────────────────── Streamlit UI ──────────────────────────
 def create_streamlit_app():
     st.set_page_config("MyHandyAI Assistant", "🔧", layout="wide")
     st.title("MyHandyAI Assistant")
 
-    if "chatbot" not in st.session_state:
-        st.session_state.chatbot = GrokChatbot()
+    # ───────────────────────────────
+    # 1️⃣  STABLE FILE-UPLOADER FIRST
+    #    (prevents 403 because no state
+    #     changes occur until upload done)
+    # ───────────────────────────────
+    uploaded_file = st.file_uploader(
+        "Upload problem photo (jpg / png)",
+        type=["jpg", "jpeg", "png"],
+        key="problem_photo_uploader"          # fixed key ➜ same presigned URL
+    )
 
-    with st.sidebar:
-        st.header("Controls")
-        model_name = st.selectbox("Grok model", list(st.session_state.chatbot.models.keys()), index=1)
-        if st.button("Reset conversation"):
-            st.session_state.chatbot.reset_conversation()
-            st.session_state.messages = st.session_state.chatbot.get_intro_messages()
-            st.rerun()
-        st.markdown("Upload an image below *before* sending your answer to photo requests.")
+    # Cache bytes once, and only once
+    if uploaded_file and "uploaded_img_bytes" not in st.session_state:
+        try:
+            uploaded_file.seek(0)
+            img_bytes = uploaded_file.read()
+
+            if len(img_bytes) > 8 * 1024 * 1024:          # 8 MB guard
+                st.error("Image is larger than 8 MB – please upload a smaller photo.")
+            else:
+                st.session_state["uploaded_img_bytes"] = img_bytes
+                st.success(f"✅ {uploaded_file.name} uploaded ({len(img_bytes)} bytes)")
+        except Exception as e:
+            st.error(f"❌ Error reading file: {e}")
+            st.session_state["uploaded_img_bytes"] = None
+    elif not uploaded_file:
+        st.session_state.pop("uploaded_img_bytes", None)
+
+    # ───────────────────────────────
+    # 2️⃣  INIT CHATBOT / HISTORY
+    # ───────────────────────────────
+    if "chatbot" not in st.session_state:
+        st.session_state.chatbot = OpenAIChatbot()
 
     if "messages" not in st.session_state:
         st.session_state.messages = st.session_state.chatbot.get_intro_messages()
 
-    # ─── render history ───
+    # ───────────────────────────────
+    # 3️⃣  SIDEBAR CONTROLS
+    # ───────────────────────────────
+    with st.sidebar:
+        st.header("Controls")
+        model_name = st.selectbox(
+            "OpenAI model",
+            list(st.session_state.chatbot.models.keys()),
+            index=0
+        )
+        if st.button("Reset conversation"):
+            st.session_state.chatbot.reset_conversation()
+            st.session_state.messages = st.session_state.chatbot.get_intro_messages()
+            st.session_state.pop("uploaded_img_bytes", None)
+            st.rerun()
+        st.markdown("🖼️ *Upload an image first, then send your reply.*")
+
+    # ───────────────────────────────
+    # 4️⃣  RENDER CHAT HISTORY
+    # ───────────────────────────────
     for m in st.session_state.messages:
         with st.chat_message(m["role"]):
             st.markdown(m["content"])
 
-    # ─── file uploader (image bytes) ───
-    uploaded_file = st.file_uploader("Upload problem photo (jpg / png)", type=["jpg", "jpeg", "png"])
-    img_bytes = uploaded_file.read() if uploaded_file else None
-
-    # ─── user input ───
+    # ───────────────────────────────
+    # 5️⃣  CHAT INPUT
+    # ───────────────────────────────
     if prompt := st.chat_input("Describe your project or reply…"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            reply = st.session_state.chatbot.chat(prompt, model=model_name, uploaded_image=img_bytes)
+            reply = st.session_state.chatbot.chat(
+                prompt,
+                model=model_name,
+                uploaded_image=st.session_state.get("uploaded_img_bytes")
+            )
             st.markdown(reply)
 
         st.session_state.messages.append({"role": "assistant", "content": reply})

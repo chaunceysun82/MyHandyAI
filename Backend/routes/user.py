@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException
 from db import users_collection, conversations_collection, questions_collection
 from pydantic import BaseModel, EmailStr
 from bson import ObjectId
+from typing import Optional
+from datetime import datetime
 
 router = APIRouter()
 
@@ -10,6 +12,13 @@ class User(BaseModel):
     lastname: str
     password: str
     email: EmailStr
+    describe: Optional[str] = None
+    experienceLevel: Optional[str] = None
+    confidence: Optional[int] = None
+    tools: Optional[str] = None
+    interestedProjects: Optional[str] = None
+    country: Optional[str] = None
+    state: Optional[str] = None
 
 class LoginData(BaseModel):
     email: EmailStr
@@ -22,6 +31,7 @@ def create_user(user: User):
     if not user.password:
         raise HTTPException(status_code=400, detail="invalid password")
     new_user = user.dict()
+    new_user["createdAt"] = datetime.utcnow()
     result = users_collection.insert_one(new_user)
 
     conversations_collection.insert_one({ "userId": result.inserted_id })
