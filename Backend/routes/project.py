@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import List
 from bson import ObjectId
 from db import project_collection, conversations_collection
+from datetime import datetime
 
 router = APIRouter()
 
@@ -21,6 +22,7 @@ class Project(BaseModel):
 def create_project(project: Project):
     project_dict = project.dict()
     project_dict["userId"] = ObjectId(project.userId)
+    project_dict["createdAt"] = datetime.utcnow()
 
     # Insert project
     result = project_collection.insert_one(project_dict)
