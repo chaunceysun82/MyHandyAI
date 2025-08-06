@@ -47,6 +47,21 @@ def create_or_append_user_message(data: UserMessage):
         }
         result = conversations_collection.insert_one(new_conv)
         return {"conversationId": str(result.inserted_id), "message": "New conversation created"}
+    
+def get_conversation(user_id: str, project_id: str, conv_type: str = "firstBot"):
+    conversation = conversations_collection.find_one({
+        "userId": ObjectId(user_id),
+        "projectId": ObjectId(project_id),
+        "type": conv_type
+    })
+
+    if not conversation:
+        return None
+
+    conversation["_id"] = str(conversation["_id"])
+    conversation["userId"] = str(conversation["userId"])
+    conversation["projectId"] = str(conversation["projectId"])
+    return conversation
 
 class LLMResponse(BaseModel):
     conversationId: str
