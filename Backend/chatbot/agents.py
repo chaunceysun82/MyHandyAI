@@ -1,4 +1,5 @@
 import os
+import streamlit as st
 import requests
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
@@ -12,7 +13,9 @@ load_dotenv()
 def load_prompt(filename):
     """Load prompt from file, removing comment lines starting with #"""
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(script_dir, "prompts", filename)
+    # Go up one directory to reach the Test/PMs_Prompts_Test/prompts folder
+    prompts_dir = os.path.join(script_dir, "..", "..", "Test", "PMs_Prompts_Test", "prompts")
+    path = os.path.join(prompts_dir, filename)
     try:
         with open(path, "r", encoding="utf-8") as f:
             lines = f.readlines()
@@ -202,6 +205,51 @@ class ImageAnalysisAgent:
         # ─── fallback set ───
         return self._get_fallback_questions(problem_type)
     
+    def analyze_image_without_image(self, problem_type: str, user_description: str) -> Dict[str, Any]:
+        """Generate questions based on problem description when no image is provided"""
+        
+        system_prompt = (
+            f"{image_analysis_prompt_text}\n\n"
+            f"Problem type: {problem_type}\n"
+            f"User description: {user_description}\n"
+            f"Additional context: {qa_prompt_text}\n\n"
+            "Since no image was provided, analyze the problem description and generate relevant questions.\n"
+            "Return JSON with:\n"
+            '- "analysis": brief description based on the problem description\n'
+            '- "questions": list of questions (ask one-by-one)\n'
+            '- "first_question": the first question to ask'
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Please analyse this {problem_type} problem based on the description: {user_description}"}
+        ]
+
+        try:
+            r = requests.post(
+                self.api_url, headers=self.headers,
+                json={"model": "gpt-4.1", "messages": messages, "max_tokens": 800},
+                timeout=20
+            )
+            if r.status_code == 200:
+                txt = r.json()["choices"][0]["message"]["content"].strip()
+                try:
+                    result = json.loads(txt)
+                    # Validate the result has the expected structure
+                    if isinstance(result, dict) and "analysis" in result and "questions" in result:
+                        return result
+                    else:
+                        # If structure is wrong, fall back
+                        return self._get_fallback_questions(problem_type)
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    # If JSON parsing fails, fall back
+                    return self._get_fallback_questions(problem_type)
+        except Exception:
+            pass                                # fall through to fallback
+
+        # ─── fallback set ───
+        return self._get_fallback_questions(problem_type)
+    
     def _get_fallback_questions(self, problem_type: str) -> Dict[str, Any]:
         """Fallback questions if image analysis fails"""
         question_templates = {
@@ -333,35 +381,8 @@ class QuestionClarificationAgent:
           message: str    – text to send (empty if answer is accepted)
           advance: bool  – True to move to next question, False to re-ask
         """
-        system_prompt = f"""
-        You are a smart assistant that asks clarifying DIY questions.
-        When given:
-        • a question you previously asked (in QUESTION)
-        • the user's reply (in RESPONSE)
-        You must decide exactly one of:
-
-        1) SKIP: the user explicitly wants to skip ("skip", "I don't want to answer", etc.)
-        → Return JSON: {{ "action": "skip",    "message": "Got it, we'll skip this one." }}
-
-        2) DONT_KNOW: the user admits they don't know or are confused ("not sure", etc.)
-        Reframe the question with explanation and also mention how to answer the question properly.
-
-        Eg. Agent : What type of wall are you having?
-            User : I'm not sure about it.
-            Agent : Check for the sounds by tapping the wall. <Explain the scenarios>
-        → Return JSON: {{ "action": "rephrase", "message": <a helpful rephrasing explanation to make the user understand the question with examples> }}
-
-        3) IRRELEVANT: the user's reply is nonsensical, out of range or irrelevant to the question or anything very vague and unrealistic
-        → Return JSON: {{ "action": "rephrase", "message": <tell them it's unrealistic and re-ask> }}
-
-        4) ACCEPT: the reply is valid
-        → Return JSON: {{ "action": "accept",   "message": "" }}
-
-        Always output *only* valid JSON with these three keys. Do not wrap in markdown.
-  
-        QUESTION: \"\"\"{question}\"\"\"
-        RESPONSE: \"\"\"{user_response}\"\"\"
-        """
+        # Replace placeholders manually to avoid conflicts with JSON braces in the prompt
+        system_prompt = question_clarification_prompt_text.replace("{question}", question).replace("{user_response}", user_response)
         payload = {
             "model": "gpt-4.1-mini",
             "messages": [
@@ -452,75 +473,29 @@ class AgenticChatbot:
             self.current_state = "waiting_for_photos"
             return result["response_message"]
 
-        # 2) Await photo
+        # 2) Handle photo upload or skip
         if self.current_state == "waiting_for_photos":
-            if not uploaded_image:
-                return "Please upload the requested photo so I can analyse it."
-            result = self.image_agent.analyze_image(uploaded_image, self.problem_type)
-            if not isinstance(result, dict) or "analysis" not in result or "questions" not in result:
-                return "Sorry, I had trouble analyzing the image. Please try uploading it again."
-
-            self.image_analysis = str(result["analysis"])
-
-            # 2a) If the description alone suffices, skip the Q&A loop
-            if self.description_agent.assess(self.user_description):
-                # combine description as answer #0
-                combined = {0: self.user_description}
-                summary = self.summary_agent.create_summary(
-                    self.problem_type,
-                    self.image_analysis,
-                    combined
-                )
-                self.current_state = "showing_summary"
-                return (
-                    f"Great, thanks for the photo!\n\n"
-                    f"{self.image_analysis}\n\n"
-                    f"Since you already provided full details up front, here’s a summary:\n\n**{summary}**\n\n"
-                    "Does this look right? Reply 'yes' or 'no'."
-                )
-
-            # 2b) Otherwise, prepare the questions
-            raw_qs = [
-                (q["text"] if isinstance(q, dict) and "text" in q else str(q))
-                for q in result["questions"]
-            ]
-
-            # 2c) Filter out any “dimension” question if the description includes a measurement
-            desc = self.user_description.lower()
-            has_measure = bool(__import__("re").search(r"\d+\s*(cm|mm|in)", desc))
-            if has_measure:
-                self.questions = [q for q in raw_qs if "dimension" not in q.lower()]
-            else:
-                self.questions = raw_qs
-
-            # 2d) If no questions remain, go straight to summary anyway
-            if not self.questions:
-                combined = {0: self.user_description}
-                summary = self.summary_agent.create_summary(
-                    self.problem_type,
-                    self.image_analysis,
-                    combined
-                )
-                self.current_state = "showing_summary"
-                return (
-                    f"Great, thanks for the photo!\n\n"
-                    f"{self.image_analysis}\n\n"
-                    f"Your description covered everything, here’s a summary:\n\n**{summary}**\n\n"
-                    "Does this look right? Reply 'yes' or 'no'."
-                )
-
-            # 2e) Otherwise start the Q&A loop
-            self.current_question_index = 0
-            self.current_state = "asking_questions"
-            return (
-                f"Great, thanks for the photo!\n\n"
-                f"{self.image_analysis}\n\n"
-                "I'll ask a few quick questions one-by-one so I can give you "
-                "the safest fix.\n\n"
-                "💡 **Tip:** If you don't understand a question or don't know the answer, "
-                "just let me know! You can also type 'skip' to move to the next question.\n\n"
-                f"**{self.questions[0]}**"
-            )
+            # Check if user wants to skip photos
+            if user_message.lower().strip() in ["skip", "I don't have a photo", "no photo", "no image", "skip photos", "no photos"]:
+                # Skip photos and go directly to questions based on description
+                result = self.image_agent.analyze_image_without_image(self.problem_type, self.user_description)
+                if not isinstance(result, dict) or "analysis" not in result or "questions" not in result:
+                    return "Sorry, I had trouble processing your request. Please try again."
+                
+                self.image_analysis = str(result["analysis"])
+                return self._prepare_questions_from_result(result)
+            
+            # Check if image was uploaded
+            if uploaded_image:
+                result = self.image_agent.analyze_image(uploaded_image, self.problem_type)
+                if not isinstance(result, dict) or "analysis" not in result or "questions" not in result:
+                    return "Sorry, I had trouble analyzing the image. Please try uploading it again."
+                
+                self.image_analysis = str(result["analysis"])
+                return self._prepare_questions_from_result(result)
+            
+            # No image uploaded and no skip command
+            return "Please upload the requested photo so I can analyse it, or type 'skip' if you prefer not to share photos."
 
         # 3) Q&A loop
         if self.current_state == "asking_questions":
@@ -594,4 +569,84 @@ class AgenticChatbot:
             f"Perfect! Based on your answers:\n{answers}\n\n"
             f"I'll now provide a detailed step-by-step solution for your "
             f"{self.problem_type.replace('_', ' ')} project."
+        )
+    
+    def _prepare_questions_from_result(self, result: Dict[str, Any]) -> str:
+        """Helper method to prepare questions from image analysis result"""
+                            # 2a) If the description alone suffices, skip the Q&A loop
+        if self.description_agent.assess(self.user_description):
+                # combine description as answer #0
+                combined = {0: self.user_description}
+                summary = self.summary_agent.create_summary(
+                    self.problem_type,
+                    self.image_analysis,
+                    combined
+                )
+                self.current_state = "showing_summary"
+                
+                # Determine the appropriate message based on whether image was provided
+                if "photo" in self.image_analysis.lower() or "image" in self.image_analysis.lower():
+                    intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
+                else:
+                    intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
+                
+                return (
+                    f"{intro_message}"
+                    f"Since you already provided full details up front, here's a summary:\n\n**{summary}**\n\n"
+                    "Does this look right? Reply 'yes' or 'no'."
+                )
+
+        # 2b) Otherwise, prepare the questions
+        raw_qs = [
+            (q["text"] if isinstance(q, dict) and "text" in q else str(q))
+            for q in result["questions"]
+        ]
+
+        # 2c) Filter out any "dimension" question if the description includes a measurement
+        desc = self.user_description.lower()
+        has_measure = bool(__import__("re").search(r"\d+\s*(cm|mm|in)", desc))
+        if has_measure:
+            self.questions = [q for q in raw_qs if "dimension" not in q.lower()]
+        else:
+            self.questions = raw_qs
+
+        # 2d) If no questions remain, go straight to summary anyway
+        if not self.questions:
+            combined = {0: self.user_description}
+            summary = self.summary_agent.create_summary(
+                self.problem_type,
+                self.image_analysis,
+                combined
+            )
+            self.current_state = "showing_summary"
+            
+            # Determine the appropriate message based on whether image was provided
+            if "photo" in self.image_analysis.lower() or "image" in self.image_analysis.lower():
+                intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
+            else:
+                intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
+            
+            return (
+                f"{intro_message}"
+                f"Your description covered everything, here's a summary:\n\n**{summary}**\n\n"
+                "Does this look right? Reply 'yes' or 'no'."
+            )
+
+        # 2e) Otherwise start the Q&A loop
+        self.current_question_index = 0
+        self.current_state = "asking_questions"
+        
+        # Determine the appropriate message based on whether image was provided
+        if "photo" in self.image_analysis.lower() or "image" in self.image_analysis.lower():
+            intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
+        else:
+            intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
+        
+        return (
+            f"{intro_message}"
+            "I'll ask a few quick questions one-by-one so I can give you "
+            "the safest fix.\n\n"
+            "💡 **Tip:** If you don't understand a question or don't know the answer, "
+            "just let me know! You can also type 'skip' to move to the next question.\n\n"
+            f"**{self.questions[0]}**"
         )

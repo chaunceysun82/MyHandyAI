@@ -4,12 +4,6 @@ from typing import List, Dict, Any, Optional
 import sys
 import os
 import base64
-import uuid
-from pymongo import DESCENDING
-import pickle
-from db import conversations_collection
-from datetime import datetime
-
 
 # Add the chatbot directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'chatbot'))
@@ -20,19 +14,8 @@ router = APIRouter(prefix="/chatbot", tags=["chatbot"])
 
 class ChatMessage(BaseModel):
     message: str
-    user: str
-    project: str
     session_id: Optional[str] = None
-    uploaded_image: Optional[str] = None
-
-class StartChat(BaseModel):
-    user: str
-    project: str
-
-class ResetChat(BaseModel):
-    user: str
-    project: str
-    session: str
+    uploaded_image: Optional[str] = None  # base64 encoded image
 
 class ChatResponse(BaseModel):
     response: str
@@ -49,146 +32,168 @@ class SessionInfo(BaseModel):
     problem_type: Optional[str] = None
     questions_remaining: Optional[int] = None
 
-# ==== Utility Functions ====
-
-def log_message(session_id, role, message, chatbot, user, project, message_type="text"):
-    doc = {
-        "session_id": session_id,
-        "user": user,
-        "project": project,
-        "role": role,
-        "message": message,
-        "message_type": message_type,
-        "timestamp": datetime.utcnow(),
-        "chatbot_state": pickle.dumps(chatbot),
-        "current_state": getattr(chatbot, "current_state", None)
-    }
-    conversations_collection.insert_one(doc)
-
-def get_latest_chatbot(session_id):
-    doc = conversations_collection.find_one(
-        {"session_id": session_id},
-        sort=[("timestamp", DESCENDING)]
-    )
-    if doc and "chatbot_state" in doc:
-        return pickle.loads(doc["chatbot_state"])
-    else:
-        return AgenticChatbot()
-
-def get_conversation_history(session_id):
-    cursor = conversations_collection.find({"session_id": session_id}).sort("timestamp", 1)
-    return [{"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]} for doc in cursor]
-
-def reset_session(session_id, user, project):
-    chatbot = AgenticChatbot()
-    log_message(session_id, "assistant", "Session reset.", chatbot, user, project, message_type="reset")
-    return chatbot
-
-def delete_session_docs(session_id):
-    conversations_collection.delete_many({"session_id": session_id})
-
 # Store chatbot instances by session
 chatbot_instances = {}
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_bot(chat_message: ChatMessage):
-    """
-    Chat with the MyHandyAI agentic assistant.
-    Creates a new session_id if not provided.
-    """
+    """Chat with the MyHandyAI agentic assistant"""
     try:
-        session_id = chat_message.session_id or uuid.uuid4().hex
-        chatbot = get_latest_chatbot(session_id)
-
-        # Decode uploaded image if present
+        session_id = chat_message.session_id or "default"
+        
+        # Get or create chatbot instance for this session
+        if session_id not in chatbot_instances:
+            chatbot_instances[session_id] = AgenticChatbot()
+        
+        chatbot = chatbot_instances[session_id]
+        
+        # Convert base64 image to bytes if provided
         uploaded_image = None
         if chat_message.uploaded_image:
-            image_data = chat_message.uploaded_image
-            if image_data.startswith('data:image'):
-                image_data = image_data.split(',')[1]
-            uploaded_image = base64.b64decode(image_data)
-
-        # Log user message
-        log_message(session_id, "user", chat_message.message, chatbot, chat_message.user, chat_message.project)
-
-        # Get bot response and log it
+            try:
+                # Remove data URL prefix if present
+                image_data = chat_message.uploaded_image
+                if image_data.startswith('data:image'):
+                    image_data = image_data.split(',')[1]
+                
+                uploaded_image = base64.b64decode(image_data)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Invalid image format: {str(e)}")
+        
+        # Get response from agentic chatbot
         response = chatbot.process_message(chat_message.message, uploaded_image)
-        log_message(session_id, "assistant", response, chatbot, chat_message.user, chat_message.project)
-
+        
         return ChatResponse(
             response=response,
             session_id=session_id,
-            current_state=getattr(chatbot, "current_state", None)
+            current_state=chatbot.current_state
         )
+    
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chatbot error: {str(e)}")
 
-@router.post("/start", response_model=ChatSession)
-async def start_new_session(payload: StartChat):
-    """
-    Starts a new chat session and returns the session_id and intro messages.
-    """
-    session_id = uuid.uuid4().hex
-    chatbot = AgenticChatbot()
-    intro_messages = [
-        {"role": "assistant", "content": "Thanks for using MyHandyAI! Tell me what you'd like to do or fix."},
-        {"role": "assistant", "content": "Hi User! Let's get started with your project!"},
-        {"role": "assistant", "content": "What home project can we help with today?"}
-    ]
-    log_message(session_id, "assistant", intro_messages[0]["content"], chatbot, payload.user, payload.project, message_type="intro")
-    return ChatSession(session_id=session_id, intro_messages=intro_messages)
+@router.post("/upload-image")
+async def upload_image(
+    session_id: str,
+    file: UploadFile = File(...)
+):
+    """Upload an image for the chatbot to analyze"""
+    try:
+        # Validate file type
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # Read file content
+        image_data = await file.read()
+        
+        # Store image data in session (you might want to store this in a database)
+        if session_id not in chatbot_instances:
+            chatbot_instances[session_id] = AgenticChatbot()
+        
+        # For now, we'll return the base64 encoded image
+        # In a real implementation, you'd store this and reference it by ID
+        image_base64 = base64.b64encode(image_data).decode('utf-8')
+        
+        return {
+            "message": "Image uploaded successfully",
+            "image_id": f"img_{session_id}_{len(image_base64)}",  # Simple ID generation
+            "image_base64": image_base64
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
 
-@router.get("/session/{session_id}/history")
-async def get_chat_history(session_id: str):
-    """
-    Returns the full message history for a session.
-    """
-    return get_conversation_history(session_id)
+@router.get("/session/{session_id}", response_model=ChatSession)
+async def get_chat_session(session_id: str):
+    """Get or create a new chat session"""
+    try:
+        # Create new chatbot instance if it doesn't exist
+        if session_id not in chatbot_instances:
+            chatbot_instances[session_id] = AgenticChatbot()
+        
+        chatbot = chatbot_instances[session_id]
+        
+        # Create intro messages similar to the agentic system
+        intro_messages = [
+            {"role": "assistant", "content": "Thanks for using MyHandyAI! Tell me what you'd like to do or fix."},
+            {"role": "assistant", "content": "Hi User! Let's get started with your project!"},
+            {"role": "assistant", "content": "What home project can we help with today?"}
+        ]
+        
+        return ChatSession(
+            session_id=session_id,
+            intro_messages=intro_messages
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Session error: {str(e)}")
 
 @router.get("/session/{session_id}/info", response_model=SessionInfo)
 async def get_session_info(session_id: str):
-    """
-    Returns the latest state for a session.
-    """
-    doc = conversations_collection.find_one(
-        {"session_id": session_id},
-        sort=[("timestamp", DESCENDING)]
-    )
-    if not doc:
-        raise HTTPException(status_code=404, detail="Session not found")
-    chatbot = pickle.loads(doc["chatbot_state"])
-    questions_remaining = None
-    if getattr(chatbot, "current_state", None) == "asking_questions":
-        questions_remaining = len(chatbot.questions) - chatbot.current_question_index
-    return SessionInfo(
-        session_id=session_id,
-        current_state=getattr(chatbot, "current_state", None),
-        problem_type=getattr(chatbot, "problem_type", None),
-        questions_remaining=questions_remaining
-    )
+    """Get current session information"""
+    try:
+        if session_id not in chatbot_instances:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        chatbot = chatbot_instances[session_id]
+        
+        questions_remaining = None
+        if chatbot.current_state == "asking_questions":
+            questions_remaining = len(chatbot.questions) - chatbot.current_question_index
+        
+        return SessionInfo(
+            session_id=session_id,
+            current_state=chatbot.current_state,
+            problem_type=chatbot.problem_type,
+            questions_remaining=questions_remaining
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Session info error: {str(e)}")
 
 @router.post("/session/{session_id}/reset")
-async def reset_conversation(payload: ResetChat):
-    """
-    Resets a session and logs the reset.
-    """
-    chatbot = reset_session(payload.session, payload.user, payload.project)
-    intro_messages = [
-        {"role": "assistant", "content": "Thanks for using MyHandyAI! Tell me what you'd like to do or fix."},
-        {"role": "assistant", "content": "Hi User! Let's get started with your project!"},
-        {"role": "assistant", "content": "What home project can we help with today?"}
-    ]
-    return {"message": "Conversation reset successfully", "intro_messages": intro_messages}
+async def reset_conversation(session_id: str):
+    """Reset the conversation for a session"""
+    try:
+        if session_id not in chatbot_instances:
+            chatbot_instances[session_id] = AgenticChatbot()
+        else:
+            chatbot_instances[session_id].reset()
+        
+        chatbot = chatbot_instances[session_id]
+        
+        # Create intro messages
+        intro_messages = [
+            {"role": "assistant", "content": "Thanks for using MyHandyAI! Tell me what you'd like to do or fix."},
+            {"role": "assistant", "content": "Hi User! Let's get started with your project!"},
+            {"role": "assistant", "content": "What home project can we help with today?"}
+        ]
+        
+        return {
+            "message": "Conversation reset successfully",
+            "intro_messages": intro_messages
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Reset error: {str(e)}")
 
 @router.delete("/session/{session_id}")
 async def delete_session(session_id: str):
-    """
-    Deletes all messages and state for a session.
-    """
-    delete_session_docs(session_id)
-    return {"message": f"Session {session_id} deleted successfully"}
+    """Delete a chat session"""
+    try:
+        if session_id in chatbot_instances:
+            del chatbot_instances[session_id]
+        
+        return {"message": f"Session {session_id} deleted successfully"}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Delete error: {str(e)}")
 
 @router.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "message": "Chatbot API is running"}
+    return {"status": "healthy", "message": "Chatbot API is running"} 
