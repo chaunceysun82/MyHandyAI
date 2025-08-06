@@ -5,6 +5,8 @@ const { StreamChat } = require('stream-chat');
 const app = express();
 app.use(cors()); // Only enable CORS for allowed frontend domains in production
 
+require('dotenv').config({ path: '../.env' });
+
 const API_KEY = process.env.API_KEY;
 const API_SECRET = process.env.API_SECRET;
 
