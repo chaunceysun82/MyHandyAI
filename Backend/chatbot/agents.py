@@ -60,7 +60,7 @@ class ProblemRecognitionAgent:
             response = requests.post(
                 self.api_url,
                 headers=self.headers,
-                json={"model": "gpt-4.1", "messages": messages, "max_tokens": 500}
+                json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 500}
             )
             
             if response.status_code == 200:
