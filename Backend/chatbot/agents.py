@@ -172,7 +172,7 @@ class ImageAnalysisAgent:
                 {"role": "user","content": message}
             ],
             "max_tokens": 50,
-            "temperature": 0.7
+            "temperature": 0.0
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
