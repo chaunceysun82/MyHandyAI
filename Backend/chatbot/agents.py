@@ -48,7 +48,7 @@ class ProblemRecognitionAgent:
         payload = {
             "model": "gpt-4.1-mini",
             "messages": [
-                {"role": "system", "content": "You are a DIY customer service agent from MyHandyAI , your task is to greet the user e.g. 'Thanks for using MyHandyAI! Tell me what you'd like to do or fix.' "},
+                {"role": "system", "content": "You are a DIY customer service agent from MyHandyAI , your task is to greet the user"},
             ],
             "max_tokens": 50,
             "temperature": 0.7
