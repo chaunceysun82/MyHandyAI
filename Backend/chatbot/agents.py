@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 import base64
 from PIL import Image
-import io
+import re
 import json
 
 load_dotenv()
@@ -25,6 +25,29 @@ def load_prompt(filename):
         print(f"❌ Error loading prompt file {filename}: {e}")
         return f"Error: Could not load {filename}"
 
+
+def clean_and_parse_json(raw_str):
+    """
+    Cleans code fences (```json ... ```) from a string and parses it as JSON.
+
+    Args:
+        raw_str (str): The input string from the LLM.
+
+    Returns:
+        dict or list: Parsed JSON object.
+
+    Raises:
+        ValueError: If the string cannot be parsed as valid JSON.
+    """
+    # Remove triple backtick code fences and optional language identifier
+    cleaned = re.sub(r"```(?:json)?\s*", "", raw_str.strip())
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON format: {e}")
+
 # Load the prompts
 qa_prompt_text = load_prompt("qa_prompt.txt")
 summary_prompt_text = load_prompt("summary_prompt.txt")
@@ -35,7 +58,7 @@ description_assessment_prompt_text = load_prompt("description_assessment_prompt.
 
 class ProblemRecognitionAgent:
     """Agent 1: Recognizes problems and requests relevant photos"""
-    
+
     def __init__(self):
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.api_url = "https://api.openai.com/v1/chat/completions"
@@ -44,6 +67,37 @@ class ProblemRecognitionAgent:
             "Content-Type": "application/json",
         }
     
+    def greetings(self):
+        payload = {
+            "model": "gpt-4.1-nano",
+            "messages": [
+                {"role": "system", "content": "You are a DIY customer service agent called MyHandyAI , your task is to greet the user, introduce yourself and ask the user to describe the project/repair/fix to be done"},
+            ],
+            "max_tokens": 50,
+            "temperature": 0.7
+        }
+        try:
+            r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
+            return r.json()["choices"][0]["message"]["content"]
+        except:
+            return "Thanks for using MyHandyAI! Tell me what you'd like to do or fix."
+
+    def valid_description(self, message):
+        payload = {
+            "model": "gpt-4.1-nano",
+            "messages": [
+                {"role": "system", "content": "You are a DIY customer service agent, your task is to determine if the description/context of the repair/fix/project is coherent respond only 'True' or 'False'"},
+                {"role": "user", "content": message}
+            ],
+            "max_tokens": 50,
+            "temperature": 0.0
+        }
+        try:
+            r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
+            return r.json()["choices"][0]["message"]["content"] == "True"
+        except:
+            return False
+
     def analyze_problem(self, user_message: str) -> Dict[str, Any]:
         """Analyze user problem and determine what photos are needed"""
         
@@ -58,7 +112,7 @@ class ProblemRecognitionAgent:
             response = requests.post(
                 self.api_url,
                 headers=self.headers,
-                json={"model": "gpt-4.1", "messages": messages, "max_tokens": 500}
+                json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 500}
             )
             
             if response.status_code == 200:
@@ -67,8 +121,7 @@ class ProblemRecognitionAgent:
                 
                 # Try to parse JSON from response
                 try:
-                    import json
-                    result = json.loads(text)
+                    result = clean_and_parse_json(text)
                     return result
                 except:
                     # Fallback if JSON parsing fails
@@ -112,8 +165,7 @@ Be specific about what photos would help diagnose the problem."""
                 text = data["choices"][0]["message"]["content"].strip()
                 
                 try:
-                    import json
-                    result = json.loads(text)
+                    result = clean_and_parse_json(text)
                     return result
                 except:
                     # If JSON parsing fails, return a generic response
@@ -148,6 +200,22 @@ class ImageAnalysisAgent:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type":  "application/json",
         }
+
+    def skip_image(self, message):
+        payload = {
+            "model": "gpt-4.1-nano",
+            "messages": [
+                {"role": "system", "content": "Detect if the user doesn't have an image or want to skip the image upload (e.g 'skip','I dont have an image', etc...)  Respond only with 'True' or 'False'"},
+                {"role": "user","content": message}
+            ],
+            "max_tokens": 50,
+            "temperature": 0.0
+        }
+        try:
+            r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
+            return r.json()["choices"][0]["message"]["content"] == "True"
+        except:
+            return True
 
     def analyze_image(self, image_data: bytes, problem_type: str) -> Dict[str, Any]:
         """Call GPT-4o Vision with a base64-encoded image and get back questions"""
@@ -187,6 +255,51 @@ class ImageAnalysisAgent:
                 txt = r.json()["choices"][0]["message"]["content"].strip()
                 try:
                     result = json.loads(txt)
+                    # Validate the result has the expected structure
+                    if isinstance(result, dict) and "analysis" in result and "questions" in result:
+                        return result
+                    else:
+                        # If structure is wrong, fall back
+                        return self._get_fallback_questions(problem_type)
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    # If JSON parsing fails, fall back
+                    return self._get_fallback_questions(problem_type)
+        except Exception:
+            pass                                # fall through to fallback
+
+        # ─── fallback set ───
+        return self._get_fallback_questions(problem_type)
+    
+    def analyze_image_without_image(self, problem_type: str, user_description: str) -> Dict[str, Any]:
+        """Generate questions based on problem description when no image is provided"""
+        
+        system_prompt = (
+            f"{image_analysis_prompt_text}\n\n"
+            f"Problem type: {problem_type}\n"
+            f"User description: {user_description}\n"
+            f"Additional context: {qa_prompt_text}\n\n"
+            "Since no image was provided, analyze the problem description and generate relevant questions.\n"
+            "Return JSON with:\n"
+            '- "analysis": brief description based on the problem description\n'
+            '- "questions": list of questions (ask one-by-one)\n'
+            '- "first_question": the first question to ask'
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Please analyse this {problem_type} problem based on the description: {user_description}"}
+        ]
+
+        try:
+            r = requests.post(
+                self.api_url, headers=self.headers,
+                json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 800},
+                timeout=20
+            )
+            if r.status_code == 200:
+                txt = r.json()["choices"][0]["message"]["content"].strip()
+                try:
+                    result = clean_and_parse_json(txt)
                     # Validate the result has the expected structure
                     if isinstance(result, dict) and "analysis" in result and "questions" in result:
                         return result
@@ -278,6 +391,22 @@ class SummaryAgent:
             "Content-Type": "application/json",
         }
     
+    def affirmative_negative_response(self, message):
+        payload = {
+            "model": "gpt-4.1-nano",
+            "messages": [
+                {"role": "system", "content": "You are a affirmative/negative detector, your task is to determine if the user answer is affirmative to proceed with next steps or negative to not continue answer only '1' for affirmative '2' for negative and '0' if you cannot determine with the message"},
+                {"role": "user", "content": message}
+            ],
+            "max_tokens": 50,
+            "temperature": 0.0
+        }
+        try:
+            r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
+            return int(r.json()["choices"][0]["message"]["content"])
+        except:
+            return 0
+
     def create_summary(self, problem_type: str, image_analysis: str, user_answers: Dict[int, str]) -> str:
         """Create a comprehensive summary of the problem"""
         
@@ -333,35 +462,8 @@ class QuestionClarificationAgent:
           message: str    – text to send (empty if answer is accepted)
           advance: bool  – True to move to next question, False to re-ask
         """
-        system_prompt = f"""
-        You are a smart assistant that asks clarifying DIY questions.
-        When given:
-        • a question you previously asked (in QUESTION)
-        • the user's reply (in RESPONSE)
-        You must decide exactly one of:
-
-        1) SKIP: the user explicitly wants to skip ("skip", "I don't want to answer", etc.)
-        → Return JSON: {{ "action": "skip",    "message": "Got it, we'll skip this one." }}
-
-        2) DONT_KNOW: the user admits they don't know or are confused ("not sure", etc.)
-        Reframe the question with explanation and also mention how to answer the question properly.
-
-        Eg. Agent : What type of wall are you having?
-            User : I'm not sure about it.
-            Agent : Check for the sounds by tapping the wall. <Explain the scenarios>
-        → Return JSON: {{ "action": "rephrase", "message": <a helpful rephrasing explanation to make the user understand the question with examples> }}
-
-        3) IRRELEVANT: the user's reply is nonsensical, out of range or irrelevant to the question or anything very vague and unrealistic
-        → Return JSON: {{ "action": "rephrase", "message": <tell them it's unrealistic and re-ask> }}
-
-        4) ACCEPT: the reply is valid
-        → Return JSON: {{ "action": "accept",   "message": "" }}
-
-        Always output *only* valid JSON with these three keys. Do not wrap in markdown.
-  
-        QUESTION: \"\"\"{question}\"\"\"
-        RESPONSE: \"\"\"{user_response}\"\"\"
-        """
+        # Replace placeholders manually to avoid conflicts with JSON braces in the prompt
+        system_prompt = question_clarification_prompt_text.replace("{question}", question).replace("{user_response}", user_response)
         payload = {
             "model": "gpt-4.1-mini",
             "messages": [
@@ -374,7 +476,7 @@ class QuestionClarificationAgent:
         try:
             resp = requests.post(self.api_url, headers=self.headers, json=payload, timeout=15)
             data = resp.json()["choices"][0]["message"]["content"]
-            result = json.loads(data)
+            result = clean_and_parse_json(data)
             act = result.get("action")
             msg = result.get("message", "")
             if act == "skip":
@@ -419,7 +521,7 @@ Description: \"\"\"{description}\"\"\"
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
             result = r.json()["choices"][0]["message"]["content"]
-            return json.loads(result).get("skip_questions", False)
+            return clean_and_parse_json(result).get("skip_questions", False)
         except:
             return False
 
@@ -443,84 +545,44 @@ class AgenticChatbot:
         self.user_answers           = {}
         self.image_analysis         = None
 
+    def greet(self):
+        return self.problem_agent.greetings()
+
+
     def process_message(self, user_message: str, uploaded_image: Optional[bytes] = None) -> str:
         # 1) Capture the user's free‐form description
         if self.current_state == "waiting_for_problem":
+            if not self.problem_agent.valid_description(user_message):
+                return "Not quite understand the description, could you please send again a description of the issue, repair or project you are facing?"
             self.user_description = user_message
             result = self.problem_agent.analyze_problem(user_message)
             self.problem_type = result["problem_type"]
             self.current_state = "waiting_for_photos"
             return result["response_message"]
 
-        # 2) Await photo
+        # 2) Handle photo upload or skip
         if self.current_state == "waiting_for_photos":
-            if not uploaded_image:
-                return "Please upload the requested photo so I can analyse it."
-            result = self.image_agent.analyze_image(uploaded_image, self.problem_type)
-            if not isinstance(result, dict) or "analysis" not in result or "questions" not in result:
-                return "Sorry, I had trouble analyzing the image. Please try uploading it again."
-
-            self.image_analysis = str(result["analysis"])
-
-            # 2a) If the description alone suffices, skip the Q&A loop
-            if self.description_agent.assess(self.user_description):
-                # combine description as answer #0
-                combined = {0: self.user_description}
-                summary = self.summary_agent.create_summary(
-                    self.problem_type,
-                    self.image_analysis,
-                    combined
-                )
-                self.current_state = "showing_summary"
-                return (
-                    f"Great, thanks for the photo!\n\n"
-                    f"{self.image_analysis}\n\n"
-                    f"Since you already provided full details up front, here’s a summary:\n\n**{summary}**\n\n"
-                    "Does this look right? Reply 'yes' or 'no'."
-                )
-
-            # 2b) Otherwise, prepare the questions
-            raw_qs = [
-                (q["text"] if isinstance(q, dict) and "text" in q else str(q))
-                for q in result["questions"]
-            ]
-
-            # 2c) Filter out any “dimension” question if the description includes a measurement
-            desc = self.user_description.lower()
-            has_measure = bool(__import__("re").search(r"\d+\s*(cm|mm|in)", desc))
-            if has_measure:
-                self.questions = [q for q in raw_qs if "dimension" not in q.lower()]
-            else:
-                self.questions = raw_qs
-
-            # 2d) If no questions remain, go straight to summary anyway
-            if not self.questions:
-                combined = {0: self.user_description}
-                summary = self.summary_agent.create_summary(
-                    self.problem_type,
-                    self.image_analysis,
-                    combined
-                )
-                self.current_state = "showing_summary"
-                return (
-                    f"Great, thanks for the photo!\n\n"
-                    f"{self.image_analysis}\n\n"
-                    f"Your description covered everything, here’s a summary:\n\n**{summary}**\n\n"
-                    "Does this look right? Reply 'yes' or 'no'."
-                )
-
-            # 2e) Otherwise start the Q&A loop
-            self.current_question_index = 0
-            self.current_state = "asking_questions"
-            return (
-                f"Great, thanks for the photo!\n\n"
-                f"{self.image_analysis}\n\n"
-                "I'll ask a few quick questions one-by-one so I can give you "
-                "the safest fix.\n\n"
-                "💡 **Tip:** If you don't understand a question or don't know the answer, "
-                "just let me know! You can also type 'skip' to move to the next question.\n\n"
-                f"**{self.questions[0]}**"
-            )
+            # Check if user wants to skip photos
+            if self.image_agent.skip_image(user_message):
+                # Skip photos and go directly to questions based on description
+                result = self.image_agent.analyze_image_without_image(self.problem_type, self.user_description)
+                if not isinstance(result, dict) or "analysis" not in result or "questions" not in result:
+                    return "Sorry, I had trouble processing your request. Please try again."
+                
+                self.image_analysis = str(result["analysis"])
+                return self._prepare_questions_from_result(result)
+            
+            # Check if image was uploaded
+            if uploaded_image:
+                result = self.image_agent.analyze_image(uploaded_image, self.problem_type)
+                if not isinstance(result, dict) or "analysis" not in result or "questions" not in result:
+                    return "Sorry, I had trouble analyzing the image. Please try uploading it again."
+                
+                self.image_analysis = str(result["analysis"])
+                return self._prepare_questions_from_result(result)
+            
+            # No image uploaded and no skip command
+            return "Please upload the requested photo so I can analyse it, or type 'skip' if you prefer not to share photos."
 
         # 3) Q&A loop
         if self.current_state == "asking_questions":
@@ -540,8 +602,8 @@ class AgenticChatbot:
 
         # 4) Summary confirmation
         if self.current_state == "showing_summary":
-            resp = user_message.lower().strip()
-            if resp in ["yes", "y", "correct", "right", "accurate"]:
+            resp = self.summary_agent.affirmative_negative_response(user_message)
+            if resp == 1:
                 combined = {0: self.user_description}
                 for idx, ans in self.user_answers.items():
                     combined[idx + 1] = ans
@@ -550,12 +612,12 @@ class AgenticChatbot:
                     self.image_analysis,
                     combined
                 )
-                reply = f"Perfect! Here’s the final summary:\n\n**{final_summary}**\n\n" \
-                        f"I'll now provide the detailed steps for your {self.problem_type.replace('_',' ')}."
+                reply = f"Perfect! Now we can proceed with your step by step guide.\n\n" \
+                        f"I'll provide the detailed steps for your {self.problem_type.replace('_',' ')}."
                 self.reset()
                 return reply
 
-            if resp in ["no", "n", "incorrect", "wrong", "not right"]:
+            if resp == 2:
                 self.reset()
                 return (
                     "I’m sorry for the mix-up. Let’s start from scratch – please describe your problem again."
@@ -594,4 +656,84 @@ class AgenticChatbot:
             f"Perfect! Based on your answers:\n{answers}\n\n"
             f"I'll now provide a detailed step-by-step solution for your "
             f"{self.problem_type.replace('_', ' ')} project."
+        )
+    
+    def _prepare_questions_from_result(self, result: Dict[str, Any]) -> str:
+        """Helper method to prepare questions from image analysis result"""
+                            # 2a) If the description alone suffices, skip the Q&A loop
+        if self.description_agent.assess(self.user_description):
+                # combine description as answer #0
+                combined = {0: self.user_description}
+                summary = self.summary_agent.create_summary(
+                    self.problem_type,
+                    self.image_analysis,
+                    combined
+                )
+                self.current_state = "showing_summary"
+                
+                # Determine the appropriate message based on whether image was provided
+                if "photo" in self.image_analysis.lower() or "image" in self.image_analysis.lower():
+                    intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
+                else:
+                    intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
+                
+                return (
+                    f"{intro_message}"
+                    f"Since you already provided full details up front, here's a summary:\n\n**{summary}**\n\n"
+                    "Does this look right? Reply 'yes' or 'no'."
+                )
+
+        # 2b) Otherwise, prepare the questions
+        raw_qs = [
+            (q["text"] if isinstance(q, dict) and "text" in q else str(q))
+            for q in result["questions"]
+        ]
+
+        # 2c) Filter out any "dimension" question if the description includes a measurement
+        desc = self.user_description.lower()
+        has_measure = bool(__import__("re").search(r"\d+\s*(cm|mm|in)", desc))
+        if has_measure:
+            self.questions = [q for q in raw_qs if "dimension" not in q.lower()]
+        else:
+            self.questions = raw_qs
+
+        # 2d) If no questions remain, go straight to summary anyway
+        if not self.questions:
+            combined = {0: self.user_description}
+            summary = self.summary_agent.create_summary(
+                self.problem_type,
+                self.image_analysis,
+                combined
+            )
+            self.current_state = "showing_summary"
+            
+            # Determine the appropriate message based on whether image was provided
+            if "photo" in self.image_analysis.lower() or "image" in self.image_analysis.lower():
+                intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
+            else:
+                intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
+            
+            return (
+                f"{intro_message}"
+                f"Your description covered everything, here's a summary:\n\n**{summary}**\n\n"
+                "Does this look right? Reply 'yes' or 'no'."
+            )
+
+        # 2e) Otherwise start the Q&A loop
+        self.current_question_index = 0
+        self.current_state = "asking_questions"
+        
+        # Determine the appropriate message based on whether image was provided
+        if "photo" in self.image_analysis.lower() or "image" in self.image_analysis.lower():
+            intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
+        else:
+            intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
+        
+        return (
+            f"{intro_message}"
+            "I'll ask a few quick questions one-by-one so I can give you "
+            "the safest fix.\n\n"
+            "💡 **Tip:** If you don't understand a question or don't know the answer, "
+            "just let me know! You can also type 'skip' to move to the next question.\n\n"
+            f"**{self.questions[0]}**"
         )

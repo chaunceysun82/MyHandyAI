@@ -9,30 +9,30 @@ router = APIRouter()
 
 class Project(BaseModel):
     projectTitle: str
-    description: str
-    detailDescription: str
-    projectImages: List[str]
-    imagesDescription: str
-    userPrevExperience: str
-    currentTools: List[str]
-    currentToolsImages: List[str]
-    userId: str  # store as ObjectId
+    userId: str
 
 @router.post("/projects")
 def create_project(project: Project):
-    project_dict = project.dict()
-    project_dict["userId"] = ObjectId(project.userId)
-    project_dict["createdAt"] = datetime.utcnow()
+    project_dict = {
+        "projectTitle": project.projectTitle,
+        "userId": project.userId,
+        "createdAt": datetime.utcnow(),
+        "description": "",
+        "detailDescription": "",
+        "projectImages": [],
+        "imagesDescription": "",
+        "userPrevExperience": "",
+        "currentTools": [],
+        "currentToolsImages": [],
+    }
 
-    # Insert project
     result = project_collection.insert_one(project_dict)
     project_id = result.inserted_id
 
-    # Create conversation tied to this project
     conversations_collection.insert_one({
-    "projectId": project_id,
-    "type": "agent1"
-})
+        "projectId": project_id,
+        "type": "agent1"
+    })
 
     return {"id": str(project_id)}
 
