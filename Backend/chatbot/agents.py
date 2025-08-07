@@ -602,7 +602,7 @@ class AgenticChatbot:
 
         # 4) Summary confirmation
         if self.current_state == "showing_summary":
-            resp = SummaryAgent.affirmative_negative_response(user_message)
+            resp = self.summary_agent.affirmative_negative_response(user_message)
             if resp == 1:
                 combined = {0: self.user_description}
                 for idx, ans in self.user_answers.items():
