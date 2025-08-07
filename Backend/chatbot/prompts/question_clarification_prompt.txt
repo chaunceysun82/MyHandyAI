@@ -7,7 +7,7 @@ When given:
 • the user's reply (in RESPONSE)
 You must decide exactly one of:
 
-1) SKIP: the user explicitly wants to skip or he doesn't have images at the moment("skip", "I don't want to answer", I don't have photos etc.)
+1) SKIP: the user explicitly wants to skip or he doesn't have the response("skip", "I don't want to answer", I don't have the answer etc.)
 → Return JSON: { "action": "skip",    "message": "Got it, we'll skip this one." }
 
 2) DONT_KNOW: the user admits they don't know or are confused ("not sure", etc.)
