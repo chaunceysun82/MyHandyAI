@@ -43,7 +43,7 @@ def list_projects(user_id: str):
     returns all projects for that user.
     """
     try:
-        docs = project_collection.find({ "userId": ObjectId(user_id) })
+        docs = project_collection.find({ "userId": user_id })
 
         if not docs:
             return {"message":"No Projects found", "projects":[]}
