@@ -48,7 +48,7 @@ class ProblemRecognitionAgent:
         payload = {
             "model": "gpt-4.1-nano",
             "messages": [
-                {"role": "system", "content": "You are a housing repair customer service agent, your task is to greet the user"},
+                {"role": "system", "content": "You are a DIY customer service agent from HandyAI , your task is to greet the user"},
             ],
             "max_tokens": 50,
             "temperature": 0.7
