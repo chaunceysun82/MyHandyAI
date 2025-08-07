@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
 	submitOnboardingAnswers,
@@ -37,12 +37,12 @@ const Onboarding = () => {
 		fetchData();
 	}, [step, stepIndex, navigate, location.pathname]);
 
-	const handleAnswer = (stepId, value) => {
+	const handleAnswer = useCallback((stepId, value) => {
 		setAnswers((prev) => ({
 			...prev,
 			[stepId]: value,
 		}));
-	};
+	}, []);
 
 	const handleNext = async () => {
 		if (stepIndex < questions.length - 1) {

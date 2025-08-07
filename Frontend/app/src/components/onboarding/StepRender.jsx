@@ -109,7 +109,7 @@ const StepRenderer = ({ step, value, onChange }) => {
 							/>
 							<button
 								onClick={handleAddCustomItem}
-								className="bg-blue-600 text-white px-4 py-2 rounded-xl">
+								className="bg-black text-white px-4 py-2 rounded-xl">
 								Add
 							</button>
 						</div>
@@ -119,7 +119,7 @@ const StepRenderer = ({ step, value, onChange }) => {
 
 			{Category === "combo-box" && Type === "Location" && (
 				<LocationSelector
-					value={value || { country: "", region: "" }}
+					value={value || { country: "", state: "" }}
 					onChange={onChange}
 				/>
 			)}

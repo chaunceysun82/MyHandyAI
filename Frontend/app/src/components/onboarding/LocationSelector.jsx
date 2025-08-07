@@ -2,8 +2,11 @@ import React, { useState, useEffect } from "react";
 import { getCountries, getStates } from "country-state-picker";
 
 const LocationSelector = ({ value, onChange }) => {
-	const [countryCode, setCountryCode] = useState(value?.country || "");
-	const [state, setState] = useState(value?.state || "");
+	// Safeguard against null/undefined value
+	const safeValue = value || { country: "", state: "" };
+	
+	const [countryCode, setCountryCode] = useState(safeValue.country || "");
+	const [state, setState] = useState(safeValue.state || "");
 	const [states, setStates] = useState([]);
 
 	const countries = getCountries();
@@ -19,9 +22,17 @@ const LocationSelector = ({ value, onChange }) => {
 		}
 	}, [countryCode]);
 
-	useEffect(() => {
-		onChange({ country: countryCode, state });
-	}, [countryCode, state, onChange]);
+	const handleCountryChange = (e) => {
+		const newCountryCode = e.target.value;
+		setCountryCode(newCountryCode);
+		onChange({ country: newCountryCode, state: "" });
+	};
+
+	const handleStateChange = (e) => {
+		const newState = e.target.value;
+		setState(newState);
+		onChange({ country: countryCode, state: newState });
+	};
 
 	return (
 		<div className="space-y-6 mt-4 max-w-md mx-auto">
@@ -32,7 +43,7 @@ const LocationSelector = ({ value, onChange }) => {
 				<select
 					className="w-full border border-gray-300 rounded-lg px-4 py-3 text-base"
 					value={countryCode}
-					onChange={(e) => setCountryCode(e.target.value)}>
+					onChange={handleCountryChange}>
 					<option value="">Select your country</option>
 					{countries.map((c) => (
 						<option key={c.code} value={c.code}>
@@ -49,7 +60,7 @@ const LocationSelector = ({ value, onChange }) => {
 				<select
 					className="w-full border border-gray-300 rounded-lg px-4 py-3 text-base"
 					value={state}
-					onChange={(e) => setState(e.target.value)}
+					onChange={handleStateChange}
 					disabled={!states.length}>
 					<option value="">Select your state/province</option>
 					{states.map((s) => (

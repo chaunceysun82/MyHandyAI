@@ -44,7 +44,7 @@ const TagSelector = ({
 								type="checkbox"
 								checked={isSelected}
 								onChange={() => {}}
-								className="mr-2 w-4 h-4"
+								className="mr-2 w-4 h-4 checked:bg-black checked:border-black checked:text-white checked:content-['✓']"
 							/>
 							{item}
 						</button>
