@@ -59,6 +59,22 @@ class ProblemRecognitionAgent:
         except:
             return "Thanks for using MyHandyAI! Tell me what you'd like to do or fix."
 
+    def valid_description(self, message):
+        payload = {
+            "model": "gpt-4.1-nano",
+            "messages": [
+                {"role": "system", "content": "You are a DIY customer service agent, your task is to determine if the description/context of the repair/fix/project is coherent respond only 'True' or 'False'"},
+                {"role": "user", "content": message}
+            ],
+            "max_tokens": 50,
+            "temperature": 0.0
+        }
+        try:
+            r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
+            return r.json()["choices"][0]["message"]["content"] == "True"
+        except:
+            return False
+
     def analyze_problem(self, user_message: str) -> Dict[str, Any]:
         """Analyze user problem and determine what photos are needed"""
         
@@ -515,6 +531,8 @@ class AgenticChatbot:
     def process_message(self, user_message: str, uploaded_image: Optional[bytes] = None) -> str:
         # 1) Capture the user's free‐form description
         if self.current_state == "waiting_for_problem":
+            if not self.problem_agent.valid_description(user_message):
+                return "Not quite understand the description, could you please send again a description of the issue, repair or project you are facing?"
             self.user_description = user_message
             result = self.problem_agent.analyze_problem(user_message)
             self.problem_type = result["problem_type"]
