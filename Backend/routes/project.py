@@ -15,13 +15,10 @@ class Project(BaseModel):
 def create_project(project: Project):
     project_dict = {
         "projectTitle": project.projectTitle,
-        "userId": ObjectId(project.userId),
+        "userId": project.userId,
         "createdAt": datetime.utcnow(),
         "description": "",
-        "detailDescription": "",
         "projectImages": [],
-        "imagesDescription": "",
-        "userPrevExperience": "",
         "currentTools": [],
         "currentToolsImages": [],
     }
