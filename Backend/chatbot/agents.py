@@ -164,6 +164,22 @@ class ImageAnalysisAgent:
             "Content-Type":  "application/json",
         }
 
+    def skip_image(self, message):
+        payload = {
+            "model": "gpt-4.1-nano",
+            "messages": [
+                {"role": "system", "content": "Detect if the user doesn't have an image or want to skip the image upload (e.g 'skip','I dont have an image', etc...)  Respond only with 'True' or 'False'"},
+                {"role": "user","content": message}
+            ],
+            "max_tokens": 50,
+            "temperature": 0.7
+        }
+        try:
+            r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
+            return r.json()["choices"][0]["message"]["content"] == "True"
+        except:
+            return True
+
     def analyze_image(self, image_data: bytes, problem_type: str) -> Dict[str, Any]:
         """Call GPT-4o Vision with a base64-encoded image and get back questions"""
 
@@ -492,7 +508,7 @@ class AgenticChatbot:
         # 2) Handle photo upload or skip
         if self.current_state == "waiting_for_photos":
             # Check if user wants to skip photos
-            if user_message.lower().strip() in ["skip", "I don't have a photo", "no photo", "no image", "skip photos", "no photos"]:
+            if self.image_agent.skip_image(user_message):
                 # Skip photos and go directly to questions based on description
                 result = self.image_agent.analyze_image_without_image(self.problem_type, self.user_description)
                 if not isinstance(result, dict) or "analysis" not in result or "questions" not in result:
