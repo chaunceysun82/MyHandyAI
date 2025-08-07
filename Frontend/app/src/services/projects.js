@@ -1,21 +1,31 @@
 // src/services/projects.js
-const API_BASE = process.env.REACT_APP_API_BASE_URL || "";
+const API_BASE = process.env.REACT_APP_API_BASE_URL || "";  
+// e.g. "http://localhost:8000"
 
-export async function fetchProjects(userId) {
-  const url = `${API_BASE}/projects?user_id=${userId}`;
-  const res = await fetch(url);
 
-  // FastAPI: you only have a POST on /projects, so GET /projects → 405
-  if (res.status === 405) {
-    // treat as "no projects yet"
-    return [];
-  }
+export async function fetchProjects(/* userId */) {
+  // No-op → always return empty list for now
+  return [];
+}
+
+/**
+ * POST /projects
+ * payload must include exactly { projectTitle, userId }
+ * Returns the new project’s ID.
+ */
+export async function createProject(userId, projectTitle) {
+  const res = await fetch(`${API_BASE}/projects`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ projectTitle, userId }),
+  });
 
   if (!res.ok) {
-    // any other problem, surface it
-    const text = await res.text();
-    throw new Error(text);
+    const errText = await res.text();
+    throw new Error(errText || res.statusText);
   }
 
-  return res.json();
+  
+  const { id } = await res.json();
+  return id;
 }
