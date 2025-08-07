@@ -46,9 +46,9 @@ class ProblemRecognitionAgent:
     
     def greetings(self):
         payload = {
-            "model": "gpt-4.1-mini",
+            "model": "gpt-4.1-nano",
             "messages": [
-                {"role": "system", "content": "You are a DIY customer service agent from MyHandyAI , your task is to greet the user"},
+                {"role": "system", "content": "You are a DIY customer service agent called MyHandyAI , your task is to greet the user, introduce yourself and ask the user to describe the project/repair/fix to be done"},
             ],
             "max_tokens": 50,
             "temperature": 0.7
@@ -256,7 +256,7 @@ class ImageAnalysisAgent:
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-4.1", "messages": messages, "max_tokens": 800},
+                json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 800},
                 timeout=20
             )
             if r.status_code == 200:
@@ -354,6 +354,22 @@ class SummaryAgent:
             "Content-Type": "application/json",
         }
     
+    def affirmative_negative_response(self, message):
+        payload = {
+            "model": "gpt-4.1-nano",
+            "messages": [
+                {"role": "system", "content": "You are a affirmative/negative detector, your task is to determine if the user answer is affirmative to proceed with next steps or negative to not continue answer only '1' for affirmative '2' for negative and '0' if you cannot determine with the message"},
+                {"role": "user", "content": message}
+            ],
+            "max_tokens": 50,
+            "temperature": 0.0
+        }
+        try:
+            r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
+            return int(r.json()["choices"][0]["message"]["content"])
+        except:
+            return 0
+
     def create_summary(self, problem_type: str, image_analysis: str, user_answers: Dict[int, str]) -> str:
         """Create a comprehensive summary of the problem"""
         
@@ -547,8 +563,8 @@ class AgenticChatbot:
 
         # 4) Summary confirmation
         if self.current_state == "showing_summary":
-            resp = user_message.lower().strip()
-            if resp in ["yes", "y", "correct", "right", "accurate"]:
+            resp = SummaryAgent.affirmative_negative_response(user_message)
+            if resp == 1:
                 combined = {0: self.user_description}
                 for idx, ans in self.user_answers.items():
                     combined[idx + 1] = ans
@@ -557,12 +573,12 @@ class AgenticChatbot:
                     self.image_analysis,
                     combined
                 )
-                reply = f"Perfect! Here’s the final summary:\n\n**{final_summary}**\n\n" \
-                        f"I'll now provide the detailed steps for your {self.problem_type.replace('_',' ')}."
+                reply = f"Perfect! Now we can proceed with your step by step guide.\n\n" \
+                        f"I'll provide the detailed steps for your {self.problem_type.replace('_',' ')}."
                 self.reset()
                 return reply
 
-            if resp in ["no", "n", "incorrect", "wrong", "not right"]:
+            if resp == 2:
                 self.reset()
                 return (
                     "I’m sorry for the mix-up. Let’s start from scratch – please describe your problem again."
