@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 import base64
 from PIL import Image
-import io
+import re
 import json
 
 load_dotenv()
@@ -24,6 +24,29 @@ def load_prompt(filename):
     except Exception as e:
         print(f"❌ Error loading prompt file {filename}: {e}")
         return f"Error: Could not load {filename}"
+
+
+def clean_and_parse_json(raw_str):
+    """
+    Cleans code fences (```json ... ```) from a string and parses it as JSON.
+
+    Args:
+        raw_str (str): The input string from the LLM.
+
+    Returns:
+        dict or list: Parsed JSON object.
+
+    Raises:
+        ValueError: If the string cannot be parsed as valid JSON.
+    """
+    # Remove triple backtick code fences and optional language identifier
+    cleaned = re.sub(r"```(?:json)?\s*", "", raw_str.strip())
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON format: {e}")
 
 # Load the prompts
 qa_prompt_text = load_prompt("qa_prompt.txt")
@@ -98,8 +121,7 @@ class ProblemRecognitionAgent:
                 
                 # Try to parse JSON from response
                 try:
-                    import json
-                    result = json.loads(text)
+                    result = clean_and_parse_json(text)
                     return result
                 except:
                     # Fallback if JSON parsing fails
@@ -143,8 +165,7 @@ Be specific about what photos would help diagnose the problem."""
                 text = data["choices"][0]["message"]["content"].strip()
                 
                 try:
-                    import json
-                    result = json.loads(text)
+                    result = clean_and_parse_json(text)
                     return result
                 except:
                     # If JSON parsing fails, return a generic response
@@ -278,7 +299,7 @@ class ImageAnalysisAgent:
             if r.status_code == 200:
                 txt = r.json()["choices"][0]["message"]["content"].strip()
                 try:
-                    result = json.loads(txt)
+                    result = clean_and_parse_json(txt)
                     # Validate the result has the expected structure
                     if isinstance(result, dict) and "analysis" in result and "questions" in result:
                         return result
@@ -455,7 +476,7 @@ class QuestionClarificationAgent:
         try:
             resp = requests.post(self.api_url, headers=self.headers, json=payload, timeout=15)
             data = resp.json()["choices"][0]["message"]["content"]
-            result = json.loads(data)
+            result = clean_and_parse_json(data)
             act = result.get("action")
             msg = result.get("message", "")
             if act == "skip":
@@ -500,7 +521,7 @@ Description: \"\"\"{description}\"\"\"
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
             result = r.json()["choices"][0]["message"]["content"]
-            return json.loads(result).get("skip_questions", False)
+            return clean_and_parse_json(result).get("skip_questions", False)
         except:
             return False
 
