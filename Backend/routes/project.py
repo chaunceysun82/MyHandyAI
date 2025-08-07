@@ -36,6 +36,25 @@ def create_project(project: Project):
 
     return {"id": str(project_id)}
 
+@router.get("/projects")
+def list_projects(user_id: str):
+    """
+    GET /projects?user_id=<mongo‐object‐id>
+    returns all projects for that user.
+    """
+    try:
+        docs = project_collection.find({ "userId": ObjectId(user_id) })
+
+        if not docs:
+            return {"message":"No Projects found", "projects":[]}
+
+        results = list(docs)
+        return {"message":"No Projects found", "projects":results}
+    except:
+        print(f"❌ There was an error fetching projects for {user_id}")
+        raise HTTPException(status_code=400, detail="Projects Error")
+        
+
 @router.get("/projects/{project_id}")
 def get_project(project_id: str):
     project = project_collection.find_one({"_id": ObjectId(project_id)})
