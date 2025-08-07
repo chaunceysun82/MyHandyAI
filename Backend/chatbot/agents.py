@@ -35,7 +35,7 @@ description_assessment_prompt_text = load_prompt("description_assessment_prompt.
 
 class ProblemRecognitionAgent:
     """Agent 1: Recognizes problems and requests relevant photos"""
-    
+
     def __init__(self):
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.api_url = "https://api.openai.com/v1/chat/completions"
@@ -44,6 +44,21 @@ class ProblemRecognitionAgent:
             "Content-Type": "application/json",
         }
     
+    def greetings(self):
+        payload = {
+            "model": "gpt-4.1-nano",
+            "messages": [
+                {"role": "system", "content": "You are a housing repair customer service agent, your task is to greet the user"},
+            ],
+            "max_tokens": 50,
+            "temperature": 0.7
+        }
+        try:
+            r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
+            return r.json()["choices"][0]["message"]["content"]
+        except:
+            return "Thanks for using MyHandyAI! Tell me what you'd like to do or fix."
+
     def analyze_problem(self, user_message: str) -> Dict[str, Any]:
         """Analyze user problem and determine what photos are needed"""
         
@@ -460,6 +475,10 @@ class AgenticChatbot:
         self.current_question_index = 0
         self.user_answers           = {}
         self.image_analysis         = None
+
+    def greet(self):
+        return self.problem_agent.greetings()
+
 
     def process_message(self, user_message: str, uploaded_image: Optional[bytes] = None) -> str:
         # 1) Capture the user's free‐form description

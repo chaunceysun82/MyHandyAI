@@ -41,7 +41,7 @@ class ChatResponse(BaseModel):
 
 class ChatSession(BaseModel):
     session_id: str
-    intro_messages: List[Dict[str, Any]]
+    intro_message: str
 
 class SessionInfo(BaseModel):
     session_id: str
@@ -130,13 +130,9 @@ async def start_new_session(payload: StartChat):
     """
     session_id = uuid.uuid4().hex
     chatbot = AgenticChatbot()
-    intro_messages = [
-        {"role": "assistant", "content": "Thanks for using MyHandyAI! Tell me what you'd like to do or fix."},
-        {"role": "assistant", "content": "Hi User! Let's get started with your project!"},
-        {"role": "assistant", "content": "What home project can we help with today?"}
-    ]
-    log_message(session_id, "assistant", intro_messages[0]["content"], chatbot, payload.user, payload.project, message_type="intro")
-    return ChatSession(session_id=session_id, intro_messages=intro_messages)
+    intro_message = chatbot.greet()
+    log_message(session_id, "assistant", intro_message, chatbot, payload.user, payload.project, message_type="intro")
+    return ChatSession(session_id=session_id, intro_message=intro_message)
 
 @router.get("/session/{session_id}/history")
 async def get_chat_history(session_id: str):
@@ -173,12 +169,8 @@ async def reset_conversation(payload: ResetChat):
     Resets a session and logs the reset.
     """
     chatbot = reset_session(payload.session, payload.user, payload.project)
-    intro_messages = [
-        {"role": "assistant", "content": "Thanks for using MyHandyAI! Tell me what you'd like to do or fix."},
-        {"role": "assistant", "content": "Hi User! Let's get started with your project!"},
-        {"role": "assistant", "content": "What home project can we help with today?"}
-    ]
-    return {"message": "Conversation reset successfully", "intro_messages": intro_messages}
+    intro_message = chatbot.greet()
+    return {"message": "Conversation reset successfully", "intro_message": intro_message}
 
 @router.delete("/session/{session_id}")
 async def delete_session(session_id: str):
