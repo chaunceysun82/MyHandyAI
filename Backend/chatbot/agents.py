@@ -46,7 +46,7 @@ class ProblemRecognitionAgent:
     
     def greetings(self):
         payload = {
-            "model": "gpt-4.1-nano",
+            "model": "gpt-4.1-mini",
             "messages": [
                 {"role": "system", "content": "You are a DIY customer service agent from MyHandyAI , your task is to greet the user e.g. 'Thanks for using MyHandyAI! Tell me what you'd like to do or fix.' "},
             ],
