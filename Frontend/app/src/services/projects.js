@@ -1,6 +1,6 @@
 // src/services/projects.js
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "";  
-// e.g. "http://localhost:8000"
+
 
 
 export async function fetchProjects(/* userId */) {
