@@ -14,7 +14,11 @@ export default function Home() {
     sessionStorage.getItem("authToken");
   const userName = "User";
 
-  const [projects, setProjects]     = useState([]);
+  // const projectsKey = `${token}`;
+
+  const [projects, setProjects] = useState([]);
+
+
   const [loading,  setLoading ]     = useState(true);
   const [error,    setError   ]     = useState("");
   const [showModal, setShowModal]   = useState(false);
@@ -42,6 +46,10 @@ export default function Home() {
   function handleSignOut() {
     localStorage.removeItem("authToken");
     sessionStorage.removeItem("authToken");
+
+    localStorage.removeItem(`chatMessages`);
+    localStorage.removeItem("introShown");
+
     navigate("/login", { replace: true });
   }
 
@@ -54,21 +62,58 @@ export default function Home() {
     setShowModal(false);
   }
 
-  async function startProject() {
+  // async function startProject() 
+  // {
+  //   const name = projectName.trim();
+  //   if (!name) return;
+
+  //   setCreating(true);
+  //   setError("");
+  //   try {
+  //     // call POST /projects
+  //     console.log("Token:", token);
+  //     const newId = await createProject(token, name);
+
+      
+  //     // fetchProjects(token).then(setProjects).catch(console.error);
+
+  //     setShowModal(false);
+
+  //     navigate("/chat", { state: { projectId: newId, projectName: name } });
+  //   } catch (err) {
+  //     console.error("createProject:", err);
+  //     setError("Could not create project: " + err.message);
+  //   } finally {
+  //     setCreating(false);
+  //   }
+  // }
+
+  async function startProject() 
+  {
     const name = projectName.trim();
     if (!name) return;
 
     setCreating(true);
     setError("");
     try {
-      // call POST /projects
       const newId = await createProject(token, name);
 
-      
-      // fetchProjects(token).then(setProjects).catch(console.error);
+      const newProject = {
+        _id: newId,
+        projectTitle: name,
+        lastActivity: null,
+        percentComplete: 0,
+        projectImages: [],
+      };
+
+      setProjects((prev) => {
+        const updated = [newProject, ...prev];
+        // localStorage.setItem(projectsKey, JSON.stringify(updated));
+        return updated;
+      });
 
       setShowModal(false);
-      navigate("/chat", { state: { projectId: newId, projectName: name } });
+
     } catch (err) {
       console.error("createProject:", err);
       setError("Could not create project: " + err.message);
@@ -117,14 +162,45 @@ export default function Home() {
         >
           {projects.map((p) => (
             <ProjectCard
-              key={p._id}
-              id={p._id}
               projectTitle={p.projectTitle}
-              projectImages={p.projectImages}
               lastActivity={p.lastActivity}
               percentComplete={p.percentComplete}
-              onClick={() => navigate(`/projects/${p._id}`)}
+              onStartChat={() => navigate("/chat")}
+              onRemove={() => console.log("Removing done")}
             />
+            // <div
+            //   key={p._id}
+            //   className="border rounded-lg p-4 bg-white shadow flex justify-between items-center"
+            // >
+            //   <div>
+            //     <h3 className="text-lg font-semibold">{p.projectTitle}</h3>
+            //     <p className="text-sm text-gray-500">Last Activity: {p.lastActivity || "N/A"}</p>
+            //     <p className="text-sm text-gray-500">Progress: {p.percentComplete || 0}%</p>
+            //   </div>
+
+            //   <div className="flex flex-col ml-20 space-y-2">
+            //     <button
+            //       className="bg-blue-600 text-white px-3 py-1 rounded text-sm"
+            //       onClick={() =>
+            //         navigate("/chat", {
+            //           state: {
+            //             projectId: p._id,
+            //             projectName: p.projectTitle,
+            //           },
+            //         })
+            //       }
+            //     >
+            //       Start Chat
+            //     </button>
+
+            //     <button
+            //       className="bg-gray-300 text-black px-3 py-1 rounded text-sm"
+            //       onClick={() => alert("Remove clicked (placeholder)")}
+            //     >
+            //       Remove
+            //     </button>
+            //   </div>
+            // </div>
           ))}
         </div>
 		

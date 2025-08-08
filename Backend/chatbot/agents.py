@@ -488,9 +488,162 @@ class QuestionClarificationAgent:
         except Exception:
             
             fallback = (
-                f"I didn’t quite catch that. Could you clarify your answer to:\n\n**{question}**"
+                f"I didn't quite catch that. Could you clarify your answer to:\n\n**{question}**"
             )
             return (fallback, False)
+
+    def detect_revision_request(self, user_message: str, current_question: str, question_history: List[str]) -> tuple[bool, Optional[int], str]:
+        """
+        Detects if user wants to revise a previous answer using natural language.
+        
+        Returns:
+            is_revision_request: bool - True if user wants to go back
+            target_question_index: Optional[int] - Which question to go back to (None if unclear)
+            clarification_message: str - Message to send to user
+        """
+        
+        system_prompt = f"""You are a revision detection agent. The user is currently answering question {len(question_history) + 1}.
+
+Current question: "{current_question}"
+
+Previous questions:
+{chr(10).join(f"{i+1}. {q}" for i, q in enumerate(question_history))}
+
+User message: "{user_message}"
+
+Determine if the user wants to:
+1. Go back to a specific previous question (using natural language reference)
+2. Just clarify their current answer
+3. Continue normally
+
+Return JSON with:
+- "is_revision_request": true/false
+- "target_question_index": number (1-based) or null
+- "message": explanation for user
+- "action": "go_back", "clarify_current", or "continue"
+- "confidence": 0.0-1.0 (how confident you are in the match)
+
+Examples:
+- "I want to change my answer about the wall type" → go_back, target=wall question index
+- "I made a mistake in the previous question about dimensions" → go_back, target=dimension question index
+- "Actually, let me re-answer the question about materials" → go_back, target=materials question index
+- "I meant to say..." → clarify_current
+- "The answer is..." → continue
+
+Use semantic matching to find the best question match."""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ]
+        
+        try:
+            response = requests.post(
+                self.api_url, headers=self.headers,
+                json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 300},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = clean_and_parse_json(response.json()["choices"][0]["message"]["content"])
+                
+                is_revision = result.get("is_revision_request", False)
+                target_index = result.get("target_question_index")
+                message = result.get("message", "")
+                action = result.get("action", "continue")
+                confidence = result.get("confidence", 0.0)
+                
+                # Only proceed if confidence is high enough
+                if confidence >= 0.7:
+                    return is_revision, target_index, message
+                elif is_revision:
+                    # Low confidence - ask user to clarify with dynamic examples
+                    if question_history:
+                        # Create examples based on actual questions asked
+                        examples = []
+                        for i, q in enumerate(question_history[:3]):  # Show up to 3 examples
+                            # Extract key topic from question
+                            topic = self._extract_question_topic(q)
+                            examples.append(f"'{topic}'")
+                        
+                        example_text = " or ".join(examples)
+                        return True, None, f"I'm not sure which question you want to re-answer. Could you be more specific? For example: {example_text}"
+                    else:
+                        return True, None, "I'm not sure which question you want to re-answer. Could you be more specific?"
+                
+        except Exception:
+            pass
+        
+        # Fallback: simple keyword detection
+        revision_keywords = ["change", "mistake", "wrong", "re-answer", "previous", "go back"]
+        if any(keyword in user_message.lower() for keyword in revision_keywords):
+            if question_history:
+                # Create examples based on actual questions asked
+                examples = []
+                for i, q in enumerate(question_history[:3]):  # Show up to 3 examples
+                    # Extract key topic from question
+                    topic = self._extract_question_topic(q)
+                    examples.append(f"'{topic}'")
+                
+                example_text = " or ".join(examples)
+                return True, None, f"Which question would you like to re-answer? Please be specific, like {example_text}"
+            else:
+                return True, None, "Which question would you like to re-answer? Please be specific."
+        
+        return False, None, ""
+    
+    def _extract_question_topic(self, question: str) -> str:
+        """
+        Extract a short, descriptive topic from a question for use in examples.
+        """
+        # Common patterns to extract topics
+        topic_patterns = [
+            r"what.*?(wall|material|type|size|dimension|weight|color)",
+            r"where.*?(clog|leak|problem|issue)",
+            r"how.*?(heavy|big|long|wide)",
+            r"do you.*?(have|know|experience|access)",
+            r"have you.*?(tried|used|checked)",
+            r"what.*?(tools|equipment|supplies)",
+            r"when.*?(start|happen|notice)",
+            r"is it.*?(affecting|causing|damaging)"
+        ]
+        
+        question_lower = question.lower()
+        
+        for pattern in topic_patterns:
+            match = re.search(pattern, question_lower)
+            if match:
+                # Extract the key word and make it more readable
+                key_word = match.group(1)
+                if key_word == "wall":
+                    return "wall type"
+                elif key_word == "material":
+                    return "material type"
+                elif key_word == "dimension":
+                    return "dimensions"
+                elif key_word == "clog":
+                    return "clog location"
+                elif key_word == "leak":
+                    return "leak location"
+                elif key_word == "tools":
+                    return "available tools"
+                elif key_word == "experience":
+                    return "experience level"
+                else:
+                    return key_word.replace("_", " ")
+        
+        # Fallback: extract first few meaningful words
+        words = question.split()
+        meaningful_words = []
+        for word in words[:4]:  # Take first 4 words
+            if len(word) > 3 and word.lower() not in ["what", "where", "when", "how", "do", "you", "have", "the", "and", "for", "with", "that", "this"]:
+                meaningful_words.append(word)
+        
+        if meaningful_words:
+            return " ".join(meaningful_words[:2])  # Return first 2 meaningful words
+        
+        # Final fallback
+        return "previous question"
         
 class DescriptionAssessmentAgent:
     """Agent: Decides if the user’s initial problem description is
@@ -587,6 +740,22 @@ class AgenticChatbot:
         # 3) Q&A loop
         if self.current_state == "asking_questions":
             current_q = self.questions[self.current_question_index]
+            
+            # NEW: Check for revision request first
+            is_revision, target_index, revision_message = self.clarification_agent.detect_revision_request(
+                user_message, current_q, self.questions[:self.current_question_index]
+            )
+            
+            if is_revision:
+                if target_index is not None and 1 <= target_index <= len(self.questions):
+                    # Go back to specific question
+                    self.current_question_index = target_index - 1
+                    return f"{revision_message}\n\n**Question {target_index}:**\n{self.questions[target_index - 1]}"
+                else:
+                    # Ask user to specify which question
+                    return revision_message
+            
+            # Continue with normal clarification logic
             clarification, advance = self.clarification_agent.handle_user_response(
                 current_q, user_message
             )
