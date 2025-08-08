@@ -15,7 +15,7 @@ class Project(BaseModel):
 def create_project(project: Project):
     project_dict = {
         "projectTitle": project.projectTitle,
-        "userId": ObjectId(project.userId),
+        "userId": project.userId,
         "createdAt": datetime.utcnow(),
         "description": "",
         "detailDescription": "",
@@ -29,10 +29,10 @@ def create_project(project: Project):
     result = project_collection.insert_one(project_dict)
     project_id = result.inserted_id
 
-    conversations_collection.insert_one({
-        "projectId": project_id,
-        "type": "agent1"
-    })
+    # conversations_collection.insert_one({
+    #     "projectId": project_id,
+    #     "type": "agent1"
+    # })
 
     return {"id": str(project_id)}
 
