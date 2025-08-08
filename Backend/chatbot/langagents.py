@@ -219,13 +219,3 @@ def run_chat_step(current_state, chat_state: dict):
     next_state, new_state = graph.run(current_state, state)
     return next_state, dict(new_state)
 
-# Example Lambda/FastAPI handler usage:
-# def lambda_handler(event, context):
-#     current_state = event["current_state"]
-#     chat_state = event["state"]
-#     next_state, new_state = run_chat_step(current_state, chat_state)
-#     return {
-#         "next_state": next_state,
-#         "state": new_state,
-#         "response": new_state.get("response_message")
-#     }
