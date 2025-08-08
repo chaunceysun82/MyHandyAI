@@ -17,6 +17,9 @@ OPENAI_API_KEY=os.getenv("OPENAI_API_KEY")
 
 MODELS={
     "OpenAI": [
+        ("GPT-5", "gpt-5"),
+        ("GPT-5 mini", "gpt-5-mini"),
+        ("GPT-5 nano", "gpt-5-nano"),
         ("GPT-4.1", "gpt-4.1"),
         ("GPT-4.1 mini", "gpt-4.1-mini"),
         ("GPT-4.1 nano", "gpt-4.1-nano"),
