@@ -24,7 +24,7 @@ app.include_router(project.router)
 app.include_router(steps.router)
 app.include_router(chat.router)
 app.include_router(chatbot.router)
-app.include_router(langbot.router)
+#app.include_router(langbot.router)
 
 #handler for aws
 handler = Mangum(app)
