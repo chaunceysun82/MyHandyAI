@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Any
 from bson import ObjectId
 from db import project_collection, conversations_collection
 from datetime import datetime
@@ -11,12 +11,40 @@ class Project(BaseModel):
     projectTitle: str
     userId: str
 
+def _maybe_iso(dt):
+    return dt.isoformat() if isinstance(dt, datetime) else None
+
+def _serialize_project(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert MongoDB doc to JSON-serializable dict."""
+    return {
+        "_id": str(doc.get("_id")) if doc.get("_id") is not None else None,
+        "userId": str(doc.get("userId")) if doc.get("userId") is not None else "",
+        "projectTitle": doc.get("projectTitle", ""),
+        "createdAt": _maybe_iso(doc.get("createdAt")),
+        "description": doc.get("description", ""),
+        "detailDescription": doc.get("detailDescription", ""),
+        "projectImages": doc.get("projectImages", []),
+        "imagesDescription": doc.get("imagesDescription", ""),
+        "userPrevExperience": doc.get("userPrevExperience", ""),
+        "currentTools": doc.get("currentTools", []),
+        "currentToolsImages": doc.get("currentToolsImages", []),
+        "lastActivity": _maybe_iso(doc.get("lastActivity")),
+        "percentComplete": doc.get("percentComplete", 0),
+    }
+
+def _ensure_object_id(id_str: str) -> ObjectId:
+    try:
+        return ObjectId(id_str)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid id format")
+
 @router.post("/projects")
-def create_project(project: Project):
-    project_dict = {
+def create_project(project: ProjectCreate):
+    now = datetime.utcnow()
+    project_doc = {
         "projectTitle": project.projectTitle,
-        "userId": project.userId,
-        "createdAt": datetime.utcnow(),
+        "userId": project.userId,  # kept as string to match current data
+        "createdAt": now,
         "description": "",
         "detailDescription": "",
         "projectImages": [],
@@ -24,9 +52,11 @@ def create_project(project: Project):
         "userPrevExperience": "",
         "currentTools": [],
         "currentToolsImages": [],
+        "lastActivity": now,
+        "percentComplete": 0,
     }
 
-    result = project_collection.insert_one(project_dict)
+    result = project_collection.insert_one(project_doc)
     project_id = result.inserted_id
 
     # conversations_collection.insert_one({
