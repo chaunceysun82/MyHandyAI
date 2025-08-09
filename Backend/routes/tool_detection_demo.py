@@ -1,4 +1,4 @@
-# ✅ File: Backend/routes/tool_detection.py
+
 
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
@@ -39,3 +39,11 @@ async def detect_tools(image: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# tool_name = detected_tool.lower()
+# tool_link = tool_links.get(tool_name, "https://www.amazon.com/s?k=" + tool_name)
+
+# return {
+#     "tool": detected_tool,
+#     "description": tool_info,
+#     "link": tool_link
+# }
