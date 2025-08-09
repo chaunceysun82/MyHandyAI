@@ -6,8 +6,12 @@ import base64
 from PIL import Image
 import re
 import json
+from langchain_community.tools.tavily_search import TavilySearchResults
 
 load_dotenv()
+
+search=TavilySearchResults(api_key=os.environ.get("TAVILY_API_KEY"))
+ASIN_DATA_API_KEY=os.getenv("ASIN_DATA_API_KEY")
 
 def load_prompt(filename):
     """Load prompt from file, removing comment lines starting with #"""
@@ -47,6 +51,17 @@ def clean_and_parse_json(raw_str):
         return json.loads(cleaned)
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON format: {e}")
+
+def extract_asin(url):
+    match = re.search(r"(?:dp|gp/product)/([A-Z0-9]{10})", url)
+    return match.group(1) if match else None
+
+def get_asin_data(asin):
+    endpoint = "https://api.asindataapi.com/product"
+    params = {"api_key": ASIN_DATA_API_KEY, "asin": asin}
+    resp = requests.get(endpoint, params=params)
+    resp.raise_for_status()
+    return resp.json()
 
 # Load the prompts
 qa_prompt_text = load_prompt("qa_prompt.txt")
@@ -443,6 +458,147 @@ Please create a summary of this DIY problem."""
         # Fallback summary
         return f"I understand you have a {problem_type.replace('_', ' ')} issue. Based on the image and your answers, I can help you resolve this problem."
 
+class PydanticToolAgent:
+    """
+    Updated Agent: Given the final summary, generate a TEXT-formatted
+    list of tools with descriptive fields and dimensions (if available).
+    Output is plain text (no code fences) with one field per line:
+      Tool name : ...
+      Tool description : ...
+      Tool dimensions : ...   <-- only if provided by LLM
+      Risk Factor : ...
+      Safety Measure: ...
+    Blank line between tools.
+    """
+    def __init__(self):
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_url = "https://api.openai.com/v1/chat/completions"
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+    def create_pydantic_output(self, summary_text: str) -> str:
+        """
+        Returns plain-text string (chat) formatted as requested.
+        The LLM is instructed to return a JSON array ONLY with:
+        tool_name, description, dimensions (optional), risk_factor, safety_measure.
+        """
+        
+        system_prompt = (
+            "You are an assistant that converts a DIY problem summary into a structured list of tools and materials. "
+            "Produce a JSON array ONLY (no extra text) where each item is an object with the following keys:\n"
+            " - tool_name (string)\n"
+            " - description (string): provide a descriptive explanation of the tool's use and any important attributes such as type, typical dimensions, or variants.\n"
+            " - dimensions (string, OPTIONAL): if the summary includes numeric measurements or if typical/recommended dimensions or sizes are relevant, include them here (e.g., '60 x 90 cm', '1/4 inch drill bit'). If not applicable, omit or set to ''.\n"
+            " - risk_factor (string): a descriptive risk assessment (state what can go wrong, severity, and likely failure modes).\n"
+            " - safety_measure (string): actionable safety steps, PPE recommendations, and precautions specific to using the tool.\n\n"
+            "Be detailed and explicit: descriptions, risk factors, and safety measures should be several words to a few sentences (not single words). "
+            "Return 3 relevant tools when possible. Do NOT include any explanatory prose outside the JSON array. Return JSON only."
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Summary:\n{summary_text}\n\nReturn the JSON array now."}
+        ]
+
+        tools = None
+        try:
+            r = requests.post(self.api_url, headers=self.headers,
+                              json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 900},
+                              timeout=25)
+            if r.status_code == 200:
+                raw = r.json()["choices"][0]["message"]["content"].strip()
+                try:
+                    tools = clean_and_parse_json(raw)
+                except Exception:
+                    # Try to extract a JSON array substring inside the response
+                    try:
+                        m = re.search(r"\[.*\]", raw, flags=re.DOTALL)
+                        if m:
+                            tools = json.loads(m.group(0))
+                    except Exception:
+                        tools = None
+        except Exception:
+            tools = None
+
+        # If parsing failed or returned something not useful, create a descriptive fallback
+        if not isinstance(tools, list) or not tools:
+            # Heuristic fallback: inspect summary for keywords and dimensions
+            fallback_tools = []
+            low = summary_text.lower()
+            # detect numeric dimensions from summary
+            dim_matches = re.findall(r"(\d+\s*(?:cm|mm|in|inch|kg|lb|lbs))", summary_text, flags=re.I)
+            inferred_dims = dim_matches[0] if dim_matches else ""
+
+            if "mirror" in low or "hang" in low:
+                fallback_tools = [
+                    {
+                        "tool_name": "Stud Finder",
+                        "description": "Handheld electronic device used to detect wood or metal studs and sometimes live wiring behind walls; recommended for locating secure mounting points for heavy fixtures.",
+                        "dimensions": "",
+                        "risk_factor": "If inaccurate, may lead to anchors being placed incorrectly, risking fixture failure or hitting hidden electrical wiring which can cause shock or short circuits.",
+                        "safety_measure": "Scan the wall multiple times, avoid areas where wiring runs vertically from outlets; when unsure, confirm with small pilot holes or a secondary locating method."
+                    },
+                    {
+                        "tool_name": "Power Drill (with appropriate bits)",
+                        "description": "Cordless or corded drill used for pilot holes and installing anchors; choose drill size based on anchor/drywall type and screw diameter.",
+                        "dimensions": inferred_dims or "",
+                        "risk_factor": "Drilling can penetrate wiring/plumbing causing electrocution or water leaks; bit kickback can cause hand injuries.",
+                        "safety_measure": "Wear safety glasses and gloves, ensure drill bits are sharp and correct size, keep a firm grip, and do not drill where wiring or pipes are expected."
+                    },
+                    {
+                        "tool_name": "Heavy-duty Wall Anchors (toggle or molly bolts)",
+                        "description": "Anchors designed to hold heavy loads on drywall when studs are unavailable; choose anchors rated for the mirror's weight.",
+                        "dimensions": "",
+                        "risk_factor": "Underrated anchors or improper installation may fail, leading to the fixture falling and causing injury or damage.",
+                        "safety_measure": "Select anchors with verified weight rating greater than the object's weight, follow installation instructions, and test load carefully before finalizing."
+                    }
+                ]
+            else:
+                # generic fallback
+                fallback_tools = [
+                    {
+                        "tool_name": "Protective Gloves",
+                        "description": "Gloves to protect hands from cuts, abrasions, and drill slippage during the job.",
+                        "dimensions": "",
+                        "risk_factor": "Low — ill-fitting gloves may reduce dexterity.",
+                        "safety_measure": "Use gloves sized correctly and appropriate for the task."
+                    },
+                    {
+                        "tool_name": "Measuring Tape",
+                        "description": "Tape measure to take accurate measurements and mark mounting points precisely.",
+                        "dimensions": "",
+                        "risk_factor": "Pinch risk during retraction.",
+                        "safety_measure": "Retract tape slowly and keep fingers clear of the edge."
+                    }
+                ]
+            tools = fallback_tools
+
+        lines = []
+        lines.append("ASSISTANT : Here are the tools and materials required for your task:\n\n")
+        for t in tools:
+            
+            name = (t.get("tool_name") or t.get("name") or "Unknown Tool").strip()
+            desc = (t.get("description") or "").strip()
+            dims = (t.get("dimensions") or "").strip()
+            risk = (t.get("risk_factor") or t.get("risk") or "").strip()
+            safety = (t.get("safety_measure") or t.get("safety") or "").strip()
+
+            search_query="Can you provide me the purchase link and the price of the "+ name+" from Amazon?"
+            results=search.invoke(search_query)
+
+            lines.append(f"Tool name : {name}\n")
+            if len(results):
+                lines.append(f"Amazon URL : {results[0].get('url')}\n")
+            lines.append(f"Tool description : {desc if desc else '<Description not available>'}\n")
+            if dims:
+                lines.append(f"Tool dimensions : {dims}\n")
+            lines.append(f"Risk Factor : {risk if risk else '<Risk Factors>'}\n")
+            lines.append(f"Safety Measure: {safety if safety else '<Safety Measures>'}\n")
+            lines.append("\n\n\n")  # blank line between tools
+
+        return "\n".join(lines).rstrip()
 
 class QuestionClarificationAgent:
     """Agent 4: Uses an LLM to (1) detect 'skip', (2) detect 'don't know' and rephrase,
@@ -660,7 +816,7 @@ class DescriptionAssessmentAgent:
         """Return True if description is complete enough to skip questions."""
         system_prompt = f"""{description_assessment_prompt_text}
 
-Description: \"\"\"{description}\"\"\"
+Description: \"\"\"{description}\"\"\" 
 """
         payload = {
             "model": "gpt-4.1-mini",
@@ -685,6 +841,7 @@ class AgenticChatbot:
         self.problem_agent         = ProblemRecognitionAgent()
         self.image_agent           = ImageAnalysisAgent()
         self.summary_agent         = SummaryAgent()
+        self.pydantic_agent        = PydanticToolAgent()   # <-- updated agent added here
         self.clarification_agent   = QuestionClarificationAgent()
         self.description_agent     = DescriptionAssessmentAgent()
         self.reset()
@@ -773,6 +930,7 @@ class AgenticChatbot:
         if self.current_state == "showing_summary":
             resp = self.summary_agent.affirmative_negative_response(user_message)
             if resp == 1:
+                # User confirmed the summary; create final summary and hand over to PydanticToolAgent
                 combined = {0: self.user_description}
                 for idx, ans in self.user_answers.items():
                     combined[idx + 1] = ans
@@ -781,8 +939,16 @@ class AgenticChatbot:
                     self.image_analysis,
                     combined
                 )
-                reply = f"Perfect! Now we can proceed with your step by step guide.\n\n" \
-                        f"I'll provide the detailed steps for your {self.problem_type.replace('_',' ')}."
+
+                # Generate TEXT-formatted output using the updated agent
+                tools_text = self.pydantic_agent.create_pydantic_output(final_summary)
+
+                reply = (
+                    f"{tools_text}\n\n"
+                    "If you'd like, I can now provide step-by-step repair instructions using these tools — would you like that?"
+                )
+
+                # reset the conversation state after producing the pydantic-style text output
                 self.reset()
                 return reply
 
@@ -841,7 +1007,7 @@ class AgenticChatbot:
                 self.current_state = "showing_summary"
                 
                 # Determine the appropriate message based on whether image was provided
-                if "photo" in self.image_analysis.lower() or "image" in self.image_analysis.lower():
+                if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
                     intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
                 else:
                     intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
@@ -877,7 +1043,7 @@ class AgenticChatbot:
             self.current_state = "showing_summary"
             
             # Determine the appropriate message based on whether image was provided
-            if "photo" in self.image_analysis.lower() or "image" in self.image_analysis.lower():
+            if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
                 intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
             else:
                 intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
@@ -893,7 +1059,7 @@ class AgenticChatbot:
         self.current_state = "asking_questions"
         
         # Determine the appropriate message based on whether image was provided
-        if "photo" in self.image_analysis.lower() or "image" in self.image_analysis.lower():
+        if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
             intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
         else:
             intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
