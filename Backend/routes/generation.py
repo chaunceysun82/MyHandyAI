@@ -27,5 +27,5 @@ def get_tools(projectId:str):
 def get_steps(projectId:str):
     cursor = project_collection.find_one({"_id": ObjectId(projectId)})
     user=cursor['userId']
-    tools= StepsAgentJSON()
-    return tools.generate("I want to hang a mirror")
+    steps= StepsAgentJSON()
+    return steps.generate("I want to hang a mirror in my living room")
