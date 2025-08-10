@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import MobileWrapper from "../../components/MobileWrapper";
 import {
 	submitOnboardingAnswers,
 	fetchOnboardingQuestions,
@@ -25,8 +26,10 @@ const Onboarding = () => {
 				setQuestions(data);
 				setLoading(false);
 
-				if ((!step || isNaN(step) || stepIndex < 0 || stepIndex >= data.length ) && 
-				location.pathname !== "/onboarding/1") {
+				if (
+					(!step || isNaN(step) || stepIndex < 0 || stepIndex >= data.length) &&
+					location.pathname !== "/onboarding/1"
+				) {
 					navigate("/onboarding/1", { replace: true });
 				}
 			} catch (err) {
@@ -37,19 +40,25 @@ const Onboarding = () => {
 		fetchData();
 	}, [step, stepIndex, navigate, location.pathname]);
 
-	const handleAnswer = (stepId, value) => {
+	const handleAnswer = useCallback((stepId, value) => {
 		setAnswers((prev) => ({
 			...prev,
 			[stepId]: value,
 		}));
-	};
+	}, []);
 
 	const handleNext = async () => {
 		if (stepIndex < questions.length - 1) {
 			navigate(`/onboarding/${stepIndex + 2}`);
 		} else {
-			submitOnboardingAnswers(answers);
-			navigate("/onboarding/complete");
+			// Submit onboarding answers (this will handle both new signup and existing user updates)
+			try {
+				await submitOnboardingAnswers(answers);
+				navigate("/onboarding/complete");
+			} catch (error) {
+				console.error("Error submitting onboarding answers:", error);
+				// Handle error - maybe show a message to the user
+			}
 		}
 	};
 
@@ -66,7 +75,21 @@ const Onboarding = () => {
 	};
 
 	if (loading || !questions.length) {
-		return <div className="text-center py-10">Loading...</div>;
+		return (
+			<MobileWrapper>
+				<div className="flex items-center justify-center min-h-screen">
+					<div className="flex space-x-2">
+						{[...Array(5)].map((_, i) => (
+							<div
+								key={i}
+								className="w-2 h-10 bg-indigo-500 rounded wave-bar"
+								style={{ animationDelay: `${i * 0.15}s` }}
+							/>
+						))}
+					</div>
+				</div>{" "}
+			</MobileWrapper>
+		);
 	}
 
 	const stepData = questions[stepIndex];

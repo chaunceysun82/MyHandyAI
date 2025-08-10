@@ -6,13 +6,12 @@ import Home from "./pages/Home.jsx";
 import Chat from "./pages/Chat.jsx";
 import MobileWrapper from "./components/MobileWrapper";
 import { useEffect } from "react";
-import { useNavigate, useLocation  } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import Onboarding from "./pages/onboarding/Onboarding.jsx";
 import OnboardingWelcome from "./pages/onboarding/OnboardingWelcome.jsx";
 import OnboardingComplete from "./pages/onboarding/OnboardingComplete.jsx";
 
 function App() {
-
 	const navigate = useNavigate();
 	const location = useLocation();
 
@@ -21,9 +20,8 @@ function App() {
 		if(token && (location.pathname === '/login' || location.pathname === '/signup')) {
 			navigate("/home");
 		}
-		
-		if(!token && location.pathname === '/')
-		{
+
+		if (!token && location.pathname === "/") {
 			navigate("/login");
 		}
 	}, [navigate, location.pathname]);

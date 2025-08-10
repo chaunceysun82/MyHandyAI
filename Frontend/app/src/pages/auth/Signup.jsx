@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { signupUser } from "../../services/auth";
 import {getAuth, GoogleAuthProvider, signInWithPopup} from "firebase/auth";
 import { app } from "../../firebase";
 import {ReactComponent as Google} from '../../assets/google.svg';
@@ -83,9 +82,19 @@ const Signup = () => {
 		}
 
 		try {
-			const result = await signupUser(formData);
-			console.log("Signed up:", result);
-			navigate("/login");
+			// Store user data temporarily for combined signup with onboarding
+			const userData = {
+				firstname: formData.firstname,
+				lastname: formData.lastname,
+				email: formData.email,
+				password: formData.password
+			};
+			
+			// Store user data for onboarding (no API call yet)
+			localStorage.setItem("tempUserData", JSON.stringify(userData));
+			console.log("User data stored for onboarding:", userData);
+			
+			navigate("/onboarding");
 		} catch (err) {
 			setError(err.message || "Signup failed.");
 		}

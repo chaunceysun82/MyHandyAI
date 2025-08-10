@@ -48,7 +48,7 @@ const Login = () => {
 			{
 				sessionStorage.setItem("authToken", user.uid);
 			}
-			navigate("/onboarding/");
+			navigate("/home");
 		}).catch((error) => {
 			console.log("An Error occured while google sign in.");
 		});
@@ -73,7 +73,7 @@ const Login = () => {
 			}
 
 			console.log("Login result: ", res);
-			navigate("/onboarding/")
+			navigate("/home")
 		}
 		catch (err) {
 			console.log("Login error: ", err.message);

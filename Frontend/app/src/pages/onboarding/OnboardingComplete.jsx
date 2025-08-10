@@ -1,10 +1,19 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import OnboardingMessageScreen from "../../components/onboarding/OnBoardingMessage"; // adjust the path as needed
 import "../../styles/animations/OnboardingComplete.css"; // keep animation styles
 
 const OnboardingComplete = () => {
 	const navigate = useNavigate();
+
+	useEffect(() => {
+		// Clean up any temporary data
+		const tempUserData = localStorage.getItem("tempUserData");
+		if (tempUserData) {
+			localStorage.removeItem("tempUserData");
+			console.log("Cleaned up temp user data");
+		}
+	}, []);
 
 	const TickAnimation = (
 		<svg
@@ -22,13 +31,18 @@ const OnboardingComplete = () => {
 		</svg>
 	);
 
+	const handleFinish = () => {
+		console.log("Onboarding completed, navigating to home");
+		navigate("/home");
+	};
+
 	return (
 		<OnboardingMessageScreen
 			icon={<div className="tick-container">{TickAnimation}</div>}
-			title="You’re all set!"
-			subtitle="From the information you’ve provided, we’ve set up a personalized system just for you."
+			title="You're all set!"
+			subtitle="From the information you've provided, we've set up a personalized system just for you."
 			buttonText="Finish"
-			onContinue={() => navigate("/home")}
+			onContinue={handleFinish}
 		/>
 	);
 };
