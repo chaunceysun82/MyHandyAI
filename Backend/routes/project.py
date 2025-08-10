@@ -42,6 +42,8 @@ def list_projects(user_id: str):
 
         if not docs:
             return {"message":"No Projects found", "projects":[]}
+        
+        print (docs)
 
         results = list(docs)
         return {"message":"Projects found", "projects":results}
