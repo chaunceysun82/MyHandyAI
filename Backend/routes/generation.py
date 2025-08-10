@@ -19,6 +19,6 @@ router = APIRouter(prefix="/generation", tags=["generation"])
 @router.post("/tools")
 def get_tools(projectId:str):
     cursor = project_collection.find_one({"_id": ObjectId(projectId)})
-    user=cursor['user']
+    user=cursor['userId']
     tools= ToolsAgentJSON()
     return tools.generate("I want to hang a mirror")
