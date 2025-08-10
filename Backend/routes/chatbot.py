@@ -75,9 +75,17 @@ def get_latest_chatbot(session_id):
     else:
         return AgenticChatbot()
 
+@router.get("/history")
 def get_conversation_history(session_id):
     cursor = conversations_collection.find({"session_id": session_id}).sort("timestamp", 1)
     return [{"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]} for doc in cursor]
+
+@router.get("/session")
+def get_conversation_history(payload: StartChat):
+    cursor = conversations_collection.find_one({"user": payload.user, "project": payload.project,"chat_type":"project_intro"}).sort("timestamp", 1)
+    if not cursor:
+        raise HTTPException(status_code=404, detail=f"session not found")
+    return {"session": cursor["session_id"]}
 
 def reset_session(session_id, user, project):
     chatbot = AgenticChatbot()
@@ -89,6 +97,8 @@ def delete_session_docs(session_id):
 
 # Store chatbot instances by session
 chatbot_instances = {}
+
+
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_bot(chat_message: ChatMessage):
