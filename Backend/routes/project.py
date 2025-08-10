@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import List
+from fastapi.encoders import jsonable_encoder
 from bson import ObjectId
 from db import project_collection, conversations_collection
 from datetime import datetime
@@ -40,12 +41,19 @@ def list_projects(user_id: str):
     try:
         docs = project_collection.find({ "userId": user_id })
 
-        if not docs:
-            return {"message":"No Projects found", "projects":[]}
         
         print (docs)
 
         results = list(docs)
+
+        if not results:
+            return {"message":"No Projects found", "projects":[]}
+
+        payload = {"message": "Projects found", "projects": results}
+
+        # Convert all ObjectIds (including nested ones) to strings
+        return jsonable_encoder(payload, custom_encoder={ObjectId: str})
+
         return {"message":"Projects found", "projects":results}
     except:
         print(f"❌ There was an error fetching projects for {user_id}")
