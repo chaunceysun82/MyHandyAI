@@ -6,12 +6,12 @@ import base64
 from PIL import Image
 import re
 import json
-from langchain_community.tools.tavily_search import TavilySearchResults
+# from langchain_community.tools.tavily_search import TavilySearchResults
 
 load_dotenv()
 
-#search=TavilySearchResults(api_key=os.environ.get("TAVILY_API_KEY"))
-#ASIN_DATA_API_KEY=os.getenv("ASIN_DATA_API_KEY")
+# search=TavilySearchResults(api_key=os.environ.get("TAVILY_API_KEY"))
+# ASIN_DATA_API_KEY=os.getenv("ASIN_DATA_API_KEY")
 
 def load_prompt(filename):
     """Load prompt from file, removing comment lines starting with #"""
@@ -70,6 +70,8 @@ question_clarification_prompt_text = load_prompt("question_clarification_prompt.
 problem_recognition_prompt_text = load_prompt("problem_recognition_prompt.txt")
 image_analysis_prompt_text = load_prompt("image_analysis_prompt.txt")
 description_assessment_prompt_text = load_prompt("description_assessment_prompt.txt")
+tools_prompt_text = load_prompt("tools_prompt.txt")
+steps_prompt_text = load_prompt("steps_prompt.txt")
 
 class ProblemRecognitionAgent:
     """Agent 1: Recognizes problems and requests relevant photos"""
@@ -485,11 +487,14 @@ Please create a summary of this DIY problem."""
 #         tool_name, description, dimensions (optional), risk_factor, safety_measure.
 #         """
         
+#         # Use external prompt file if available
+#         base_prompt = tools_prompt_text.strip() or "You are an assistant that converts a DIY problem summary into a structured list of tools and materials."
 #         system_prompt = (
-#             "You are an assistant that converts a DIY problem summary into a structured list of tools and materials. "
+#             f"{base_prompt}\n"
 #             "Produce a JSON array ONLY (no extra text) where each item is an object with the following keys:\n"
 #             " - tool_name (string)\n"
 #             " - description (string): provide a descriptive explanation of the tool's use and any important attributes such as type, typical dimensions, or variants.\n"
+#             " - dimensions (string, OPTIONAL): if the summary includes numeric measurements or if typical/recommended dimensions or sizes are relevant, include them here (e.g., '60 x 90 cm', '1/4 inch drill bit'). If not applicable, omit or set to ''.\n"
 #             " - dimensions (string, OPTIONAL): if the summary includes numeric measurements or if typical/recommended dimensions or sizes are relevant, include them here (e.g., '60 x 90 cm', '1/4 inch drill bit'). If not applicable, omit or set to ''.\n"
 #             " - risk_factor (string): a descriptive risk assessment (state what can go wrong, severity, and likely failure modes).\n"
 #             " - safety_measure (string): actionable safety steps, PPE recommendations, and precautions specific to using the tool.\n\n"
@@ -511,6 +516,7 @@ Please create a summary of this DIY problem."""
 #                 raw = r.json()["choices"][0]["message"]["content"].strip()
 #                 try:
 #                     tools = clean_and_parse_json(raw)
+#                     tools = clean_and_parse_json(raw)
 #                 except Exception:
 #                     # Try to extract a JSON array substring inside the response
 #                     try:
@@ -528,7 +534,7 @@ Please create a summary of this DIY problem."""
 #             fallback_tools = []
 #             low = summary_text.lower()
 #             # detect numeric dimensions from summary
-#             dim_matches = re.findall(r"(\d+\s*(?:cm|mm|in|inch|kg|lb|lbs))", summary_text, flags=re.I)
+#             dim_matches = re.findall(r"(\d+\s*(?:cm|mm|in|inch|kg|lb|lbs))", usage, flags=re.I)
 #             inferred_dims = dim_matches[0] if dim_matches else ""
 
 #             if "mirror" in low or "hang" in low:
@@ -591,14 +597,90 @@ Please create a summary of this DIY problem."""
 #             lines.append(f"Tool name : {name}\n")
 #             if len(results):
 #                 lines.append(f"Amazon URL : {results[0].get('url')}\n")
-#             lines.append(f"Tool description : {desc if desc else '<Description not available>'}\n")
+#             lines.append(f"Tool description : {description if desc else '<Description not available>'}\n")
 #             if dims:
 #                 lines.append(f"Tool dimensions : {dims}\n")
 #             lines.append(f"Risk Factor : {risk if risk else '<Risk Factors>'}\n")
 #             lines.append(f"Safety Measure: {safety if safety else '<Safety Measures>'}\n")
 #             lines.append("\n\n\n")  # blank line between tools
 
-#         return "\n".join(lines).rstrip()
+#         # Generate steps and include them
+#         steps_output = self._generate_steps_with_tools(summary_text)
+        
+#         # Combine tools and steps
+#         tools_output = "\n".join(lines).rstrip()
+#         combined_output = f"{tools_output}\n\n{'='*50}\n\n📋 **Step-by-Step Plan:**\n{steps_output}"
+        
+#         return combined_output
+    
+#     def _generate_steps_with_tools(self, summary_text: str) -> str:
+#         """Generate steps using StepsTextAgent and return formatted text"""
+#         try:
+#             steps_agent = StepsTextAgent()
+#             return steps_agent.create_steps_text(summary_text)
+#         except Exception as e:
+#             print(f"Error generating steps: {e}")
+#             return self._get_fallback_steps()
+    
+#     def _get_fallback_steps(self) -> str:
+#         """Fallback steps if generation fails"""
+#         return (
+#             "Here is your step-by-step plan:\n\n"
+#             "Step 1/4 : Locate studs\nTime: 10-15 min\nDescription: Find studs for secure mounting.\n\n"
+#             "Step 2/4 : Mark mounting points\nTime: 10-15 min\nDescription: Measure and mark bracket positions.\n\n"
+#             "Step 3/4 : Install brackets\nTime: 15-20 min\nDescription: Drill pilot holes and mount wall brackets.\n\n"
+#                     "Step 4/4 : Attach item\nTime: 5-10 min\nDescription: Mount securely and check level."
+#         )
+
+# class StepsTextAgent:
+#     """
+#     Streamlit demo agent: Given the final summary, return a human-readable
+#     step-by-step plan as plain text (no JSON). Icons/images are skipped.
+#     """
+#     def __init__(self):
+#         self.api_key = os.getenv("OPENAI_API_KEY")
+#         self.api_url = "https://api.openai.com/v1/chat/completions"
+#         self.headers = {
+#             "Authorization": f"Bearer {self.api_key}",
+#             "Content-Type": "application/json",
+#         }
+
+#     def create_steps_text(self, summary_text: str) -> str:
+#         base_prompt = steps_prompt_text.strip() or "You are an expert DIY planner."
+#         system_prompt = (
+#             f"{base_prompt}\n"
+#             "Return a concise step-by-step plan as plain text (no JSON).\n"
+#             "For each step, include:\n"
+#             "- Step X/Y : <short title>\n"
+#             "- Time: <approx minutes>\n"
+#             "- Description: <1-2 line guidance>\n"
+#             "Add a short intro line summarizing total steps and estimated time."
+#         )
+
+#         payload = {
+#             "model": "gpt-4.1-mini",
+#             "messages": [
+#                 {"role": "system", "content": system_prompt},
+#                 {"role": "user", "content": f"Summary:\n{summary_text}\nReturn the plan as plain text."},
+#             ],
+#             "max_tokens": 900,
+#             "temperature": 0.5,
+#         }
+
+#         try:
+#             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=25)
+#             if r.status_code == 200:
+#                 return r.json()["choices"][0]["message"]["content"].strip()
+#         except Exception:
+#             pass
+
+#         return (
+#             "Here is your step-by-step plan:\n\n"
+#             "Step 1/4 : Locate studs\nTime: 10-15 min\nDescription: Find studs for secure mounting.\n\n"
+#             "Step 2/4 : Mark mounting points\nTime: 10-15 min\nDescription: Measure and mark bracket positions.\n\n"
+#             "Step 3/4 : Install brackets\nTime: 15-20 min\nDescription: Drill pilot holes and mount wall brackets.\n\n"
+#             "Step 4/4 : Attach item\nTime: 5-10 min\nDescription: Mount securely and check level."
+#         )
 
 class QuestionClarificationAgent:
     """Agent 4: Uses an LLM to (1) detect 'skip', (2) detect 'don't know' and rephrase,
@@ -841,7 +923,8 @@ class AgenticChatbot:
         self.problem_agent         = ProblemRecognitionAgent()
         self.image_agent           = ImageAnalysisAgent()
         self.summary_agent         = SummaryAgent()
-        #self.pydantic_agent        = PydanticToolAgent()   # <-- updated agent added here
+        # self.pydantic_agent        = PydanticToolAgent()   # <-- commented out for production, using planner.py instead
+        # self.steps_agent           = StepsTextAgent()
         self.clarification_agent   = QuestionClarificationAgent()
         self.description_agent     = DescriptionAssessmentAgent()
         self.reset()
@@ -941,12 +1024,10 @@ class AgenticChatbot:
                 )
 
                 # Generate TEXT-formatted output using the updated agent
-                tools_text = self.pydantic_agent.create_pydantic_output(final_summary)
-
-                reply = (
-                    f"{tools_text}\n\n"
-                    "If you'd like, I can now provide step-by-step repair instructions using these tools — would you like that?"
-                )
+                # tools_text = self.pydantic_agent.create_pydantic_output(final_summary)  # Commented out - using planner.py instead
+                
+                # For now, return a simple message indicating the summary is complete
+                reply = f"Summary completed successfully!\n\n{final_summary}\n\nUse the planner.py classes for JSON output in production."
 
                 # reset the conversation state after producing the pydantic-style text output
                 self.reset()
