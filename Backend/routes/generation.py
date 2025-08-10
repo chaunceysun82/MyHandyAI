@@ -22,3 +22,10 @@ def get_tools(projectId:str):
     user=cursor['userId']
     tools= ToolsAgentJSON()
     return tools.generate("I want to hang a mirror")
+
+@router.post("/steps")
+def get_steps(projectId:str):
+    cursor = project_collection.find_one({"_id": ObjectId(projectId)})
+    user=cursor['userId']
+    tools= StepsAgentJSON()
+    return tools.generate("I want to hang a mirror")
