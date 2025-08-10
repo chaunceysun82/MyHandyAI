@@ -49,7 +49,7 @@ def list_projects(user_id: str):
             return {"message":"No Projects found", "projects":[]}
 
         results = list(docs)
-        return {"message":"No Projects found", "projects":results}
+        return {"message":"Projects found", "projects":results}
     except:
         print(f"❌ There was an error fetching projects for {user_id}")
         raise HTTPException(status_code=400, detail="Projects Error")

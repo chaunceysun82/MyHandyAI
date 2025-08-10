@@ -51,14 +51,14 @@ class SessionInfo(BaseModel):
 
 # ==== Utility Functions ====
 
-def log_message(session_id, role, message, chatbot, user, project, message_type="text"):
+def log_message(session_id, role, message, chatbot, user, project, message_type="project_intro"):
     doc = {
         "session_id": session_id,
         "user": user,
         "project": project,
         "role": role,
         "message": message,
-        "message_type": message_type,
+        "chat_type": message_type,
         "timestamp": datetime.utcnow(),
         "chatbot_state": pickle.dumps(chatbot),
         "current_state": getattr(chatbot, "current_state", None)
@@ -131,7 +131,7 @@ async def start_new_session(payload: StartChat):
     session_id = uuid.uuid4().hex
     chatbot = AgenticChatbot()
     intro_message = chatbot.greet()
-    log_message(session_id, "assistant", intro_message, chatbot, payload.user, payload.project, message_type="intro")
+    log_message(session_id, "assistant", intro_message, chatbot, payload.user, payload.project, message_type="project_intro")
     return ChatSession(session_id=session_id, intro_message=intro_message)
 
 @router.get("/session/{session_id}/history")
