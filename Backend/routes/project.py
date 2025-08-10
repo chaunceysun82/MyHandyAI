@@ -50,7 +50,7 @@ def list_projects(user_id: str):
         raise HTTPException(status_code=400, detail="Projects Error")
         
 
-@router.get("/projects/{project_id}")
+@router.get("/project/{project_id}")
 def get_project(project_id: str):
     project = project_collection.find_one({"_id": ObjectId(project_id)})
     if not project:
