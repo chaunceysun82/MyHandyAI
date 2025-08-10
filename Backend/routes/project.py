@@ -29,11 +29,6 @@ def create_project(project: Project):
     result = project_collection.insert_one(project_dict)
     project_id = result.inserted_id
 
-    conversations_collection.insert_one({
-        "projectId": project_id,
-        "type": "agent1"
-    })
-
     return {"id": str(project_id)}
 
 @router.get("/projects")
