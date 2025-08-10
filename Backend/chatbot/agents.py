@@ -6,8 +6,12 @@ import base64
 from PIL import Image
 import re
 import json
+from langchain_community.tools.tavily_search import TavilySearchResults
 
 load_dotenv()
+
+search=TavilySearchResults(api_key=os.environ.get("TAVILY_API_KEY"))
+ASIN_DATA_API_KEY=os.getenv("ASIN_DATA_API_KEY")
 
 def load_prompt(filename):
     """Load prompt from file, removing comment lines starting with #"""
@@ -47,6 +51,17 @@ def clean_and_parse_json(raw_str):
         return json.loads(cleaned)
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON format: {e}")
+
+def extract_asin(url):
+    match = re.search(r"(?:dp|gp/product)/([A-Z0-9]{10})", url)
+    return match.group(1) if match else None
+
+def get_asin_data(asin):
+    endpoint = "https://api.asindataapi.com/product"
+    params = {"api_key": ASIN_DATA_API_KEY, "asin": asin}
+    resp = requests.get(endpoint, params=params)
+    resp.raise_for_status()
+    return resp.json()
 
 # Load the prompts
 qa_prompt_text = load_prompt("qa_prompt.txt")
@@ -443,6 +458,147 @@ Please create a summary of this DIY problem."""
         # Fallback summary
         return f"I understand you have a {problem_type.replace('_', ' ')} issue. Based on the image and your answers, I can help you resolve this problem."
 
+class PydanticToolAgent:
+    """
+    Updated Agent: Given the final summary, generate a TEXT-formatted
+    list of tools with descriptive fields and dimensions (if available).
+    Output is plain text (no code fences) with one field per line:
+      Tool name : ...
+      Tool description : ...
+      Tool dimensions : ...   <-- only if provided by LLM
+      Risk Factor : ...
+      Safety Measure: ...
+    Blank line between tools.
+    """
+    def __init__(self):
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_url = "https://api.openai.com/v1/chat/completions"
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+    def create_pydantic_output(self, summary_text: str) -> str:
+        """
+        Returns plain-text string (chat) formatted as requested.
+        The LLM is instructed to return a JSON array ONLY with:
+        tool_name, description, dimensions (optional), risk_factor, safety_measure.
+        """
+        
+        system_prompt = (
+            "You are an assistant that converts a DIY problem summary into a structured list of tools and materials. "
+            "Produce a JSON array ONLY (no extra text) where each item is an object with the following keys:\n"
+            " - tool_name (string)\n"
+            " - description (string): provide a descriptive explanation of the tool's use and any important attributes such as type, typical dimensions, or variants.\n"
+            " - dimensions (string, OPTIONAL): if the summary includes numeric measurements or if typical/recommended dimensions or sizes are relevant, include them here (e.g., '60 x 90 cm', '1/4 inch drill bit'). If not applicable, omit or set to ''.\n"
+            " - risk_factor (string): a descriptive risk assessment (state what can go wrong, severity, and likely failure modes).\n"
+            " - safety_measure (string): actionable safety steps, PPE recommendations, and precautions specific to using the tool.\n\n"
+            "Be detailed and explicit: descriptions, risk factors, and safety measures should be several words to a few sentences (not single words). "
+            "Return 3 relevant tools when possible. Do NOT include any explanatory prose outside the JSON array. Return JSON only."
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Summary:\n{summary_text}\n\nReturn the JSON array now."}
+        ]
+
+        tools = None
+        try:
+            r = requests.post(self.api_url, headers=self.headers,
+                              json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 900},
+                              timeout=25)
+            if r.status_code == 200:
+                raw = r.json()["choices"][0]["message"]["content"].strip()
+                try:
+                    tools = clean_and_parse_json(raw)
+                except Exception:
+                    # Try to extract a JSON array substring inside the response
+                    try:
+                        m = re.search(r"\[.*\]", raw, flags=re.DOTALL)
+                        if m:
+                            tools = json.loads(m.group(0))
+                    except Exception:
+                        tools = None
+        except Exception:
+            tools = None
+
+        # If parsing failed or returned something not useful, create a descriptive fallback
+        if not isinstance(tools, list) or not tools:
+            # Heuristic fallback: inspect summary for keywords and dimensions
+            fallback_tools = []
+            low = summary_text.lower()
+            # detect numeric dimensions from summary
+            dim_matches = re.findall(r"(\d+\s*(?:cm|mm|in|inch|kg|lb|lbs))", summary_text, flags=re.I)
+            inferred_dims = dim_matches[0] if dim_matches else ""
+
+            if "mirror" in low or "hang" in low:
+                fallback_tools = [
+                    {
+                        "tool_name": "Stud Finder",
+                        "description": "Handheld electronic device used to detect wood or metal studs and sometimes live wiring behind walls; recommended for locating secure mounting points for heavy fixtures.",
+                        "dimensions": "",
+                        "risk_factor": "If inaccurate, may lead to anchors being placed incorrectly, risking fixture failure or hitting hidden electrical wiring which can cause shock or short circuits.",
+                        "safety_measure": "Scan the wall multiple times, avoid areas where wiring runs vertically from outlets; when unsure, confirm with small pilot holes or a secondary locating method."
+                    },
+                    {
+                        "tool_name": "Power Drill (with appropriate bits)",
+                        "description": "Cordless or corded drill used for pilot holes and installing anchors; choose drill size based on anchor/drywall type and screw diameter.",
+                        "dimensions": inferred_dims or "",
+                        "risk_factor": "Drilling can penetrate wiring/plumbing causing electrocution or water leaks; bit kickback can cause hand injuries.",
+                        "safety_measure": "Wear safety glasses and gloves, ensure drill bits are sharp and correct size, keep a firm grip, and do not drill where wiring or pipes are expected."
+                    },
+                    {
+                        "tool_name": "Heavy-duty Wall Anchors (toggle or molly bolts)",
+                        "description": "Anchors designed to hold heavy loads on drywall when studs are unavailable; choose anchors rated for the mirror's weight.",
+                        "dimensions": "",
+                        "risk_factor": "Underrated anchors or improper installation may fail, leading to the fixture falling and causing injury or damage.",
+                        "safety_measure": "Select anchors with verified weight rating greater than the object's weight, follow installation instructions, and test load carefully before finalizing."
+                    }
+                ]
+            else:
+                # generic fallback
+                fallback_tools = [
+                    {
+                        "tool_name": "Protective Gloves",
+                        "description": "Gloves to protect hands from cuts, abrasions, and drill slippage during the job.",
+                        "dimensions": "",
+                        "risk_factor": "Low — ill-fitting gloves may reduce dexterity.",
+                        "safety_measure": "Use gloves sized correctly and appropriate for the task."
+                    },
+                    {
+                        "tool_name": "Measuring Tape",
+                        "description": "Tape measure to take accurate measurements and mark mounting points precisely.",
+                        "dimensions": "",
+                        "risk_factor": "Pinch risk during retraction.",
+                        "safety_measure": "Retract tape slowly and keep fingers clear of the edge."
+                    }
+                ]
+            tools = fallback_tools
+
+        lines = []
+        lines.append("ASSISTANT : Here are the tools and materials required for your task:\n\n")
+        for t in tools:
+            
+            name = (t.get("tool_name") or t.get("name") or "Unknown Tool").strip()
+            desc = (t.get("description") or "").strip()
+            dims = (t.get("dimensions") or "").strip()
+            risk = (t.get("risk_factor") or t.get("risk") or "").strip()
+            safety = (t.get("safety_measure") or t.get("safety") or "").strip()
+
+            search_query="Can you provide me the purchase link and the price of the "+ name+" from Amazon?"
+            results=search.invoke(search_query)
+
+            lines.append(f"Tool name : {name}\n")
+            if len(results):
+                lines.append(f"Amazon URL : {results[0].get('url')}\n")
+            lines.append(f"Tool description : {desc if desc else '<Description not available>'}\n")
+            if dims:
+                lines.append(f"Tool dimensions : {dims}\n")
+            lines.append(f"Risk Factor : {risk if risk else '<Risk Factors>'}\n")
+            lines.append(f"Safety Measure: {safety if safety else '<Safety Measures>'}\n")
+            lines.append("\n\n\n")  # blank line between tools
+
+        return "\n".join(lines).rstrip()
 
 class QuestionClarificationAgent:
     """Agent 4: Uses an LLM to (1) detect 'skip', (2) detect 'don't know' and rephrase,
@@ -488,9 +644,162 @@ class QuestionClarificationAgent:
         except Exception:
             
             fallback = (
-                f"I didn’t quite catch that. Could you clarify your answer to:\n\n**{question}**"
+                f"I didn't quite catch that. Could you clarify your answer to:\n\n**{question}**"
             )
             return (fallback, False)
+
+    def detect_revision_request(self, user_message: str, current_question: str, question_history: List[str]) -> tuple[bool, Optional[int], str]:
+        """
+        Detects if user wants to revise a previous answer using natural language.
+        
+        Returns:
+            is_revision_request: bool - True if user wants to go back
+            target_question_index: Optional[int] - Which question to go back to (None if unclear)
+            clarification_message: str - Message to send to user
+        """
+        
+        system_prompt = f"""You are a revision detection agent. The user is currently answering question {len(question_history) + 1}.
+
+Current question: "{current_question}"
+
+Previous questions:
+{chr(10).join(f"{i+1}. {q}" for i, q in enumerate(question_history))}
+
+User message: "{user_message}"
+
+Determine if the user wants to:
+1. Go back to a specific previous question (using natural language reference)
+2. Just clarify their current answer
+3. Continue normally
+
+Return JSON with:
+- "is_revision_request": true/false
+- "target_question_index": number (1-based) or null
+- "message": explanation for user
+- "action": "go_back", "clarify_current", or "continue"
+- "confidence": 0.0-1.0 (how confident you are in the match)
+
+Examples:
+- "I want to change my answer about the wall type" → go_back, target=wall question index
+- "I made a mistake in the previous question about dimensions" → go_back, target=dimension question index
+- "Actually, let me re-answer the question about materials" → go_back, target=materials question index
+- "I meant to say..." → clarify_current
+- "The answer is..." → continue
+
+Use semantic matching to find the best question match."""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ]
+        
+        try:
+            response = requests.post(
+                self.api_url, headers=self.headers,
+                json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 300},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = clean_and_parse_json(response.json()["choices"][0]["message"]["content"])
+                
+                is_revision = result.get("is_revision_request", False)
+                target_index = result.get("target_question_index")
+                message = result.get("message", "")
+                action = result.get("action", "continue")
+                confidence = result.get("confidence", 0.0)
+                
+                # Only proceed if confidence is high enough
+                if confidence >= 0.7:
+                    return is_revision, target_index, message
+                elif is_revision:
+                    # Low confidence - ask user to clarify with dynamic examples
+                    if question_history:
+                        # Create examples based on actual questions asked
+                        examples = []
+                        for i, q in enumerate(question_history[:3]):  # Show up to 3 examples
+                            # Extract key topic from question
+                            topic = self._extract_question_topic(q)
+                            examples.append(f"'{topic}'")
+                        
+                        example_text = " or ".join(examples)
+                        return True, None, f"I'm not sure which question you want to re-answer. Could you be more specific? For example: {example_text}"
+                    else:
+                        return True, None, "I'm not sure which question you want to re-answer. Could you be more specific?"
+                
+        except Exception:
+            pass
+        
+        # Fallback: simple keyword detection
+        revision_keywords = ["change", "mistake", "wrong", "re-answer", "previous", "go back"]
+        if any(keyword in user_message.lower() for keyword in revision_keywords):
+            if question_history:
+                # Create examples based on actual questions asked
+                examples = []
+                for i, q in enumerate(question_history[:3]):  # Show up to 3 examples
+                    # Extract key topic from question
+                    topic = self._extract_question_topic(q)
+                    examples.append(f"'{topic}'")
+                
+                example_text = " or ".join(examples)
+                return True, None, f"Which question would you like to re-answer? Please be specific, like {example_text}"
+            else:
+                return True, None, "Which question would you like to re-answer? Please be specific."
+        
+        return False, None, ""
+    
+    def _extract_question_topic(self, question: str) -> str:
+        """
+        Extract a short, descriptive topic from a question for use in examples.
+        """
+        # Common patterns to extract topics
+        topic_patterns = [
+            r"what.*?(wall|material|type|size|dimension|weight|color)",
+            r"where.*?(clog|leak|problem|issue)",
+            r"how.*?(heavy|big|long|wide)",
+            r"do you.*?(have|know|experience|access)",
+            r"have you.*?(tried|used|checked)",
+            r"what.*?(tools|equipment|supplies)",
+            r"when.*?(start|happen|notice)",
+            r"is it.*?(affecting|causing|damaging)"
+        ]
+        
+        question_lower = question.lower()
+        
+        for pattern in topic_patterns:
+            match = re.search(pattern, question_lower)
+            if match:
+                # Extract the key word and make it more readable
+                key_word = match.group(1)
+                if key_word == "wall":
+                    return "wall type"
+                elif key_word == "material":
+                    return "material type"
+                elif key_word == "dimension":
+                    return "dimensions"
+                elif key_word == "clog":
+                    return "clog location"
+                elif key_word == "leak":
+                    return "leak location"
+                elif key_word == "tools":
+                    return "available tools"
+                elif key_word == "experience":
+                    return "experience level"
+                else:
+                    return key_word.replace("_", " ")
+        
+        # Fallback: extract first few meaningful words
+        words = question.split()
+        meaningful_words = []
+        for word in words[:4]:  # Take first 4 words
+            if len(word) > 3 and word.lower() not in ["what", "where", "when", "how", "do", "you", "have", "the", "and", "for", "with", "that", "this"]:
+                meaningful_words.append(word)
+        
+        if meaningful_words:
+            return " ".join(meaningful_words[:2])  # Return first 2 meaningful words
+        
+        # Final fallback
+        return "previous question"
         
 class DescriptionAssessmentAgent:
     """Agent: Decides if the user’s initial problem description is
@@ -507,7 +816,7 @@ class DescriptionAssessmentAgent:
         """Return True if description is complete enough to skip questions."""
         system_prompt = f"""{description_assessment_prompt_text}
 
-Description: \"\"\"{description}\"\"\"
+Description: \"\"\"{description}\"\"\" 
 """
         payload = {
             "model": "gpt-4.1-mini",
@@ -532,6 +841,7 @@ class AgenticChatbot:
         self.problem_agent         = ProblemRecognitionAgent()
         self.image_agent           = ImageAnalysisAgent()
         self.summary_agent         = SummaryAgent()
+        self.pydantic_agent        = PydanticToolAgent()   # <-- updated agent added here
         self.clarification_agent   = QuestionClarificationAgent()
         self.description_agent     = DescriptionAssessmentAgent()
         self.reset()
@@ -587,6 +897,22 @@ class AgenticChatbot:
         # 3) Q&A loop
         if self.current_state == "asking_questions":
             current_q = self.questions[self.current_question_index]
+            
+            # NEW: Check for revision request first
+            is_revision, target_index, revision_message = self.clarification_agent.detect_revision_request(
+                user_message, current_q, self.questions[:self.current_question_index]
+            )
+            
+            if is_revision:
+                if target_index is not None and 1 <= target_index <= len(self.questions):
+                    # Go back to specific question
+                    self.current_question_index = target_index - 1
+                    return f"{revision_message}\n\n**Question {target_index}:**\n{self.questions[target_index - 1]}"
+                else:
+                    # Ask user to specify which question
+                    return revision_message
+            
+            # Continue with normal clarification logic
             clarification, advance = self.clarification_agent.handle_user_response(
                 current_q, user_message
             )
@@ -604,6 +930,7 @@ class AgenticChatbot:
         if self.current_state == "showing_summary":
             resp = self.summary_agent.affirmative_negative_response(user_message)
             if resp == 1:
+                # User confirmed the summary; create final summary and hand over to PydanticToolAgent
                 combined = {0: self.user_description}
                 for idx, ans in self.user_answers.items():
                     combined[idx + 1] = ans
@@ -612,8 +939,16 @@ class AgenticChatbot:
                     self.image_analysis,
                     combined
                 )
-                reply = f"Perfect! Now we can proceed with your step by step guide.\n\n" \
-                        f"I'll provide the detailed steps for your {self.problem_type.replace('_',' ')}."
+
+                # Generate TEXT-formatted output using the updated agent
+                tools_text = self.pydantic_agent.create_pydantic_output(final_summary)
+
+                reply = (
+                    f"{tools_text}\n\n"
+                    "If you'd like, I can now provide step-by-step repair instructions using these tools — would you like that?"
+                )
+
+                # reset the conversation state after producing the pydantic-style text output
                 self.reset()
                 return reply
 
@@ -672,7 +1007,7 @@ class AgenticChatbot:
                 self.current_state = "showing_summary"
                 
                 # Determine the appropriate message based on whether image was provided
-                if "photo" in self.image_analysis.lower() or "image" in self.image_analysis.lower():
+                if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
                     intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
                 else:
                     intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
@@ -708,7 +1043,7 @@ class AgenticChatbot:
             self.current_state = "showing_summary"
             
             # Determine the appropriate message based on whether image was provided
-            if "photo" in self.image_analysis.lower() or "image" in self.image_analysis.lower():
+            if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
                 intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
             else:
                 intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
@@ -724,7 +1059,7 @@ class AgenticChatbot:
         self.current_state = "asking_questions"
         
         # Determine the appropriate message based on whether image was provided
-        if "photo" in self.image_analysis.lower() or "image" in self.image_analysis.lower():
+        if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
             intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
         else:
             intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
