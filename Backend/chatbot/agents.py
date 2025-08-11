@@ -1224,6 +1224,7 @@ class AgenticChatbot:
         self.current_state          = "waiting_for_problem"
         self.problem_type           = None
         self.user_description       = ""
+        self.summary                = ""
         self.questions              = []
         self.current_question_index = 0
         self.user_answers           = {}
@@ -1323,7 +1324,7 @@ class AgenticChatbot:
                 )
 
                 # reset the conversation state after producing the pydantic-style text output
-                self.reset()
+                self.current_state= "complete"
                 return reply
 
             if resp == 2:

@@ -18,13 +18,6 @@ def create_project(project: Project):
         "projectTitle": project.projectTitle,
         "userId": project.userId,
         "createdAt": datetime.utcnow(),
-        "description": "",
-        "detailDescription": "",
-        "projectImages": [],
-        "imagesDescription": "",
-        "userPrevExperience": "",
-        "currentTools": [],
-        "currentToolsImages": [],
     }
 
     result = project_collection.insert_one(project_dict)

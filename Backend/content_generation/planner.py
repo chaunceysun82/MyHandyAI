@@ -3,7 +3,7 @@ import re
 import json
 import requests
 
-from .agents import load_prompt, clean_and_parse_json
+from ..chatbot.agents import load_prompt, clean_and_parse_json
 
 tools_prompt_text = load_prompt("tools_prompt.txt")
 steps_prompt_text = load_prompt("steps_prompt.txt")
