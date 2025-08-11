@@ -1,6 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import { MoonIcon, SunIcon } from "@heroicons/react/24/solid";
+import {ReactComponent as Microphone} from '../assets/recorder-microphone.svg';
+import {ReactComponent as File} from '../assets/file-upload.svg';
+import SpeechRecognition, {useSpeechRecognition} from 'react-speech-recognition';
 
 const Chat = ({ projectId = "default" }) => {
   const STORAGE_KEY = `chatMessages`;
@@ -13,11 +16,64 @@ const Chat = ({ projectId = "default" }) => {
 
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const messagesEndRef = useRef(null);
+
+  const fileInputRef = useRef(null);
 
   const [theme, setTheme] = useState("light");
 
   const URL = process.env.REACT_APP_BASE_URL;
+
+  const {transcript, listening, resetTranscript, browserSupportsSpeechRecognition} = useSpeechRecognition();
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({behavior: 'smooth'})
+  }, [messages]);
+
+
+  useEffect(() => {
+    if(transcript)
+    {
+      setInput(transcript);
+    }
+  }, [transcript]);
+
+
+  const handleMicrophone = () => {
+    if(!browserSupportsSpeechRecognition)
+    {
+      alert("Browser does not support speech recognition.");
+      return;
+    }
+    if(listening)
+    {
+      SpeechRecognition.stopListening();
+    }else{
+      resetTranscript();
+      SpeechRecognition.startListening({
+        continuous: false,
+        language: 'en-US'
+      });
+    }
+  };
+
+  const fileHandle = () => 
+  {
+    fileInputRef.current?.click();
+  }
+
+  const removeFile = (index) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  }
+
+  const fileHandleSelect = (event) => {
+    const files = Array.from(event.target.files);
+    setSelectedFiles(prev => [...prev, ...files]);
+    event.target.value = ''
+  }
+
+
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
@@ -48,26 +104,72 @@ const Chat = ({ projectId = "default" }) => {
   }, [projectId]);
 
   const handleSend = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() && selectedFiles.length === 0) return;
 
-    const userMsg = { sender: "user", content: input };
+
+    let messageContent = input.trim();
+    
+    if (selectedFiles.length > 0) 
+    {
+      const fileNames = selectedFiles.map(f => f.name).join(', ');
+      if (messageContent) {
+        messageContent = `${messageContent}\n\nFiles: ${fileNames}`;
+      } 
+      else 
+      {
+        messageContent = `Files: ${fileNames}`;
+      }
+    }
+
+
+    const userMsg = { 
+      sender: "user", 
+      content: messageContent,
+      // files: selectedFiles.length > 0 ? selectedFiles.map(f => f.name) : undefined 
+    };
+
     setMessages((prev) => [...prev, userMsg]);
-    setInput("");
 
-    try {
+    const currInput = input;
+    const currFiles = selectedFiles;
+
+    setInput("");
+    setSelectedFiles([]);
+    resetTranscript();
+
+    try 
+    {
+
+      const formData = new FormData();
+
+      formData.append('message', currInput);
+      formData.append('user', 'test');
+      formData.append('project', 'test');
+      formData.append('session_id', sessionId);
+      
+      
+      currFiles.forEach((file, index) => {
+        formData.append(`file_${index}`, file);
+      });
+
       const res = await axios.post(
         `${URL}/chatbot/chat`,
-        {
-          message: input,
-          user: "test",
-          project: "test",
-          session_id: sessionId,
-        },
-        { headers: { "Content-Type": "application/json" } }
+        // {
+        //   message: input,
+        //   user: "test",
+        //   project: "test",
+        //   session_id: sessionId,
+        // },
+        formData,
+        { 
+          headers: 
+            { "Content-Type": "application/json" } 
+        }
       );
 
       const botMsg = { sender: "bot", content: res.data.response };
       setMessages((prev) => [...prev, botMsg]);
+
     } catch (err) {
       console.error("Chat error", err);
       setMessages((prev) => [
@@ -91,6 +193,17 @@ const Chat = ({ projectId = "default" }) => {
         ${theme === "dark" ? "bg-gray-900 text-white border-gray-700" : "bg-white text-gray-900 border-gray-300"}
       `}
     >
+
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={fileHandleSelect}
+        multiple
+        style={{ display: 'none' }}
+        accept="*/*"
+      />
+
+      
       {/* Theme toggle button top right */}
       <div className="absolute top-4 right-4 z-20">
         <label className="flex items-center cursor-pointer select-none">
@@ -150,27 +263,70 @@ const Chat = ({ projectId = "default" }) => {
         <div ref={messagesEndRef} />
       </div>
 
+      {selectedFiles.length > 0 && (
+        <div className={`mb-4 p-2 rounded-lg ${theme === "dark" ? "bg-gray-800" : "bg-gray-100"}`}>
+          <div className="text-sm font-medium mb-1">Selected Files:</div>
+          <div className="space-y-1">
+            {selectedFiles.map((file, index) => (
+              <div key={index} className="flex items-center justify-between text-xs">
+                <span className="truncate">
+                  {file.name}
+                </span>
+                <button
+                  onClick={() => removeFile(index)}
+                  className={`ml-2 mr-2 font-bold text-blue-500 ${theme === 'dark' ? "hover:text-white" : "hover:text-black"}`}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Input & send button */}
       <div className="flex items-center space-x-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type your message..."
-          className={`flex-1 px-4 py-2 rounded-lg border focus:outline-none
-            ${
-              theme === "dark"
-                ? "bg-gray-700 border-gray-600 text-white placeholder-gray-300"
-                : "bg-white border-gray-300 text-gray-900 placeholder-gray-500"
-            }
-          `}
-        />
+        <div className="relative flex w-full items-center">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Type your message..."
+              className={`flex-1 px-4 py-2 pr-20 rounded-lg border focus:outline-none
+                ${
+                  theme === "dark"
+                    ? "bg-gray-700 border-gray-600 text-white placeholder-gray-300"
+                    : "bg-white border-gray-300 text-gray-900 placeholder-gray-500"
+                }
+              `}
+            />
+
+            <div className="absolute right-2 flex items-center space-x-2">
+              <button onClick={handleMicrophone} className={`p-1 rounded transition-all duration-300 ${
+                listening ? 'bg-white text-white animate-pulse' : 'hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+              >
+                <Microphone width={18} height={18} />
+              </button>
+
+              <button 
+                className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-all duration-300"
+                onClick={fileHandle}
+              >
+                <File width={18} height={18} />
+              </button>
+            </div>
+
+        </div>
+        
         <button
           onClick={handleSend}
+          disabled={!input.trim() && selectedFiles.length === 0}
           className={`px-4 py-2 rounded-lg font-semibold
-            ${
-              theme === "dark"
+            ${(!input.trim() && selectedFiles.length === 0)
+              ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+              : theme === "dark"
                 ? "bg-blue-700 hover:bg-blue-600 text-white"
                 : "bg-blue-600 hover:bg-blue-700 text-white"
             }
@@ -179,6 +335,8 @@ const Chat = ({ projectId = "default" }) => {
           Send
         </button>
       </div>
+      
+
     </div>
   );
 };
