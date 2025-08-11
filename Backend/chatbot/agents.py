@@ -1,17 +1,144 @@
+# agents.py  (fixed & defensive)
 import os
 import requests
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Iterable
 from dotenv import load_dotenv
 import base64
 from PIL import Image
 import re
 import json
-# from langchain_community.tools.tavily_search import TavilySearchResults
+from serpapi.google_search import GoogleSearch
+from typing import List, Optional
+from pydantic import BaseModel, Field
 
 load_dotenv()
 
-# search=TavilySearchResults(api_key=os.environ.get("TAVILY_API_KEY"))
-# ASIN_DATA_API_KEY=os.getenv("ASIN_DATA_API_KEY")
+SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
+
+def clean_and_parse_json(raw_str: str):
+    """
+    Cleans code fences (```json ... ```) from a string and parses it as JSON.
+    """
+    if raw_str is None:
+        raise ValueError("No input string")
+    cleaned = re.sub(r"```(?:json)?\s*", "", raw_str.strip())
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON format: {e}")
+
+
+def minutes_to_human(minutes: int) -> str:
+    """Convert integer minutes to 'X hr Y min' or 'Y min'."""
+    if minutes is None:
+        return "unknown"
+    try:
+        m = int(minutes)
+    except Exception:
+        return str(minutes)
+    if m <= 0:
+        return "0 min"
+    hrs, mins = divmod(m, 60)
+    if hrs and mins:
+        return f"{hrs} hr {mins} min"
+    if hrs:
+        return f"{hrs} hr"
+    return f"{mins} min"
+
+
+def extract_number_from_maybe_price(value) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, dict):
+        for k in ("price", "extracted_price", "amount", "value"):
+            if k in value:
+                return extract_number_from_maybe_price(value[k])
+        for v in value.values():
+            n = extract_number_from_maybe_price(v)
+            if n is not None:
+                return n
+        return None
+    s = str(value).strip()
+    if s == "":
+        return None
+    m = re.search(r"[-+]?\d{1,3}(?:[,\d{3}]*\d)?(?:\.\d+)?", s.replace(",", ""))
+    if m:
+        try:
+            return float(m.group(0))
+        except Exception:
+            return None
+    return None
+
+def estimation(details: dict) -> str:
+
+    cost = details.get("cost", details.get("Cost", "N/A"))
+    if isinstance(cost, (dict, list)):
+        
+        extracted = extract_number_from_maybe_price(cost)
+        cost = extracted if extracted is not None else str(cost)
+    
+    total_time = details.get("time", details.get("estimated_time", details.get("Time", "N/A")))
+
+    try:
+        total_time_int = int(total_time)
+    except Exception:
+       
+        m = re.search(r"(\d+)", str(total_time or ""))
+        total_time_int = int(m.group(1)) if m else 0
+
+    lines = []
+    lines.append(f"TOTAL ESTIMATED COST (TOOLS & MATERIALS) : $ {cost}\n")
+    lines.append(f"TOTAL ESTIMATED TIME (in minutes) : {total_time_int} minutes\n")
+    lines.append("")
+
+    for i, step in enumerate(details.get("steps", []), start=1):
+        time_text = (
+            step.get("time_text")
+            or step.get("Time")
+            or step.get("TimeText")
+            or (str(step.get("Time_val")) + " min" if step.get("Time_val") is not None else None)
+            or ""
+        )
+        lines.append(f"STEP {i} : {time_text}\n")
+
+    result = "\n".join(lines)
+    return result
+
+
+def extract_lines(plan: dict):
+   
+    lines = []
+    
+    total = plan.get("steps_no", len(plan.get("steps", [])))
+    est = plan.get("time", 0)
+    try:
+        est_int = int(est)
+    except Exception:
+        m = re.search(r"(\d+)", str(est or ""))
+        est_int = int(m.group(1)) if m else 0
+
+    lines.append(f"Total steps : {total}\n")
+    lines.append(f"Estimated time : {est_int} minutes ({minutes_to_human(est_int)})\n")
+    lines.append("")  
+
+    for step in plan.get("steps", []):
+        no = step.get("Step_No")
+        title = step.get("Title", "").strip()
+        time_text = step.get("Time", "").strip()
+        time_val = step.get("Time_val", 0)
+        desc = step.get("Desc", "").strip()
+
+        lines.append(f"Step No. : {no}\n")
+        lines.append(f"Step Title : {title}\n")
+        lines.append(f"Time : {time_val}  (raw: {time_text})\n")
+        lines.append(f"Description : {desc}\n")
+        lines.append("\n\n")
+
+    text = "\n\n".join(lines)
+    return text
 
 def load_prompt(filename):
     """Load prompt from file, removing comment lines starting with #"""
@@ -20,7 +147,7 @@ def load_prompt(filename):
     try:
         with open(path, "r", encoding="utf-8") as f:
             lines = f.readlines()
-        # Remove lines starting with #
+        
         return "".join(line for line in lines if not line.strip().startswith("#"))
     except FileNotFoundError:
         print(f"❌ Could not find prompt file: {path}")
@@ -30,39 +157,6 @@ def load_prompt(filename):
         return f"Error: Could not load {filename}"
 
 
-def clean_and_parse_json(raw_str):
-    """
-    Cleans code fences (```json ... ```) from a string and parses it as JSON.
-
-    Args:
-        raw_str (str): The input string from the LLM.
-
-    Returns:
-        dict or list: Parsed JSON object.
-
-    Raises:
-        ValueError: If the string cannot be parsed as valid JSON.
-    """
-    # Remove triple backtick code fences and optional language identifier
-    cleaned = re.sub(r"```(?:json)?\s*", "", raw_str.strip())
-    cleaned = re.sub(r"\s*```$", "", cleaned)
-
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON format: {e}")
-
-def extract_asin(url):
-    match = re.search(r"(?:dp|gp/product)/([A-Z0-9]{10})", url)
-    return match.group(1) if match else None
-
-# def get_asin_data(asin):
-#     endpoint = "https://api.asindataapi.com/product"
-#     params = {"api_key": ASIN_DATA_API_KEY, "asin": asin}
-#     resp = requests.get(endpoint, params=params)
-#     resp.raise_for_status()
-#     return resp.json()
-
 # Load the prompts
 qa_prompt_text = load_prompt("qa_prompt.txt")
 summary_prompt_text = load_prompt("summary_prompt.txt")
@@ -70,7 +164,6 @@ question_clarification_prompt_text = load_prompt("question_clarification_prompt.
 problem_recognition_prompt_text = load_prompt("problem_recognition_prompt.txt")
 image_analysis_prompt_text = load_prompt("image_analysis_prompt.txt")
 description_assessment_prompt_text = load_prompt("description_assessment_prompt.txt")
-tools_prompt_text = load_prompt("tools_prompt.txt")
 steps_prompt_text = load_prompt("steps_prompt.txt")
 
 class ProblemRecognitionAgent:
@@ -83,7 +176,7 @@ class ProblemRecognitionAgent:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-    
+
     def greetings(self):
         payload = {
             "model": "gpt-4.1-nano",
@@ -117,30 +210,30 @@ class ProblemRecognitionAgent:
 
     def analyze_problem(self, user_message: str) -> Dict[str, Any]:
         """Analyze user problem and determine what photos are needed"""
-        
+
         system_prompt = problem_recognition_prompt_text
 
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"User problem: {user_message}"}
         ]
-        
+
         try:
             response = requests.post(
                 self.api_url,
                 headers=self.headers,
                 json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 500}
             )
-            
+
             if response.status_code == 200:
                 data = response.json()
                 text = data["choices"][0]["message"]["content"].strip()
-                
+
                 # Try to parse JSON from response
                 try:
                     result = clean_and_parse_json(text)
                     return result
-                except:
+                except Exception:
                     # Fallback if JSON parsing fails
                     return {
                         "problem_type": "general",
@@ -149,13 +242,12 @@ class ProblemRecognitionAgent:
                     }
             else:
                 return self._get_fallback_response(user_message)
-                
-        except Exception as e:
+
+        except Exception:
             return self._get_fallback_response(user_message)
-    
+
     def _get_fallback_response(self, user_message: str) -> Dict[str, Any]:
         """Fallback response if API fails - use simple AI-based approach"""
-        
         system_prompt = """You are a DIY problem recognition agent. Analyze the user's problem and determine what photos would be most helpful.
 
 Return a JSON response with:
@@ -169,22 +261,22 @@ Be specific about what photos would help diagnose the problem."""
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"User problem: {user_message}"}
         ]
-        
+
         try:
             response = requests.post(
                 self.api_url,
                 headers=self.headers,
                 json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 300}
             )
-            
+
             if response.status_code == 200:
                 data = response.json()
                 text = data["choices"][0]["message"]["content"].strip()
-                
+
                 try:
                     result = clean_and_parse_json(text)
                     return result
-                except:
+                except Exception:
                     # If JSON parsing fails, return a generic response
                     return {
                         "problem_type": "general_repair",
@@ -198,14 +290,14 @@ Be specific about what photos would help diagnose the problem."""
                     "photo_requests": ["Photo of the problem area", "Photo showing the context"],
                     "response_message": f"I can help with your issue! Please share:\n1. A photo of the problem area\n2. A photo showing the surrounding context"
                 }
-                
-        except Exception as e:
-            # If any error occurs, return a generic response
+
+        except Exception:
             return {
                 "problem_type": "general_repair",
                 "photo_requests": ["Photo of the problem area", "Photo showing the context"],
                 "response_message": f"I can help with your issue! Please share:\n1. A photo of the problem area\n2. A photo showing the surrounding context"
             }
+
 
 class ImageAnalysisAgent:
     """Agent 2: analyses an uploaded image and returns clarifying questions"""
@@ -215,7 +307,7 @@ class ImageAnalysisAgent:
         self.api_url = "https://api.openai.com/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type":  "application/json",
+            "Content-Type": "application/json",
         }
 
     def skip_image(self, message):
@@ -223,7 +315,7 @@ class ImageAnalysisAgent:
             "model": "gpt-4.1-nano",
             "messages": [
                 {"role": "system", "content": "Detect if the user doesn't have an image or want to skip the image upload (e.g 'skip','I dont have an image', etc...)  Respond only with 'True' or 'False'"},
-                {"role": "user","content": message}
+                {"role": "user", "content": message}
             ],
             "max_tokens": 50,
             "temperature": 0.0
@@ -272,24 +364,24 @@ class ImageAnalysisAgent:
                 txt = r.json()["choices"][0]["message"]["content"].strip()
                 try:
                     result = json.loads(txt)
-                    # Validate the result has the expected structure
+                   
                     if isinstance(result, dict) and "analysis" in result and "questions" in result:
                         return result
                     else:
-                        # If structure is wrong, fall back
+                        
                         return self._get_fallback_questions(problem_type)
                 except (json.JSONDecodeError, KeyError, TypeError):
-                    # If JSON parsing fails, fall back
+                    
                     return self._get_fallback_questions(problem_type)
         except Exception:
-            pass                                # fall through to fallback
+            pass  
 
         # ─── fallback set ───
         return self._get_fallback_questions(problem_type)
-    
+
     def analyze_image_without_image(self, problem_type: str, user_description: str) -> Dict[str, Any]:
         """Generate questions based on problem description when no image is provided"""
-        
+
         system_prompt = (
             f"{image_analysis_prompt_text}\n\n"
             f"Problem type: {problem_type}\n"
@@ -317,21 +409,19 @@ class ImageAnalysisAgent:
                 txt = r.json()["choices"][0]["message"]["content"].strip()
                 try:
                     result = clean_and_parse_json(txt)
-                    # Validate the result has the expected structure
                     if isinstance(result, dict) and "analysis" in result and "questions" in result:
                         return result
                     else:
-                        # If structure is wrong, fall back
                         return self._get_fallback_questions(problem_type)
                 except (json.JSONDecodeError, KeyError, TypeError):
-                    # If JSON parsing fails, fall back
+                   
                     return self._get_fallback_questions(problem_type)
         except Exception:
-            pass                                # fall through to fallback
+            pass  
 
         # ─── fallback set ───
         return self._get_fallback_questions(problem_type)
-    
+
     def _get_fallback_questions(self, problem_type: str) -> Dict[str, Any]:
         """Fallback questions if image analysis fails"""
         question_templates = {
@@ -386,7 +476,7 @@ class ImageAnalysisAgent:
                 "first_question": "What type of furniture is it (table, chair, cabinet, etc.)?"
             }
         }
-        
+
         return question_templates.get(problem_type, {
             "analysis": "I can see your project. Let me ask some questions to help you.",
             "questions": [
@@ -397,9 +487,10 @@ class ImageAnalysisAgent:
             "first_question": "What are the dimensions of the area you're working with?"
         })
 
+
 class SummaryAgent:
     """Agent 3: Creates a summary of the problem based on image and user answers"""
-    
+
     def __init__(self):
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.api_url = "https://api.openai.com/v1/chat/completions"
@@ -407,7 +498,7 @@ class SummaryAgent:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-    
+
     def affirmative_negative_response(self, message):
         payload = {
             "model": "gpt-4.1-nano",
@@ -426,12 +517,12 @@ class SummaryAgent:
 
     def create_summary(self, problem_type: str, image_analysis: str, user_answers: Dict[int, str]) -> str:
         """Create a comprehensive summary of the problem"""
-        
+
         # Format user answers for the prompt
         answers_text = ""
         for i, answer in user_answers.items():
             answers_text += f"Q{i+1}: {answer}\n"
-        
+
         system_prompt = f"""{summary_prompt_text}
 
 Problem type: {problem_type}
@@ -445,7 +536,7 @@ Please create a summary of this DIY problem."""
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": "Please create a summary of this DIY problem."}
         ]
-        
+
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
@@ -456,231 +547,432 @@ Please create a summary of this DIY problem."""
                 return r.json()["choices"][0]["message"]["content"].strip()
         except Exception:
             pass
-        
+
         # Fallback summary
         return f"I understand you have a {problem_type.replace('_', ' ')} issue. Based on the image and your answers, I can help you resolve this problem."
 
-# class PydanticToolAgent:
-#     """
-#     Updated Agent: Given the final summary, generate a TEXT-formatted
-#     list of tools with descriptive fields and dimensions (if available).
-#     Output is plain text (no code fences) with one field per line:
-#       Tool name : ...
-#       Tool description : ...
-#       Tool dimensions : ...   <-- only if provided by LLM
-#       Risk Factor : ...
-#       Safety Measure: ...
-#     Blank line between tools.
-#     """
-#     def __init__(self):
-#         self.api_key = os.getenv("OPENAI_API_KEY")
-#         self.api_url = "https://api.openai.com/v1/chat/completions"
-#         self.headers = {
-#             "Authorization": f"Bearer {self.api_key}",
-#             "Content-Type": "application/json",
-#         }
 
-#     def create_pydantic_output(self, summary_text: str) -> str:
-#         """
-#         Returns plain-text string (chat) formatted as requested.
-#         The LLM is instructed to return a JSON array ONLY with:
-#         tool_name, description, dimensions (optional), risk_factor, safety_measure.
-#         """
+class PydanticToolAgent:
+    """
+    Updated Agent: Given the final summary, generate a TEXT-formatted list of tools with descriptive fields and dimensions (if available).
+    """
+
+    def __init__(self):
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_url = "https://api.openai.com/v1/chat/completions"
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+    def create_pydantic_output(self, summary_text: str) -> str:
+        """
+        Returns plain-text string (chat) formatted as requested.
+        """
+        system_prompt = (
+            "You are an assistant that converts a DIY problem summary into a structured list of tools and materials. "
+            "Produce a JSON array ONLY (no extra text) where each item is an object with the following keys:\n"
+            " - tool_name (string)\n"
+            " - description (string)\n"
+            " - dimensions (string, OPTIONAL)\n"
+            " - risk_factor (string)\n"
+            " - safety_measure (string)\n\n"
+            "Return 3 relevant tools when possible. Return JSON only."
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Summary:\n{summary_text}\n\nReturn the JSON array now."}
+        ]
+
+        tools = None
+        try:
+            r = requests.post(self.api_url, headers=self.headers,
+                              json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 900},
+                              timeout=25)
+            if r.status_code == 200:
+                raw = r.json()["choices"][0]["message"]["content"].strip()
+                try:
+                    tools = clean_and_parse_json(raw)
+                except Exception:
+                 
+                    try:
+                        m = re.search(r"\[.*\]", raw, flags=re.DOTALL)
+                        if m:
+                            tools = json.loads(m.group(0))
+                    except Exception:
+                        tools = None
+        except Exception:
+            tools = None
+
+        if not isinstance(tools, list) or not tools:
+           
+            fallback_tools = []
+            low = summary_text.lower()
         
-#         # Use external prompt file if available
-#         base_prompt = tools_prompt_text.strip() or "You are an assistant that converts a DIY problem summary into a structured list of tools and materials."
-#         system_prompt = (
-#             f"{base_prompt}\n"
-#             "Produce a JSON array ONLY (no extra text) where each item is an object with the following keys:\n"
-#             " - tool_name (string)\n"
-#             " - description (string): provide a descriptive explanation of the tool's use and any important attributes such as type, typical dimensions, or variants.\n"
-#             " - dimensions (string, OPTIONAL): if the summary includes numeric measurements or if typical/recommended dimensions or sizes are relevant, include them here (e.g., '60 x 90 cm', '1/4 inch drill bit'). If not applicable, omit or set to ''.\n"
-#             " - dimensions (string, OPTIONAL): if the summary includes numeric measurements or if typical/recommended dimensions or sizes are relevant, include them here (e.g., '60 x 90 cm', '1/4 inch drill bit'). If not applicable, omit or set to ''.\n"
-#             " - risk_factor (string): a descriptive risk assessment (state what can go wrong, severity, and likely failure modes).\n"
-#             " - safety_measure (string): actionable safety steps, PPE recommendations, and precautions specific to using the tool.\n\n"
-#             "Be detailed and explicit: descriptions, risk factors, and safety measures should be several words to a few sentences (not single words). "
-#             "Return 3 relevant tools when possible. Do NOT include any explanatory prose outside the JSON array. Return JSON only."
-#         )
+            dim_matches = re.findall(r"(\d+\s*(?:cm|mm|in|inch|kg|lb|lbs))", summary_text, flags=re.I)
+            inferred_dims = dim_matches[0] if dim_matches else ""
 
-#         messages = [
-#             {"role": "system", "content": system_prompt},
-#             {"role": "user", "content": f"Summary:\n{summary_text}\n\nReturn the JSON array now."}
-#         ]
+            if "mirror" in low or "hang" in low:
+                fallback_tools = [
+                    {
+                        "tool_name": "Stud Finder",
+                        "description": "Handheld electronic device used to detect studs and wiring behind walls; recommended for locating secure mounting points for heavy fixtures.",
+                        "dimensions": "",
+                        "risk_factor": "If inaccurate, may lead to anchors being placed incorrectly, risking fixture failure or hitting hidden electrical wiring.",
+                        "safety_measure": "Scan the wall multiple times and confirm before drilling. Wear safety glasses."
+                    },
+                    {
+                        "tool_name": "Power Drill (with appropriate bits)",
+                        "description": "Cordless or corded drill used for pilot holes and installing anchors; choose drill size based on anchor/drywall type and screw diameter.",
+                        "dimensions": inferred_dims or "",
+                        "risk_factor": "Drilling can penetrate wiring/plumbing causing electrocution or water leaks; bit kickback can injure hands.",
+                        "safety_measure": "Wear safety glasses and gloves, ensure drill bits are sharp and correct size."
+                    },
+                    {
+                        "tool_name": "Heavy-duty Wall Anchors (toggle or molly bolts)",
+                        "description": "Anchors designed to hold heavy loads on drywall when studs are unavailable; choose anchors rated for the mirror's weight.",
+                        "dimensions": "",
+                        "risk_factor": "Underrated anchors or improper installation may fail causing the mirror to fall.",
+                        "safety_measure": "Select anchors with verified weight rating greater than the object's weight and follow installation instructions."
+                    }
+                ]
+            else:
+                # generic fallback
+                fallback_tools = [
+                    {
+                        "tool_name": "Protective Gloves",
+                        "description": "Gloves to protect hands from cuts and abrasions during the job.",
+                        "dimensions": "",
+                        "risk_factor": "Low — ill-fitting gloves may reduce dexterity.",
+                        "safety_measure": "Use gloves sized correctly for the task."
+                    },
+                    {
+                        "tool_name": "Measuring Tape",
+                        "description": "Tape measure to take accurate measurements and mark mounting points precisely.",
+                        "dimensions": "",
+                        "risk_factor": "Pinch risk during retraction.",
+                        "safety_measure": "Retract tape slowly and keep fingers clear of the edge."
+                    }
+                ]
+            tools = fallback_tools
 
-#         tools = None
-#         try:
-#             r = requests.post(self.api_url, headers=self.headers,
-#                               json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 900},
-#                               timeout=25)
-#             if r.status_code == 200:
-#                 raw = r.json()["choices"][0]["message"]["content"].strip()
-#                 try:
-#                     tools = clean_and_parse_json(raw)
-#                     tools = clean_and_parse_json(raw)
-#                 except Exception:
-#                     # Try to extract a JSON array substring inside the response
-#                     try:
-#                         m = re.search(r"\[.*\]", raw, flags=re.DOTALL)
-#                         if m:
-#                             tools = json.loads(m.group(0))
-#                     except Exception:
-#                         tools = None
-#         except Exception:
-#             tools = None
+        lines = []
+        lines.append("ASSISTANT : Here are the tools and materials required for your task:\n\n")
+        total_cost = 0.0
+        found_any_price = False
 
-#         # If parsing failed or returned something not useful, create a descriptive fallback
-#         if not isinstance(tools, list) or not tools:
-#             # Heuristic fallback: inspect summary for keywords and dimensions
-#             fallback_tools = []
-#             low = summary_text.lower()
-#             # detect numeric dimensions from summary
-#             dim_matches = re.findall(r"(\d+\s*(?:cm|mm|in|inch|kg|lb|lbs))", usage, flags=re.I)
-#             inferred_dims = dim_matches[0] if dim_matches else ""
+        for t in tools:
+            name = (t.get("tool_name") or t.get("name") or "Unknown Tool").strip()
+            desc = (t.get("description") or "").strip()
+            dims = (t.get("dimensions") or "").strip()
+            risk = (t.get("risk_factor") or t.get("risk") or "").strip()
+            safety = (t.get("safety_measure") or t.get("safety") or "").strip()
 
-#             if "mirror" in low or "hang" in low:
-#                 fallback_tools = [
-#                     {
-#                         "tool_name": "Stud Finder",
-#                         "description": "Handheld electronic device used to detect wood or metal studs and sometimes live wiring behind walls; recommended for locating secure mounting points for heavy fixtures.",
-#                         "dimensions": "",
-#                         "risk_factor": "If inaccurate, may lead to anchors being placed incorrectly, risking fixture failure or hitting hidden electrical wiring which can cause shock or short circuits.",
-#                         "safety_measure": "Scan the wall multiple times, avoid areas where wiring runs vertically from outlets; when unsure, confirm with small pilot holes or a secondary locating method."
-#                     },
-#                     {
-#                         "tool_name": "Power Drill (with appropriate bits)",
-#                         "description": "Cordless or corded drill used for pilot holes and installing anchors; choose drill size based on anchor/drywall type and screw diameter.",
-#                         "dimensions": inferred_dims or "",
-#                         "risk_factor": "Drilling can penetrate wiring/plumbing causing electrocution or water leaks; bit kickback can cause hand injuries.",
-#                         "safety_measure": "Wear safety glasses and gloves, ensure drill bits are sharp and correct size, keep a firm grip, and do not drill where wiring or pipes are expected."
-#                     },
-#                     {
-#                         "tool_name": "Heavy-duty Wall Anchors (toggle or molly bolts)",
-#                         "description": "Anchors designed to hold heavy loads on drywall when studs are unavailable; choose anchors rated for the mirror's weight.",
-#                         "dimensions": "",
-#                         "risk_factor": "Underrated anchors or improper installation may fail, leading to the fixture falling and causing injury or damage.",
-#                         "safety_measure": "Select anchors with verified weight rating greater than the object's weight, follow installation instructions, and test load carefully before finalizing."
-#                     }
-#                 ]
-#             else:
-#                 # generic fallback
-#                 fallback_tools = [
-#                     {
-#                         "tool_name": "Protective Gloves",
-#                         "description": "Gloves to protect hands from cuts, abrasions, and drill slippage during the job.",
-#                         "dimensions": "",
-#                         "risk_factor": "Low — ill-fitting gloves may reduce dexterity.",
-#                         "safety_measure": "Use gloves sized correctly and appropriate for the task."
-#                     },
-#                     {
-#                         "tool_name": "Measuring Tape",
-#                         "description": "Tape measure to take accurate measurements and mark mounting points precisely.",
-#                         "dimensions": "",
-#                         "risk_factor": "Pinch risk during retraction.",
-#                         "safety_measure": "Retract tape slowly and keep fingers clear of the edge."
-#                     }
-#                 ]
-#             tools = fallback_tools
+            lines.append(f"Tool name : {name}\n")
 
-#         lines = []
-#         lines.append("ASSISTANT : Here are the tools and materials required for your task:\n\n")
-#         for t in tools:
+           
+            if not SERPAPI_API_KEY:
+                lines.append("Note: SERPAPI_API_KEY not configured; skipping product lookup.\n")
+            else:
+                
+                params = {
+                    "engine": "amazon",
+                    "k": name,
+                    "amazon_domain": "amazon.com",
+                    "api_key": SERPAPI_API_KEY
+                }
+                try:
+                    search = GoogleSearch(params)
+                    results = search.get_dict()
+                    organic_results = results.get("organic_results") or []
+                except Exception as e:
+                    organic_results = []
+               
+
+                if organic_results:
+                    first = organic_results[0]
+                    title = first.get("title") or ""
+                    link = first.get("link_clean") or first.get("link") or ""
+                    thumbnail = first.get("thumbnail") or first.get("thumbnail_image") or ""
+                    
+                    price_field = first.get("extracted_price") or first.get("price") or first.get("raw_price") or None
+                    price_val = extract_number_from_maybe_price(price_field)
+                    if price_val is None:
+                        
+                        for possible in ("snippet", "rich_snippet", "extracted_data", "inline_links"):
+                            candidate = first.get(possible)
+                            if candidate:
+                                price_val = extract_number_from_maybe_price(candidate)
+                                if price_val is not None:
+                                    break
+
+                    if price_val is not None:
+                        total_cost += price_val
+                        found_any_price = True
+
+                    if title:
+                        lines.append(f"Title : {title}\n")
+                    if link:
+                        lines.append(f"Amazon URL : {link}\n")
+                    if thumbnail:
+                        lines.append(f"Amazon Thumbnail url : {thumbnail}\n")
+                    if price_val is not None:
+                        lines.append(f"Price : $ {price_val}\n")
+                    else:
+                        lines.append("Price : Not available\n")
+                else:
+                    lines.append("No Amazon/organic results found for this tool.\n")
+
             
-#             name = (t.get("tool_name") or t.get("name") or "Unknown Tool").strip()
-#             desc = (t.get("description") or "").strip()
-#             dims = (t.get("dimensions") or "").strip()
-#             risk = (t.get("risk_factor") or t.get("risk") or "").strip()
-#             safety = (t.get("safety_measure") or t.get("safety") or "").strip()
+            lines.append(f"Tool description : {desc if desc else '<Description not available>'}\n")
+            if dims:
+                lines.append(f"Tool dimensions : {dims}\n")
+            lines.append(f"Risk Factor : {risk if risk else '<Risk Factors>'}\n")
+            lines.append(f"Safety Measure: {safety if safety else '<Safety Measures>'}\n")
+            lines.append("\n\n\n")
 
-#             search_query="Can you provide me the purchase link and the price of the "+ name+" from Amazon?"
-#             results=search.invoke(search_query)
+       
+        plan = self._generate_steps_with_tools(summary_text)
+       
+        try:
+            total = getattr(plan, "total_steps", None) or len(getattr(plan, "steps", []))
+            est_mins = getattr(plan, "estimated_time", 0) or 0
+        except Exception:
+            total = 0
+            est_mins = 0
 
-#             lines.append(f"Tool name : {name}\n")
-#             if len(results):
-#                 lines.append(f"Amazon URL : {results[0].get('url')}\n")
-#             lines.append(f"Tool description : {description if desc else '<Description not available>'}\n")
-#             if dims:
-#                 lines.append(f"Tool dimensions : {dims}\n")
-#             lines.append(f"Risk Factor : {risk if risk else '<Risk Factors>'}\n")
-#             lines.append(f"Safety Measure: {safety if safety else '<Safety Measures>'}\n")
-#             lines.append("\n\n\n")  # blank line between tools
+ 
+        steps_estimation = {
+            "steps_no": total,
+            "time": est_mins,
+            "steps": []
+        }
+        steps = []
+        for s in getattr(plan, "steps", []):
+            steps_des = {}
+           
+            no = getattr(s, "step_no", None) or (s.get("step_no") if isinstance(s, dict) else "N/A")
+            title = getattr(s, "step_title", None) or (s.get("step_title") if isinstance(s, dict) else "")
+            time_mins = getattr(s, "time", None) or (s.get("time") if isinstance(s, dict) else 0)
+            
+            time_text = getattr(s, "time_text", None) or (s.get("time_text") if isinstance(s, dict) else None) or (s.get("Time") if isinstance(s, dict) else "")
+            desc = getattr(s, "description", None) or (s.get("description") if isinstance(s, dict) else "")
 
-#         # Generate steps and include them
-#         steps_output = self._generate_steps_with_tools(summary_text)
-        
-#         # Combine tools and steps
-#         tools_output = "\n".join(lines).rstrip()
-#         combined_output = f"{tools_output}\n\n{'='*50}\n\n📋 **Step-by-Step Plan:**\n{steps_output}"
-        
-#         return combined_output
-    
-#     def _generate_steps_with_tools(self, summary_text: str) -> str:
-#         """Generate steps using StepsTextAgent and return formatted text"""
-#         try:
-#             steps_agent = StepsTextAgent()
-#             return steps_agent.create_steps_text(summary_text)
-#         except Exception as e:
-#             print(f"Error generating steps: {e}")
-#             return self._get_fallback_steps()
-    
-#     def _get_fallback_steps(self) -> str:
-#         """Fallback steps if generation fails"""
-#         return (
-#             "Here is your step-by-step plan:\n\n"
-#             "Step 1/4 : Locate studs\nTime: 10-15 min\nDescription: Find studs for secure mounting.\n\n"
-#             "Step 2/4 : Mark mounting points\nTime: 10-15 min\nDescription: Measure and mark bracket positions.\n\n"
-#             "Step 3/4 : Install brackets\nTime: 15-20 min\nDescription: Drill pilot holes and mount wall brackets.\n\n"
-#                     "Step 4/4 : Attach item\nTime: 5-10 min\nDescription: Mount securely and check level."
-#         )
+            steps_des['Step_No'] = no
+            steps_des['Title'] = title
+            steps_des['Time'] = time_text or ""
+            steps_des['Time_val'] = int(time_mins or 0)
+            steps_des['Desc'] = desc
 
-# class StepsTextAgent:
-#     """
-#     Streamlit demo agent: Given the final summary, return a human-readable
-#     step-by-step plan as plain text (no JSON). Icons/images are skipped.
-#     """
-#     def __init__(self):
-#         self.api_key = os.getenv("OPENAI_API_KEY")
-#         self.api_url = "https://api.openai.com/v1/chat/completions"
-#         self.headers = {
-#             "Authorization": f"Bearer {self.api_key}",
-#             "Content-Type": "application/json",
-#         }
+            steps.append(steps_des)
 
-#     def create_steps_text(self, summary_text: str) -> str:
-#         base_prompt = steps_prompt_text.strip() or "You are an expert DIY planner."
-#         system_prompt = (
-#             f"{base_prompt}\n"
-#             "Return a concise step-by-step plan as plain text (no JSON).\n"
-#             "For each step, include:\n"
-#             "- Step X/Y : <short title>\n"
-#             "- Time: <approx minutes>\n"
-#             "- Description: <1-2 line guidance>\n"
-#             "Add a short intro line summarizing total steps and estimated time."
-#         )
+        steps_estimation['steps'] = steps
 
-#         payload = {
-#             "model": "gpt-4.1-mini",
-#             "messages": [
-#                 {"role": "system", "content": system_prompt},
-#                 {"role": "user", "content": f"Summary:\n{summary_text}\nReturn the plan as plain text."},
-#             ],
-#             "max_tokens": 900,
-#             "temperature": 0.5,
-#         }
+        if found_any_price:
+            cost_value = float(total_cost)
+        else:
+            cost_value = 0.0
+        steps_estimation['cost'] = cost_value
 
-#         try:
-#             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=25)
-#             if r.status_code == 200:
-#                 return r.json()["choices"][0]["message"]["content"].strip()
-#         except Exception:
-#             pass
+        tools_output = "\n".join(lines).rstrip()
+        step_txt = extract_lines(steps_estimation)
 
-#         return (
-#             "Here is your step-by-step plan:\n\n"
-#             "Step 1/4 : Locate studs\nTime: 10-15 min\nDescription: Find studs for secure mounting.\n\n"
-#             "Step 2/4 : Mark mounting points\nTime: 10-15 min\nDescription: Measure and mark bracket positions.\n\n"
-#             "Step 3/4 : Install brackets\nTime: 15-20 min\nDescription: Drill pilot holes and mount wall brackets.\n\n"
-#             "Step 4/4 : Attach item\nTime: 5-10 min\nDescription: Mount securely and check level."
-#         )
+        combined_output = f"{tools_output}\n\n{'='*50}\n\n📋 **Step-by-Step Plan:**\n{step_txt}"
+
+        estimations = estimation(steps_estimation)
+
+        ttl_output = f"{combined_output}\n\n{'='*200}\n\n{estimations}"
+
+        return ttl_output
+
+    def _generate_steps_with_tools(self, summary_text: str):
+        """Generate steps using StepsTextAgent and return StepsPlan (Pydantic)"""
+        try:
+            steps_agent = StepsTextAgent()
+            return steps_agent.create_steps_text(summary_text)
+        except Exception as e:
+            print(f"Error generating steps: {e}")
+            return self._get_fallback_steps()
+
+    def _get_fallback_steps(self) -> str:
+        """Fallback steps if generation fails"""
+        return (
+            "Here is your step-by-step plan:\n\n"
+            "Step No. : 1\nStep Title : Locate studs\nTime : 10-15 min\nDescription : Find studs for secure mounting.\n\n"
+            "Step No. : 2\nStep Title : Mark mounting points\nTime : 10-15 min\nDescription : Measure and mark bracket positions.\n\n"
+            "Step No. : 3\nStep Title : Install brackets\nTime : 15-20 min\nDescription : Drill pilot holes and mount wall brackets.\n\n"
+            "Step No. : 4\nStep Title : Attach item\nTime : 5-10 min\nDescription : Mount securely and check level."
+        )
+
+
+class Step(BaseModel):
+    step_no: int = Field(..., alias="Step No.")
+    step_title: str = Field(..., alias="Step Title")
+    time: int = Field(..., alias="Time")          
+    time_text: str = Field(..., alias="TimeText") 
+    description: str = Field(..., alias="Description")
+
+
+class StepsPlan(BaseModel):
+    total_steps: int
+    estimated_time: int = 0   
+    steps: List[Step]
+
+
+class StepsTextAgent:
+    def __init__(self):
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_url = "https://api.openai.com/v1/chat/completions"
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+    def _parse_time_to_minutes(self, text: str) -> int:
+        """
+        Parse human time expressions into integer minutes.
+        """
+        if not text:
+            return 0
+
+        s = text.lower().strip()
+        s = s.replace("half hour", "30 minutes")
+        s = s.replace("half an hour", "30 minutes")
+        s = s.replace("an hour", "1 hour")
+
+        def value_to_minutes(value: float, unit: str) -> float:
+            unit = unit.lower()
+            if unit.startswith("h"):
+                return value * 60.0
+            return value
+
+        range_match = re.search(r"(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)(?:\s*(hours?|hrs?|h|minutes?|mins?|m))?", s)
+        if range_match:
+            a = float(range_match.group(1))
+            b = float(range_match.group(2))
+            unit = (range_match.group(3) or "").strip()
+            if unit:
+                a = value_to_minutes(a, unit)
+                b = value_to_minutes(b, unit)
+            return int(round((a + b) / 2.0))
+
+        composite_match = re.search(r"(?:(\d+(?:\.\d+)?)\s*(hours?|hrs?|h))?.*?(?:(\d+(?:\.\d+)?)\s*(minutes?|mins?|m))?", s)
+        if composite_match and (composite_match.group(1) or composite_match.group(3)):
+            hours = float(composite_match.group(1)) if composite_match.group(1) else 0.0
+            minutes = float(composite_match.group(3)) if composite_match.group(3) else 0.0
+            total = int(round(hours * 60.0 + minutes))
+            return total
+
+        dec_hr = re.search(r"(\d+(?:\.\d+)?)\s*(hours?|hrs?|h)\b", s)
+        if dec_hr:
+            hrs = float(dec_hr.group(1))
+            return int(round(hrs * 60.0))
+
+        min_match = re.search(r"(\d+(?:\.\d+)?)\s*(minutes?|mins?|m)\b", s)
+        if min_match:
+            mins = float(min_match.group(1))
+            return int(round(mins))
+
+        bare_num = re.search(r"^(\d+(?:\.\d+)?)\s*$", s)
+        if bare_num:
+            return int(round(float(bare_num.group(1))))
+
+        any_num = re.search(r"(\d+(?:\.\d+)?)", s)
+        if any_num:
+            return int(round(float(any_num.group(1))))
+
+        return 0
+
+    def _parse_steps_text(self, text: str) -> StepsPlan:
+        # header
+        total_steps = None
+        estimated_time_minutes = 0
+
+        m_total = re.search(r"Total\s*Steps\s*[:\-]\s*(\d+)", text, re.IGNORECASE)
+        if m_total:
+            total_steps = int(m_total.group(1))
+
+        m_est = re.search(r"Estimated\s*Time\s*[:\-]\s*(.+)", text, re.IGNORECASE)
+        if m_est:
+            est_text = m_est.group(1).strip()
+            estimated_time_minutes = self._parse_time_to_minutes(est_text)
+
+     
+        step_block_re = re.compile(
+            r"Step\s*No\.?\s*:\s*(?P<no>\d+)\s*[\r\n]+"
+            r"Step\s*Title\s*:\s*(?P<title>.+?)\s*[\r\n]+"
+            r"Time\s*:\s*(?P<time>.+?)\s*[\r\n]+"
+            r"Description\s*:\s*(?P<desc>.+?)(?=(?:\n\s*\n)|\Z)",
+            re.IGNORECASE | re.DOTALL,
+        )
+
+        steps = []
+        for m in step_block_re.finditer(text):
+            no = int(m.group("no").strip())
+            title = m.group("title").strip()
+            time_text = m.group("time").strip()
+            time_mins = self._parse_time_to_minutes(time_text)
+            desc = m.group("desc").strip().replace("\n", " ").strip()
+            steps.append(Step(**{
+                "Step No.": no,
+                "Step Title": title,
+                "Time": time_mins,
+                "TimeText": time_text,
+                "Description": desc
+            }))
+
+        if total_steps is None:
+            total_steps = len(steps)
+
+        if estimated_time_minutes == 0:
+            estimated_time_minutes = sum(s.time for s in steps)
+
+        return StepsPlan(total_steps=total_steps, estimated_time=estimated_time_minutes, steps=steps)
+
+    def create_steps_text(self, summary_text: str) -> StepsPlan:
+        base_prompt = (
+            "You are an expert DIY planner.\n"
+            "Return a concise step-by-step plan as plain text (no JSON).\n"
+            "Start with an intro line summarizing total steps and estimated time if possible.\n\n"
+            "Then for each step return EXACTLY this format (use the same labels and punctuation):\n"
+            "Step No. : <Step No.>\n"
+            "Step Title : <step title>\n"
+            "Time : <Total time needed>\n"
+            "Description : <Informative Description of the step in 2-3 lines>\n\n"
+        )
+
+        payload = {
+            "model": "gpt-4.1-mini",
+            "messages": [
+                {"role": "system", "content": base_prompt},
+                {"role": "user", "content": f"Summary:\n{summary_text}\nReturn the plan as plain text in the exact format."},
+            ],
+            "max_tokens": 900,
+            "temperature": 0.5,
+        }
+
+        try:
+            r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=25)
+            if r.status_code == 200:
+                content = r.json()["choices"][0]["message"]["content"].strip()
+                return self._parse_steps_text(content)
+        except Exception:
+            pass
+
+      
+        fallback_text = (
+            "Here is your step-by-step plan:\n\n"
+            "Step No. : 1\nStep Title : Locate studs\nTime : 10-15 min\nDescription : Find studs for secure mounting.\n\n"
+            "Step No. : 2\nStep Title : Mark mounting points\nTime : 10-15 min\nDescription : Measure and mark bracket positions.\n\n"
+            "Step No. : 3\nStep Title : Install brackets\nTime : 15-20 min\nDescription : Drill pilot holes and mount wall brackets.\n\n"
+            "Step No. : 4\nStep Title : Attach item\nTime : 5-10 min\nDescription : Mount securely and check level."
+        )
+        return self._parse_steps_text(fallback_text)
+
+
+
+
 
 class QuestionClarificationAgent:
     """Agent 4: Uses an LLM to (1) detect 'skip', (2) detect 'don't know' and rephrase,
@@ -923,8 +1215,7 @@ class AgenticChatbot:
         self.problem_agent         = ProblemRecognitionAgent()
         self.image_agent           = ImageAnalysisAgent()
         self.summary_agent         = SummaryAgent()
-        # self.pydantic_agent        = PydanticToolAgent()   # <-- commented out for production, using planner.py instead
-        # self.steps_agent           = StepsTextAgent()
+        self.pydantic_agent        = PydanticToolAgent()   # <-- updated agent added here
         self.clarification_agent   = QuestionClarificationAgent()
         self.description_agent     = DescriptionAssessmentAgent()
         self.reset()
@@ -1024,10 +1315,12 @@ class AgenticChatbot:
                 )
 
                 # Generate TEXT-formatted output using the updated agent
-                # tools_text = self.pydantic_agent.create_pydantic_output(final_summary)  # Commented out - using planner.py instead
-                
-                # For now, return a simple message indicating the summary is complete
-                reply = f"Summary completed successfully!\n\n{final_summary}\n\nUse the planner.py classes for JSON output in production."
+                tools_text = self.pydantic_agent.create_pydantic_output(final_summary)
+
+                reply = (
+                    f"{tools_text}\n\n"
+                    "If you'd like, I can now provide step-by-step repair instructions using these tools — would you like that?"
+                )
 
                 # reset the conversation state after producing the pydantic-style text output
                 self.reset()
@@ -1076,9 +1369,9 @@ class AgenticChatbot:
     
     def _prepare_questions_from_result(self, result: Dict[str, Any]) -> str:
         """Helper method to prepare questions from image analysis result"""
-                            # 2a) If the description alone suffices, skip the Q&A loop
+                    
         if self.description_agent.assess(self.user_description):
-                # combine description as answer #0
+                
                 combined = {0: self.user_description}
                 summary = self.summary_agent.create_summary(
                     self.problem_type,
