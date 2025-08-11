@@ -1,10 +1,13 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { signupUser } from "../../services/auth";
+import {getAuth, GoogleAuthProvider, signInWithPopup} from "firebase/auth";
+import { app } from "../../firebase";
+import {ReactComponent as Google} from '../../assets/google.svg';
+import {ReactComponent as Facebook} from '../../assets/Facebook.svg';
 
 const Signup = () => {
 	const location = useLocation();
-	const isSignup = location.pathname === "/Signup";
+	const isSignup = location.pathname === "/signup";
 	const [showPassword, setShowPassword] = useState(false);
 	const [formData, setFormData] = useState({
 		firstname: "",
@@ -13,6 +16,7 @@ const Signup = () => {
 		password: "",
 	});
 	const [error, setError] = useState("");
+	
 	const [passwordStrength, setPasswordStrength] = useState({
 		lengthRequirement: false,
 		uppercaseRequirement: false,
@@ -23,6 +27,10 @@ const Signup = () => {
 	});
 
 	const navigate = useNavigate();
+
+	const auth = getAuth(app);
+	const googleProvider = new GoogleAuthProvider();
+
 
 	const checkPasswordStrength = (password) => {
 		const lengthRequirement = password.length >= 8;
@@ -53,6 +61,17 @@ const Signup = () => {
 		if (name === "password") checkPasswordStrength(value);
 	};
 
+	const signUpWithGoogle = () => {
+		signInWithPopup(auth, googleProvider).then((result) => {
+			const user = result.user;
+			console.log("User:", user.id)
+			console.log("Google login successful");
+			navigate("/");
+		}).catch((error) => {
+			console.log("An Error occured while google sign in.");
+		});
+	};
+
 	const handleSubmit = async (e) => {
 		e.preventDefault();
 		setError("");
@@ -63,9 +82,19 @@ const Signup = () => {
 		}
 
 		try {
-			const result = await signupUser(formData);
-			console.log("Signed up:", result);
-			navigate("/login");
+			// Store user data temporarily for combined signup with onboarding
+			const userData = {
+				firstname: formData.firstname,
+				lastname: formData.lastname,
+				email: formData.email,
+				password: formData.password
+			};
+			
+			// Store user data for onboarding (no API call yet)
+			localStorage.setItem("tempUserData", JSON.stringify(userData));
+			console.log("User data stored for onboarding:", userData);
+			
+			navigate("/onboarding");
 		} catch (err) {
 			setError(err.message || "Signup failed.");
 		}
@@ -73,20 +102,20 @@ const Signup = () => {
 
 	return (
 		<div className="min-h-screen flex flex-col items-center justify-center py-2 px-4">
-			<h1 className="text-[24px] font-semibold p-10">Welcome MyHandyAI!</h1>
+			<h1 className="text-[20px] font-semibold p-10">Getting Started</h1>
 			<div className="relative w-full max-w-sm mx-auto mb-8">
 				<div className="flex">
 					<Link
 						to="/login"
-						className={`w-1/2 text-center text-lg font-medium pb-2 ${
-							isSignup ? "text-gray-500" : "text-purple-600"
+						className={`w-1/2 text-[16px] text-center font-medium pb-2 ${
+							isSignup ? "text-black-500" : "text-black-600"
 						}`}>
 						Login
 					</Link>
 					<Link
 						to="/signup"
-						className={`w-1/2 text-center text-lg font-medium pb-2 ${
-							isSignup ? "text-purple-600" : "text-gray-500"
+						className={`w-1/2 text-[16px] text-center font-medium pb-2 ${
+							isSignup ? "text-black-600" : "text-black-500"
 						}`}>
 						Signup
 					</Link>
@@ -94,8 +123,9 @@ const Signup = () => {
 
 				<div className="absolute bottom-0 left-0 w-full h-0.5">
 					<div
-						className={`w-1/2 h-full bg-purple-600 transform transition-transform duration-300 ease-in-out ${
-							isSignup ? "translate-x-0" : "translate-x-full"
+						style = {{backgroundColor: "#D9D9D9"}}
+						className={`w-1/2 h-full transform transition-transform duration-300 ease-in-out ${
+							isSignup ? "translate-x-full" : "translate-x-0"
 						}`}
 					/>
 				</div>
@@ -111,7 +141,7 @@ const Signup = () => {
 					onChange={handleChange}
 					name="firstname"
 					type="text"
-					className="w-full p-2 mb-4 border border-gray-300 rounded-lg"
+					className="w-full text-[12px] p-2 mb-4 border border-gray-300 rounded-[20px]"
 					placeholder="Enter your first name"
 					required
 				/>
@@ -125,7 +155,7 @@ const Signup = () => {
 					onChange={handleChange}
 					name="lastname"
 					type="text"
-					className="w-full p-2 mb-4 border border-gray-300 rounded-lg"
+					className="w-full text-[12px] p-2 mb-4 border border-gray-300 rounded-[20px]"
 					placeholder="Enter your last name"
 					required
 				/>
@@ -139,7 +169,7 @@ const Signup = () => {
 					onChange={handleChange}
 					name="email"
 					type="email"
-					className="w-full p-2 mb-4 border border-gray-300 rounded-lg"
+					className="w-full text-[12px] p-2 mb-4 border border-gray-300 rounded-[20px]"
 					placeholder="Enter your email"
 					required
 				/>
@@ -155,13 +185,23 @@ const Signup = () => {
 						name="password"
 						type={showPassword ? "text" : "password"}
 						placeholder="Enter your password"
-						className="w-full p-2 pr-10 border border-gray-300 rounded-lg"
+						className="w-full text-[12px] p-2 pr-10 border border-gray-300 rounded-[20px]"
 						required
 					/>
 					<div
 						className="absolute inset-y-0 right-3 flex items-center cursor-pointer text-gray-500"
 						onClick={() => setShowPassword((prev) => !prev)}>
-						{showPassword ? "--" : "X"}
+						{showPassword ? 
+							<img 
+								alt = "opening eye" 
+								src="https://cdn-icons-png.flaticon.com/128/159/159604.png"
+								className="w-5 h-5"
+							/> : <img 
+									src="https://cdn-icons-png.flaticon.com/128/2767/2767146.png" 	
+									alt = "eye-closing" 
+									className="w-5 h-5"
+								/>
+						}
 					</div>
 				</div>
 
@@ -217,23 +257,32 @@ const Signup = () => {
 				)}
 
 				<button
-					className="w-full p-2 mt-2 text-[16px] bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+					className="w-full p-2 mt-2 text-[16px] text-white rounded-[20px] bg-[#6FCBAE] hover:bg-green-600 duration-200"
 					type="submit">
 					Signup
 				</button>
 			</form>
 
-			<p className="text-xs text-center mt-auto mb-6 text-gray-500">
-				By Signing up, you agree to our{" "}
-				<a href="/" className="text-blue-600 hover:underline">
-					Terms of Service
-				</a>{" "}
-				and{" "}
-				<a href="/" className="text-blue-600 hover:underline">
-					Privacy Policy
-				</a>
-				.
-			</p>
+			<p className="mt-5 text-[12px] font-light">Or</p>
+			
+			<div className="h-auto flex flex-col items-center p-4">
+					
+					<button onClick={signUpWithGoogle} className="rounded-[20px] text-[14px] flex items-center justify-center gap-3 font-bold mb-3 p-2 w-[350px] bg-[#F2F2F5] hover:bg-gray-200 transition duration-200">
+						<Google width={28} height={28}/>
+						Continue with Google
+					</button>
+					
+
+					<button className="rounded-[20px] text-[14px] text-white flex items-center justify-center gap-3 font-bold mb-3 p-2 w-[350px] bg-[#1877F2] hover:text-blue-600 hover:bg-gray-100 transition duration-200">
+						<Facebook width={28} height={28} />
+						Continue with Facebook
+					</button>
+			</div>
+			
+			<div className="flex flex-row gap-6 mb-3">
+				<p className="text-[12px] text-[#595959] font-light">Already have an account?</p>
+				<a href = "/login" className="text-[12px] text-[#55D468] hover:underline font-semibold">Sign in</a>
+			</div>
 		</div>
 	);
 };

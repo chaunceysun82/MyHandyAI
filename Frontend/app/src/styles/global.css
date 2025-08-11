@@ -1,0 +1,20 @@
+/* global.css */
+
+@keyframes wave {
+	0%,
+	40%,
+	100% {
+		transform: scaleY(0.4);
+	}
+	20% {
+		transform: scaleY(1);
+	}
+}
+
+.wave-bar {
+	animation-name: wave;
+	animation-duration: 1.2s;
+	animation-timing-function: ease-in-out;
+	animation-iteration-count: infinite;
+	transform-origin: center bottom;
+}

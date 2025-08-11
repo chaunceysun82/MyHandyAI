@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException
-from db import users_collection, conversations_collection
+from db import users_collection, conversations_collection, questions_collection
 from pydantic import BaseModel, EmailStr
 from bson import ObjectId
+from typing import Optional
+from datetime import datetime
 
 router = APIRouter()
 
@@ -10,6 +12,13 @@ class User(BaseModel):
     lastname: str
     password: str
     email: EmailStr
+    describe: Optional[str] = None
+    experienceLevel: Optional[str] = None
+    confidence: Optional[int] = None
+    tools: Optional[str] = None
+    interestedProjects: Optional[str] = None
+    country: Optional[str] = None
+    state: Optional[str] = None
 
 class LoginData(BaseModel):
     email: EmailStr
@@ -22,9 +31,8 @@ def create_user(user: User):
     if not user.password:
         raise HTTPException(status_code=400, detail="invalid password")
     new_user = user.dict()
+    new_user["createdAt"] = datetime.utcnow()
     result = users_collection.insert_one(new_user)
-
-    conversations_collection.insert_one({ "userId": result.inserted_id })
 
     return {"id": str(result.inserted_id)}
 
@@ -35,6 +43,15 @@ def get_user(user_id: str):
         raise HTTPException(status_code=404, detail="User not found")
     user["_id"] = str(user["_id"])
     return user
+
+@router.get("/onboarding")
+def get_onbording():
+    questions = list(questions_collection.find())
+    if not questions:
+        raise HTTPException(status_code=404, detail="No questions")
+    for q in questions:
+        q["_id"] = str(q["_id"])
+    return questions
 
 @router.delete("/users/{user_id}")
 def delete_user(user_id: str):
