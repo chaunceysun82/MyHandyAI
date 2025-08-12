@@ -9,6 +9,7 @@ from pymongo import DESCENDING
 import pickle
 from db import conversations_collection
 from datetime import datetime
+from .project import update_project
 
 
 # Add the chatbot directory to the path
@@ -74,6 +75,7 @@ def get_latest_chatbot(session_id):
         return pickle.loads(doc["chatbot_state"])
     else:
         return AgenticChatbot()
+    
 
 def get_conversation_history(session_id):
     cursor = conversations_collection.find({"session_id": session_id}).sort("timestamp", 1)
@@ -193,3 +195,14 @@ async def delete_session(session_id: str):
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "message": "Chatbot API is running"}
+
+@router.post("/session/{session_id}/save")
+async def save_information(session_id: str):
+    bot=get_latest_chatbot(session_id)
+    conv=conversations_collection.find_one({"session_id":session_id})
+    if bot.current_state == "complete":
+        update_project(conv["project"], {"user_description":bot.user_description,
+                                         "summary": bot.summary,
+                                         "image_analysis":bot.image_analysis,
+                                         "questions":bot.questions,
+                                         "answers":bot.user_answers})
