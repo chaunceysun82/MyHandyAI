@@ -252,6 +252,9 @@ class ImageAnalysisAgent:
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
             print("skip image ", r.json()["choices"][0]["message"]["content"])
+            print(f"❌ Error {r.status_code}")
+            print("Headers:", r.headers)
+            print("Body:", r.text)
             return r.json()["choices"][0]["message"]["content"] == "True"
         except:
             return True
