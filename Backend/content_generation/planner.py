@@ -309,7 +309,9 @@ class StepsAgentJSON:
                 steps_plan = self._parse_steps_text(content)
                 return self._convert_to_json_format(steps_plan)
             else:
-                print (r)
+                print(f"❌ Error {r.status_code}")
+                print("Headers:", r.headers)
+                print("Body:", r.text)
         except Exception as e:
             print("❌ ERROR:", str(e))
             raise HTTPException(status_code=500, detail="LLM personality generation")
