@@ -292,7 +292,7 @@ class StepsAgentJSON:
         )
 
         payload = {
-            "model": "gpt-5",
+            "model": "gpt-5-mini",
             "messages": [
                 {"role": "system", "content": base_prompt},
                 {"role": "user", "content": f"Enhanced Context:\n{enhanced_context}\n\nReturn the plan as plain text in the exact format."},
