@@ -59,9 +59,15 @@ class ToolsAgentJSON:
 
         tools = None
         try:
-            r = requests.post(self.api_url, headers=self.headers,
-                              json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 1000,"reasoning_effort": "low"},
-                              timeout=25)
+            # Using the same API structure as agents.py
+            payload = {
+                "model": "gpt-5-mini",
+                "messages": messages,
+                "max_completion_tokens": 1000,
+                "reasoning_effort": "low"
+            }
+            
+            r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=25)
             if r.status_code == 200:
                 raw = r.json()["choices"][0]["message"]["content"].strip()
                 try:
@@ -291,21 +297,24 @@ class StepsAgentJSON:
             "Description : <Informative Description of the step in 2-3 lines>\n\n"
         )
 
-        payload = {
-            "model": "gpt-5-mini",
-            "messages": [
-                {"role": "system", "content": base_prompt},
-                {"role": "user", "content": enhanced_context + "\n\nReturn the plan as plain text in the exact format."}
-            ],
-            "max_completion_tokens": 1000,
-            "reasoning_effort": "low",
-        }
+        messages = [
+            {"role": "system", "content": base_prompt},
+            {"role": "user", "content": enhanced_context + "\n\nReturn the plan as plain text in the exact format."}
+        ]
 
         try:
-            r = requests.post(self.api_url, headers=self.headers, json=payload)
+            # Using the same API structure as agents.py
+            payload = {
+                "model": "gpt-5-mini",
+                "messages": messages,
+                "max_completion_tokens": 1000,
+                "reasoning_effort": "low"
+            }
+            
+            r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=25)
             if r.status_code == 200:
                 content = r.json()["choices"][0]["message"]["content"].strip()
-                print (content)
+                print(content)
                 print("Headers:", r.headers)
                 print("Body:", r.text)
                 steps_plan = self._parse_steps_text(content)
