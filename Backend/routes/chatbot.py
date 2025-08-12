@@ -88,6 +88,7 @@ def get_session(project):
         raise HTTPException(status_code=404, detail=f"session not found")
     return {"session": cursor["session_id"]}
 
+
 def reset_session(session_id, user, project):
     chatbot = AgenticChatbot()
     log_message(session_id, "assistant", "Session reset.", chatbot, user, project, message_type="reset")
@@ -148,12 +149,14 @@ async def start_new_session(payload: StartChat):
     log_message(session_id, "assistant", intro_message, chatbot, payload.user, payload.project, message_type="project_intro")
     return ChatSession(session_id=session_id, intro_message=intro_message)
 
+
 @router.get("/session/{session_id}/history")
 async def get_chat_history(session_id: str):
     """
     Returns the full message history for a session.
     """
     return get_conversation_history(session_id)
+
 
 @router.get("/session/{session_id}/info", response_model=SessionInfo)
 async def get_session_info(session_id: str):
@@ -177,6 +180,7 @@ async def get_session_info(session_id: str):
         questions_remaining=questions_remaining
     )
 
+
 @router.post("/session/{session_id}/reset")
 async def reset_conversation(payload: ResetChat):
     """
@@ -186,6 +190,8 @@ async def reset_conversation(payload: ResetChat):
     intro_message = chatbot.greet()
     return {"message": "Conversation reset successfully", "intro_message": intro_message}
 
+
+
 @router.delete("/session/{session_id}")
 async def delete_session(session_id: str):
     """
@@ -194,10 +200,14 @@ async def delete_session(session_id: str):
     delete_session_docs(session_id)
     return {"message": f"Session {session_id} deleted successfully"}
 
+
+
 @router.get("/health")
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "message": "Chatbot API is running"}
+
+
 
 @router.post("/session/{session_id}/save")
 async def save_information(session_id: str):

@@ -205,7 +205,7 @@ export default function Home() {
               projectTitle={p.projectTitle}
               lastActivity={p.lastActivity}
               percentComplete={p.percentComplete}
-              onStartChat={() => navigate("/chat")}
+              onStartChat={() => navigate("/chat", {state: {projectId: p._id, projectName: p.projectTitle, userId: token}})}
               onRemove={handleRemoveProject}
             />
             // <div

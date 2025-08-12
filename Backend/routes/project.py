@@ -12,6 +12,7 @@ class Project(BaseModel):
     projectTitle: str
     userId: str
 
+
 @router.post("/projects")
 def create_project(project: Project):
     project_dict = {
@@ -24,6 +25,7 @@ def create_project(project: Project):
     project_id = result.inserted_id
 
     return {"id": str(project_id)}
+
 
 @router.get("/projects")
 def list_projects(user_id: str):
@@ -53,6 +55,7 @@ def list_projects(user_id: str):
         raise HTTPException(status_code=400, detail="Projects Error")
         
 
+
 @router.get("/project/{project_id}")
 def get_project(project_id: str):
     project = project_collection.find_one({"_id": ObjectId(project_id)})
@@ -61,6 +64,7 @@ def get_project(project_id: str):
     project["_id"] = str(project["_id"])
     project["userId"] = str(project["userId"])
     return project
+
 
 @router.put("/projects/{project_id}")
 def update_project(project_id: str, update_data: dict):
@@ -71,6 +75,7 @@ def update_project(project_id: str, update_data: dict):
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Project not found or no changes made")
     return {"message": "Project updated"}
+
 
 @router.delete("/projects/{project_id}")
 def delete_project(project_id: str):
