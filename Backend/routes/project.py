@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import List, Any
+from typing import List, Any, Dict
 from bson import ObjectId
 from db import project_collection, conversations_collection
 from datetime import datetime
@@ -39,7 +39,7 @@ def _ensure_object_id(id_str: str) -> ObjectId:
         raise HTTPException(status_code=400, detail="Invalid id format")
 
 @router.post("/projects")
-def create_project(project: ProjectCreate):
+def create_project(project: Project):
     now = datetime.utcnow()
     project_doc = {
         "projectTitle": project.projectTitle,
