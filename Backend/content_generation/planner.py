@@ -302,37 +302,39 @@ class StepsAgentJSON:
         }
 
         try:
-            r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=25)
+            r = requests.post(self.api_url, headers=self.headers, json=payload)
             if r.status_code == 200:
                 content = r.json()["choices"][0]["message"]["content"].strip()
                 print (content)
                 steps_plan = self._parse_steps_text(content)
                 return self._convert_to_json_format(steps_plan)
+            else:
+                print (r)
         except Exception as e:
             print("❌ ERROR:", str(e))
             raise HTTPException(status_code=500, detail="LLM personality generation")
 
-        # Enhanced fallback that considers skipped questions
-        if user_answers and questions:
-            fallback_text = (
-                "Here is your comprehensive step-by-step plan (considering all possibilities for skipped questions):\n\n"
-                "Step No. : 1\nStep Title : Assess the situation\nTime : 15-20 min\nDescription : Evaluate all possible scenarios and determine the best approach based on available information.\n\n"
-                "Step No. : 2\nStep Title : Prepare materials and tools\nTime : 10-15 min\nDescription : Gather all necessary tools and materials for the most comprehensive solution.\n\n"
-                "Step No. : 3\nStep Title : Execute primary solution\nTime : 20-30 min\nDescription : Implement the main solution while being prepared for alternative approaches.\n\n"
-                "Step No. : 4\nStep Title : Verify and adjust\nTime : 10-15 min\nDescription : Test the solution and make adjustments if needed for different scenarios.\n\n"
-                "Step No. : 5\nStep Title : Final inspection\nTime : 5-10 min\nDescription : Ensure everything is properly completed and safe."
-            )
-        else:
-            fallback_text = (
-                "Here is your step-by-step plan:\n\n"
-                "Step No. : 1\nStep Title : Locate studs\nTime : 10-15 min\nDescription : Find studs for secure mounting.\n\n"
-                "Step No. : 2\nStep Title : Mark mounting points\nTime : 10-15 min\nDescription : Measure and mark bracket positions.\n\n"
-                "Step No. : 3\nStep Title : Install brackets\nTime : 15-20 min\nDescription : Drill pilot holes and mount wall brackets.\n\n"
-                "Step No. : 4\nStep Title : Attach item\nTime : 5-10 min\nDescription : Mount securely and check level."
-            )
+        # # Enhanced fallback that considers skipped questions
+        # if user_answers and questions:
+        #     fallback_text = (
+        #         "Here is your comprehensive step-by-step plan (considering all possibilities for skipped questions):\n\n"
+        #         "Step No. : 1\nStep Title : Assess the situation\nTime : 15-20 min\nDescription : Evaluate all possible scenarios and determine the best approach based on available information.\n\n"
+        #         "Step No. : 2\nStep Title : Prepare materials and tools\nTime : 10-15 min\nDescription : Gather all necessary tools and materials for the most comprehensive solution.\n\n"
+        #         "Step No. : 3\nStep Title : Execute primary solution\nTime : 20-30 min\nDescription : Implement the main solution while being prepared for alternative approaches.\n\n"
+        #         "Step No. : 4\nStep Title : Verify and adjust\nTime : 10-15 min\nDescription : Test the solution and make adjustments if needed for different scenarios.\n\n"
+        #         "Step No. : 5\nStep Title : Final inspection\nTime : 5-10 min\nDescription : Ensure everything is properly completed and safe."
+        #     )
+        # else:
+        #     fallback_text = (
+        #         "Here is your step-by-step plan:\n\n"
+        #         "Step No. : 1\nStep Title : Locate studs\nTime : 10-15 min\nDescription : Find studs for secure mounting.\n\n"
+        #         "Step No. : 2\nStep Title : Mark mounting points\nTime : 10-15 min\nDescription : Measure and mark bracket positions.\n\n"
+        #         "Step No. : 3\nStep Title : Install brackets\nTime : 15-20 min\nDescription : Drill pilot holes and mount wall brackets.\n\n"
+        #         "Step No. : 4\nStep Title : Attach item\nTime : 5-10 min\nDescription : Mount securely and check level."
+        #     )
         
-        steps_plan = self._parse_steps_text(fallback_text)
-        return self._convert_to_json_format(steps_plan)
+        # steps_plan = self._parse_steps_text(fallback_text)
+        # return self._convert_to_json_format(steps_plan)
 
     def _convert_to_json_format(self, steps_plan: StepsPlan) -> Dict[str, Any]:
         """Convert StepsPlan to JSON format"""
