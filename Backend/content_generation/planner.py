@@ -60,7 +60,7 @@ class ToolsAgentJSON:
         tools = None
         try:
             r = requests.post(self.api_url, headers=self.headers,
-                              json={"model": "gpt-5", "messages": messages, "max_tokens": 900},
+                              json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 1000,"reasoning_effort": "low"},
                               timeout=25)
             if r.status_code == 200:
                 raw = r.json()["choices"][0]["message"]["content"].strip()
