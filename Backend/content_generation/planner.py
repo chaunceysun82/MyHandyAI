@@ -298,7 +298,7 @@ class StepsAgentJSON:
                 {"role": "user", "content": f"Enhanced Context:\n{enhanced_context}\n\nReturn the plan as plain text in the exact format."},
             ],
             "max_completion_tokens": 900,
-            "temperature": 0.5,
+            "temperature": 1,
         }
 
         try:
