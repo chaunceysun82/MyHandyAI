@@ -126,8 +126,8 @@ class ProblemRecognitionAgent:
                 {"role": "system", "content": "You are a DIY customer service agent, your task is to determine if the description/context of the repair/fix/project is coherent respond only 'True' or 'False'"},
                 {"role": "user", "content": message}
             ],
-            "max_completion_tokens": 50,
-            "reasoning_effort": "low",
+            "max_completion_tokens": 100,
+            "reasoning_effort": "minimal",
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -437,8 +437,8 @@ class SummaryAgent:
                 {"role": "system", "content": "You are a affirmative/negative detector, your task is to determine if the user answer is affirmative to proceed with next steps or negative to not continue answer only '1' for affirmative '2' for negative and '0' if you cannot determine with the message"},
                 {"role": "user", "content": message}
             ],
-            "max_completion_tokens": 50,
-            "reasoning_effort": "low",
+            "max_completion_tokens": 100,
+            "reasoning_effort": "minimal",
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
