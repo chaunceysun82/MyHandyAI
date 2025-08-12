@@ -110,8 +110,8 @@ class ProblemRecognitionAgent:
             "messages": [
                 {"role": "system", "content": "You are a DIY customer service agent called MyHandyAI , your task is to greet the user, introduce yourself and ask the user to describe the project/repair/fix to be done"},
             ],
-            "max_completion_tokens": 100,
-            "reasoning_effort": "low",
+            "max_completion_tokens": 200,
+            "reasoning_effort": "minimal",
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
