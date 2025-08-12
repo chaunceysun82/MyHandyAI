@@ -243,7 +243,7 @@ class ImageAnalysisAgent:
         payload = {
             "model": "gpt-5-nano",
             "messages": [
-                {"role": "system", "content": "You are a classifier that only responds with either 'True' or 'False'. No explanations."},
+                {"role": "system", "content": "You are a classifier that only responds with either 'True' or 'False'. No explanations. Detemine if the user wants to skip the image upload or dont have any photo"},
                 {"role": "user", "content": message + " Respond with either 'True' or 'False'"}
             ],
             "max_completion_tokens": 100,
