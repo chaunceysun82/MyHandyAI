@@ -106,7 +106,7 @@ class ProblemRecognitionAgent:
 
     def greetings(self):
         payload = {
-            "model": "gpt-5",
+            "model": "gpt-5-mini",
             "messages": [
                 {"role": "system", "content": "You are a DIY customer service agent called MyHandyAI , your task is to greet the user, introduce yourself and ask the user to describe the project/repair/fix to be done"},
             ],
@@ -121,7 +121,7 @@ class ProblemRecognitionAgent:
 
     def valid_description(self, message):
         payload = {
-            "model": "gpt-5",
+            "model": "gpt-5-nano",
             "messages": [
                 {"role": "system", "content": "You are a DIY customer service agent, your task is to determine if the description/context of the repair/fix/project is coherent respond only 'True' or 'False'"},
                 {"role": "user", "content": message}
@@ -131,6 +131,7 @@ class ProblemRecognitionAgent:
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
+            print(r.json()["choices"][0]["message"]["content"])
             return r.json()["choices"][0]["message"]["content"] == "True"
         except:
             return False
@@ -149,7 +150,7 @@ class ProblemRecognitionAgent:
             response = requests.post(
                 self.api_url,
                 headers=self.headers,
-                json={"model": "gpt-5", "messages": messages, "max_tokens": 500}
+                json={"model": "gpt-5-mini", "messages": messages, "max_tokens": 500}
             )
 
             if response.status_code == 200:
@@ -193,7 +194,7 @@ Be specific about what photos would help diagnose the problem."""
             response = requests.post(
                 self.api_url,
                 headers=self.headers,
-                json={"model": "gpt-5", "messages": messages, "max_tokens": 300}
+                json={"model": "gpt-5-mini", "messages": messages, "max_tokens": 300}
             )
 
             if response.status_code == 200:
@@ -284,7 +285,7 @@ class ImageAnalysisAgent:
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-5", "messages": messages, "max_tokens": 800},
+                json={"model": "gpt-5-mini", "messages": messages, "max_tokens": 800},
                 timeout=20
             )
             if r.status_code == 200:
