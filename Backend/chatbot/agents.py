@@ -780,18 +780,18 @@ class AgenticChatbot:
             current_q = self.questions[self.current_question_index]
             
             # NEW: Check for revision request first
-            is_revision, target_index, revision_message = self.clarification_agent.detect_revision_request(
-                user_message, current_q, self.questions[:self.current_question_index]
-            )
+            # is_revision, target_index, revision_message = self.clarification_agent.detect_revision_request(
+            #     user_message, current_q, self.questions[:self.current_question_index]
+            # )
             
-            if is_revision:
-                if target_index is not None and 1 <= target_index <= len(self.questions):
-                    # Go back to specific question
-                    self.current_question_index = target_index - 1
-                    return f"{revision_message}\n\n**Question {target_index}:**\n{self.questions[target_index - 1]}"
-                else:
-                    # Ask user to specify which question
-                    return revision_message
+            # if is_revision:
+            #     if target_index is not None and 1 <= target_index <= len(self.questions):
+            #         # Go back to specific question
+            #         self.current_question_index = target_index - 1
+            #         return f"{revision_message}\n\n**Question {target_index}:**\n{self.questions[target_index - 1]}"
+            #     else:
+            #         # Ask user to specify which question
+            #         return revision_message
             
             # Continue with normal clarification logic
             clarification, advance = self.clarification_agent.handle_user_response(

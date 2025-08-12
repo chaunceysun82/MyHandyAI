@@ -83,7 +83,7 @@ def get_conversation_history(session_id):
 
 @router.get("/session")
 def get_session(payload: StartChat):
-    cursor = conversations_collection.find_one({"user": payload.user, "project": payload.project,"chat_type":"project_intro"}).sort("timestamp", 1)
+    cursor = conversations_collection.find_one({"user": payload.user, "project": payload.project,"chat_type":"project_intro"})
     if not cursor:
         raise HTTPException(status_code=404, detail=f"session not found")
     return {"session": cursor["session_id"]}
