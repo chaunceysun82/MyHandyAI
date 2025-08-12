@@ -106,12 +106,12 @@ class ProblemRecognitionAgent:
 
     def greetings(self):
         payload = {
-            "model": "gpt-5-mini",
+            "model": "gpt-5-nano",
             "messages": [
                 {"role": "system", "content": "You are a DIY customer service agent called MyHandyAI , your task is to greet the user, introduce yourself and ask the user to describe the project/repair/fix to be done"},
             ],
-            "max_tokens": 50,
-            "temperature": 0.7
+            "max_completion_tokens": 100,
+            "reasoning_effort": "low",
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -126,8 +126,8 @@ class ProblemRecognitionAgent:
                 {"role": "system", "content": "You are a DIY customer service agent, your task is to determine if the description/context of the repair/fix/project is coherent respond only 'True' or 'False'"},
                 {"role": "user", "content": message}
             ],
-            "max_tokens": 50,
-            "temperature": 0.0
+            "max_completion_tokens": 50,
+            "reasoning_effort": "low",
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -150,7 +150,7 @@ class ProblemRecognitionAgent:
             response = requests.post(
                 self.api_url,
                 headers=self.headers,
-                json={"model": "gpt-5-mini", "messages": messages, "max_tokens": 500}
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 500, "reasoning_effort": "low"}
             )
 
             if response.status_code == 200:
@@ -194,7 +194,7 @@ Be specific about what photos would help diagnose the problem."""
             response = requests.post(
                 self.api_url,
                 headers=self.headers,
-                json={"model": "gpt-5-mini", "messages": messages, "max_tokens": 300}
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 500, "reasoning_effort": "low"}
             )
 
             if response.status_code == 200:
@@ -240,13 +240,13 @@ class ImageAnalysisAgent:
 
     def skip_image(self, message):
         payload = {
-            "model": "gpt-5",
+            "model": "gpt-5-nano",
             "messages": [
                 {"role": "system", "content": "Detect if the user doesn't have an image or want to skip the image upload (e.g 'skip','I dont have an image', etc...)  Respond only with 'True' or 'False'"},
                 {"role": "user", "content": message}
             ],
-            "max_tokens": 50,
-            "temperature": 0.0
+            "max_completion_tokens": 50,
+            "reasoning_effort": "low",
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -285,8 +285,7 @@ class ImageAnalysisAgent:
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-5-mini", "messages": messages, "max_tokens": 800},
-                timeout=20
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800,"reasoning_effort": "low"},
             )
             if r.status_code == 200:
                 txt = r.json()["choices"][0]["message"]["content"].strip()
@@ -330,8 +329,7 @@ class ImageAnalysisAgent:
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-5", "messages": messages, "max_tokens": 800},
-                timeout=20
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800, "reasoning_effort": "low"}
             )
             if r.status_code == 200:
                 txt = r.json()["choices"][0]["message"]["content"].strip()
@@ -429,13 +427,13 @@ class SummaryAgent:
 
     def affirmative_negative_response(self, message):
         payload = {
-            "model": "gpt-5",
+            "model": "gpt-5-nano",
             "messages": [
                 {"role": "system", "content": "You are a affirmative/negative detector, your task is to determine if the user answer is affirmative to proceed with next steps or negative to not continue answer only '1' for affirmative '2' for negative and '0' if you cannot determine with the message"},
                 {"role": "user", "content": message}
             ],
-            "max_tokens": 50,
-            "temperature": 0.0
+            "max_completion_tokens": 50,
+            "reasoning_effort": "low",
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -468,8 +466,7 @@ Please create a summary of this DIY problem."""
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-5", "messages": messages, "max_tokens": 300},
-                timeout=20
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 1000, "reasoning_effort": "low"}
             )
             if r.status_code == 200:
                 return r.json()["choices"][0]["message"]["content"].strip()
@@ -501,13 +498,13 @@ class QuestionClarificationAgent:
         # Replace placeholders manually to avoid conflicts with JSON braces in the prompt
         system_prompt = question_clarification_prompt_text.replace("{question}", question).replace("{user_response}", user_response)
         payload = {
-            "model": "gpt-5",
+            "model": "gpt-5-mini",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user",   "content": "Please classify and respond in JSON."}
             ],
-            "max_tokens": 200,
-            "temperature": 0.2
+            "max_completion_tokens": 1000,
+            "reasoning_effort": "low",
         }
         try:
             resp = requests.post(self.api_url, headers=self.headers, json=payload, timeout=15)
@@ -576,8 +573,7 @@ Use semantic matching to find the best question match."""
         try:
             response = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-5", "messages": messages, "max_tokens": 300},
-                timeout=10
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 500, "reasoning_effort": "low"}
             )
             
             if response.status_code == 200:
@@ -699,13 +695,13 @@ class DescriptionAssessmentAgent:
 Description: \"\"\"{description}\"\"\" 
 """
         payload = {
-            "model": "gpt-5",
+            "model": "gpt-5-nano",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user",   "content": "Please respond with JSON only."}
             ],
-            "max_tokens": 50,
-            "temperature": 0.0
+            "max_completion_tokens": 50,
+            "reasoning_effort": "low",
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
