@@ -295,10 +295,11 @@ class StepsAgentJSON:
             "model": "gpt-5-mini",
             "messages": [
                 {"role": "system", "content": base_prompt},
-                {"role": "user", "content": f"Enhanced Context:\n{enhanced_context}\n\nReturn the plan as plain text in the exact format."},
+                {"role": "user", "content": enhanced_context + "\n\nReturn the plan as plain text in the exact format.\n\nEND_OF_PLAN"}
             ],
-            "max_completion_tokens": 2500,
-            "temperature": 0,
+            "max_completion_tokens": 1000,
+            "reasoning_effort": "low",
+            "stop": ["END_OF_PLAN"]
         }
 
         try:
