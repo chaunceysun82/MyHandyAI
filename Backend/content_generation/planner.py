@@ -4,6 +4,7 @@ import json
 import requests
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
+from fastapi import HTTPException
 
 # Import utility functions from agents.py
 from chatbot.agents import load_prompt, clean_and_parse_json, minutes_to_human, extract_number_from_maybe_price
@@ -306,8 +307,9 @@ class StepsAgentJSON:
                 content = r.json()["choices"][0]["message"]["content"].strip()
                 steps_plan = self._parse_steps_text(content)
                 return self._convert_to_json_format(steps_plan)
-        except Exception:
-            pass
+        except Exception as e:
+            print("❌ ERROR:", str(e))
+            raise HTTPException(status_code=500, detail="LLM personality generation")
 
         # Enhanced fallback that considers skipped questions
         if user_answers and questions:
