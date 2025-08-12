@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from .chatbot import get_session, get_latest_chatbot
 from pydantic import BaseModel
 from bson import ObjectId
-
+from .project import update_project
 from typing import List, Dict, Any, Optional
 import sys
 import os
@@ -17,46 +17,33 @@ from datetime import datetime
 router = APIRouter(prefix="/generation", tags=["generation"])
 
 # Pydantic models for request/response
-class ToolsRequest(BaseModel):
-    project_id: str
-    summary: str
-    user_answers: Optional[Dict[int, str]] = None
-    questions: Optional[List[str]] = None
-
-class StepsRequest(BaseModel):
-    project_id: str
-    summary: str
-    user_answers: Optional[Dict[int, str]] = None
-    questions: Optional[List[str]] = None
-
-class EstimationRequest(BaseModel):
-    project_id: str
-    tools_data: Dict[str, Any]
-    steps_data: Dict[str, Any]
 
 @router.post("/tools")
-async def generate_tools(request: ToolsRequest):
+async def generate_tools(project:str):
     """
     Generate tools and materials for a DIY project.
     This endpoint runs independently to avoid timeout issues.
     """
     try:
         # Validate project exists
-        cursor = project_collection.find_one({"_id": ObjectId(request.project_id)})
+        cursor = project_collection.find_one({"_id": ObjectId(project)})
         if not cursor:
             raise HTTPException(status_code=404, detail="Project not found")
+        
         
         # Generate tools using the independent agent
         tools_agent = ToolsAgentJSON()
         tools_result = tools_agent.generate(
-            summary=request.summary,
-            user_answers=request.user_answers,
-            questions=request.questions
+            summary=cursor["summary"],
+            user_answers=["user_answers"],
+            questions=cursor["questions"]
         )
+
+        
         
         return {
             "success": True,
-            "project_id": request.project_id,
+            "project_id": project,
             "tools_data": tools_result,
             "generated_at": datetime.utcnow().isoformat()
         }
@@ -65,28 +52,28 @@ async def generate_tools(request: ToolsRequest):
         raise HTTPException(status_code=500, detail=f"Failed to generate tools: {str(e)}")
 
 @router.post("/steps")
-async def generate_steps(request: StepsRequest):
+async def generate_steps(project):
     """
     Generate step-by-step plan for a DIY project.
     This endpoint runs independently to avoid timeout issues.
     """
     try:
         # Validate project exists
-        cursor = project_collection.find_one({"_id": ObjectId(request.project_id)})
+        cursor = project_collection.find_one({"_id": ObjectId(project)})
         if not cursor:
             raise HTTPException(status_code=404, detail="Project not found")
         
         # Generate steps using the independent agent
         steps_agent = StepsAgentJSON()
         steps_result = steps_agent.generate(
-            summary=request.summary,
-            user_answers=request.user_answers,
-            questions=request.questions
+            summary=project,
+            user_answers=project,
+            questions=project
         )
         
         return {
             "success": True,
-            "project_id": request.project_id,
+            "project_id": project,
             "steps_data": steps_result,
             "generated_at": datetime.utcnow().isoformat()
         }
@@ -95,27 +82,27 @@ async def generate_steps(request: StepsRequest):
         raise HTTPException(status_code=500, detail=f"Failed to generate steps: {str(e)}")
 
 @router.post("/estimation")
-async def generate_estimation(request: EstimationRequest):
+async def generate_estimation(project):
     """
     Generate cost and time estimations for a DIY project.
     This endpoint runs independently to avoid timeout issues.
     """
     try:
         # Validate project exists
-        cursor = project_collection.find_one({"_id": ObjectId(request.project_id)})
+        cursor = project_collection.find_one({"_id": ObjectId(project)})
         if not cursor:
             raise HTTPException(status_code=404, detail="Project not found")
         
         # Generate estimation using the independent agent
         estimation_agent = EstimationAgent()
         estimation_result = estimation_agent.generate_estimation(
-            tools_data=request.tools_data,
-            steps_data=request.steps_data
+            tools_data=project,
+            steps_data=project
         )
         
         return {
             "success": True,
-            "project_id": request.project_id,
+            "project_id": project,
             "estimation_data": estimation_result,
             "generated_at": datetime.utcnow().isoformat()
         }
