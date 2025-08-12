@@ -243,14 +243,14 @@ class ImageAnalysisAgent:
         payload = {
             "model": "gpt-5-nano",
             "messages": [
-                {"role": "system", "content": "Detect if the user doesn't have an image or want to skip the image upload (e.g 'skip','I dont have an image', etc...)  Respond only with 'True' or 'False'"},
-                {"role": "user", "content": message}
+                {"role": "system", "content": "You are a classifier that only responds with either 'True' or 'False'. No explanations."},
+                {"role": "user", "content": message + " Respond with either 'True' or 'False'"}
             ],
             "max_completion_tokens": 50,
             "reasoning_effort": "low",
         }
         try:
-            r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
+            r = requests.post(self.api_url, headers=self.headers, json=payload)
             print("skip image ", r.json()["choices"][0]["message"]["content"])
             print(f"❌ Error {r.status_code}")
             print("Headers:", r.headers)
