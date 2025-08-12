@@ -41,20 +41,10 @@ export async function createProject(userId, projectTitle) {
 
 
 export async function deleteProject(id) {
-  try {
-    const res = await axios.delete(`${API_BASE}/projects/${id}`, {
-    });
-
-    // Axios automatically throws on non-2xx, so if we get here, it's successful.
-    return res.data;
-  } catch (err) {
-    // Extract error message safely
-    const msg =
-      err.response?.data?.detail ||
-      err.response?.statusText ||
-      err.message ||
-      "Unknown error";
-
+  const res = await fetch(`${API_BASE}/projects/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { msg = (await res.json()).detail || msg; } catch {}
     throw new Error(msg);
   }
 }

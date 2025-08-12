@@ -5,6 +5,7 @@ import Header                         from "../components/Header";
 import ProjectCard                    from "../components/ProjectCard";
 import LoadingPlaceholder             from "../components/LoadingPlaceholder";
 import { fetchProjects, createProject, deleteProject } from "../services/projects";
+import { getUserById } from "../services/auth";
 
 
 export default function Home() {
@@ -12,7 +13,12 @@ export default function Home() {
   const token    =
     localStorage.getItem("authToken") ||
     sessionStorage.getItem("authToken");
-  const userName = "User";
+  
+    const [userName, setUserName] = useState(
+    localStorage.getItem("displayName") ||
+    sessionStorage.getItem("displayName") ||
+    "User"
+  );
 
   // const projectsKey = `${token}`;
 
@@ -31,6 +37,16 @@ export default function Home() {
       navigate("/login", { replace: true });
       return;
     }
+    if (!localStorage.getItem("displayName") &&
+       !sessionStorage.getItem("displayName")) {
+     getUserById(token).then(u => {
+       const full = [u.firstname, u.lastname].filter(Boolean).join(" ") || (u.email ?? "User");
+       setUserName(full);
+       const store = localStorage.getItem("authToken") ? localStorage : sessionStorage;
+       store.setItem("displayName", full);
+     }).catch(() => {}); // ignore for Google-only ids
+    }
+
     fetchProjects(token)
       .then(data => {
         setProjects(data);
@@ -47,19 +63,12 @@ export default function Home() {
     localStorage.removeItem("authToken");
     sessionStorage.removeItem("authToken");
 
+    localStorage.removeItem(`chatMessages`);
+    localStorage.removeItem("introShown");
+    localStorage.removeItem("displayName");
+    sessionStorage.removeItem("displayName");
+
     navigate("/login", { replace: true });
-  }
-
-  async function handleRemoveProject(projectId)
-  {
-    try 
-    {
-      await deleteProject(projectId);
-
-      setProjects((prev) => prev.filter((p) => p._id !== projectId));
-    } catch (err) {
-      alert("Could not delete project. Please try again.");
-    }
   }
 
   function openModal() {
@@ -131,6 +140,26 @@ export default function Home() {
     }
   }
 
+  async function handleRemoveProject(id) {
+  try {
+    // optimistic UI: remove first
+    setProjects(prev => prev.filter(p => p._id !== id));
+
+    await deleteProject(id);
+    // (optional) toast/snackbar here
+  } catch (err) {
+    console.error("deleteProject:", err);
+    // revert if delete failed
+    setProjects(prev => {
+      // you might keep a copy to restore; simplest is to refetch
+      fetchProjects(token).then(setProjects).catch(() => {});
+      return prev;
+    });
+    setError("Could not delete project: " + err.message);
+  }
+}
+
+
   if (loading) return <LoadingPlaceholder />;
 
   return (
@@ -171,11 +200,13 @@ export default function Home() {
         >
           {projects.map((p) => (
             <ProjectCard
+              key={p._id}
+              id={p._id}
               projectTitle={p.projectTitle}
               lastActivity={p.lastActivity}
               percentComplete={p.percentComplete}
-              onStartChat={() => navigate("/chat", {state: {projectId: p._id, projectName: p.projectTitle, userId: token} })}
-              onRemove={() => handleRemoveProject(p._id)}
+              onStartChat={() => navigate("/chat", {state: {projectId: p._id, projectName: p.projectTitle, userId: token}})}
+              onRemove={handleRemoveProject}
             />
             // <div
             //   key={p._id}
