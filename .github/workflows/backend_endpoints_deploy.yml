@@ -18,6 +18,7 @@ jobs:
           cp Backend/*.py lambda_package/
           cp -r Backend/routes lambda_package/
           cp -r Backend/chatbot lambda_package/
+          cp -r Backend/content_generation lambda_package/
           cp -r Backend/chatbot/prompts lambda_package/
           cp Backend/requirements.txt lambda_package/
 
