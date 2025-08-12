@@ -7,25 +7,31 @@ export default function ProjectCard({
   lastActivity,
   percentComplete,
   onStartChat,
-  onRemove
+  onRemove,
 }) {
   return (
     <div className="border rounded-lg p-4 bg-white shadow flex justify-between items-center">
       <div>
         <h3 className="text-lg font-semibold">{projectTitle}</h3>
-        <p className="text-sm text-gray-500">Last Activity: {lastActivity || "N/A"}</p>
-        <p className="text-sm text-gray-500">Progress: {percentComplete || 0}%</p>
+        <p className="text-sm text-gray-500">
+          Last Activity: {lastActivity || "N/A"}
+        </p>
+        <p className="text-sm text-gray-500">
+          Progress: {percentComplete || 0}%
+        </p>
       </div>
+
       <div className="flex flex-col ml-20 space-y-2">
         <button
           className="bg-blue-600 text-white px-3 py-1 rounded text-sm"
-          onClick={onStartChat}
+          onClick={() => onStartChat?.(id)}
         >
           Start Chat
         </button>
+
         <button
           className="bg-red-500 text-white px-3 py-1 rounded text-sm"
-          onClick={onRemove}
+          onClick={() => onRemove?.(id)}
         >
           Remove
         </button>
