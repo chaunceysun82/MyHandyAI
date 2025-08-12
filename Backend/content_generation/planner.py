@@ -305,6 +305,7 @@ class StepsAgentJSON:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=25)
             if r.status_code == 200:
                 content = r.json()["choices"][0]["message"]["content"].strip()
+                print (content)
                 steps_plan = self._parse_steps_text(content)
                 return self._convert_to_json_format(steps_plan)
         except Exception as e:
