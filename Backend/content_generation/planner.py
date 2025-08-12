@@ -297,7 +297,7 @@ class StepsAgentJSON:
                 {"role": "system", "content": base_prompt},
                 {"role": "user", "content": f"Enhanced Context:\n{enhanced_context}\n\nReturn the plan as plain text in the exact format."},
             ],
-            "max_tokens": 900,
+            "max_completion_tokens": 900,
             "temperature": 0.5,
         }
 
