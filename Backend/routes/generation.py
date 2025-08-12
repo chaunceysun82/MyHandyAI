@@ -28,4 +28,4 @@ async def get_steps(projectId:str):
     cursor = project_collection.find_one({"_id": ObjectId(projectId)})
     user=cursor['userId']
     steps= StepsAgentJSON()
-    return steps.generate("I want to hang a mirror in my living room")
+    return steps.generate("There is a whole in may living room I want to repair it")
