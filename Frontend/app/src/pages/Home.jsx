@@ -5,6 +5,7 @@ import Header                         from "../components/Header";
 import ProjectCard                    from "../components/ProjectCard";
 import LoadingPlaceholder             from "../components/LoadingPlaceholder";
 import { fetchProjects, createProject, deleteProject } from "../services/projects";
+import { getUserById } from "../services/auth";
 
 
 export default function Home() {
@@ -12,7 +13,12 @@ export default function Home() {
   const token    =
     localStorage.getItem("authToken") ||
     sessionStorage.getItem("authToken");
-  const userName = "User";
+  
+    const [userName, setUserName] = useState(
+    localStorage.getItem("displayName") ||
+    sessionStorage.getItem("displayName") ||
+    "User"
+  );
 
   // const projectsKey = `${token}`;
 
@@ -31,6 +37,16 @@ export default function Home() {
       navigate("/login", { replace: true });
       return;
     }
+    if (!localStorage.getItem("displayName") &&
+       !sessionStorage.getItem("displayName")) {
+     getUserById(token).then(u => {
+       const full = [u.firstname, u.lastname].filter(Boolean).join(" ") || (u.email ?? "User");
+       setUserName(full);
+       const store = localStorage.getItem("authToken") ? localStorage : sessionStorage;
+       store.setItem("displayName", full);
+     }).catch(() => {}); // ignore for Google-only ids
+    }
+
     fetchProjects(token)
       .then(data => {
         setProjects(data);
@@ -49,6 +65,8 @@ export default function Home() {
 
     localStorage.removeItem(`chatMessages`);
     localStorage.removeItem("introShown");
+    localStorage.removeItem("displayName");
+    sessionStorage.removeItem("displayName");
 
     navigate("/login", { replace: true });
   }

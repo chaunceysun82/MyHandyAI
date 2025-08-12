@@ -41,16 +41,8 @@ class ToolsAgentJSON:
         Generate tools and materials in JSON format.
         Returns a dictionary with tools array and total cost estimation.
         """
-        system_prompt = (
-            "You are an assistant that converts a DIY problem summary into a structured list of tools and materials. "
-            "Produce a JSON array ONLY (no extra text) where each item is an object with the following keys:\n"
-            " - tool_name (string)\n"
-            " - description (string)\n"
-            " - dimensions (string, OPTIONAL)\n"
-            " - risk_factor (string)\n"
-            " - safety_measure (string)\n\n"
-            "Return 3-5 relevant tools when possible. Return JSON only."
-        )
+        # Use the prompt from text file
+        system_prompt = tools_prompt_text
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -285,17 +277,8 @@ class StepsAgentJSON:
             
             enhanced_context += answers_context
         
-        base_prompt = (
-            "You are an expert DIY planner.\n"
-            "Return a concise step-by-step plan as plain text (no JSON).\n"
-            "Start with an intro line summarizing total steps and estimated time if possible.\n\n"
-            "IMPORTANT: If any questions were skipped, consider all reasonable possibilities for those questions and provide comprehensive steps that cover different scenarios.\n\n"
-            "Then for each step return EXACTLY this format (use the same labels and punctuation):\n"
-            "Step No. : <Step No.>\n"
-            "Step Title : <step title>\n"
-            "Time : <Total time needed>\n"
-            "Description : <Informative Description of the step in 2-3 lines>\n\n"
-        )
+        # Use the prompt from text file
+        base_prompt = steps_prompt_text
 
         messages = [
             {"role": "system", "content": base_prompt},
