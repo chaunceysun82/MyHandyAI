@@ -1315,6 +1315,8 @@ class AgenticChatbot:
                     combined
                 )
 
+                self.summary=final_summary
+
                 # Generate TEXT-formatted output using the updated agent
                 tools_text = self.pydantic_agent.create_pydantic_output(final_summary)
 

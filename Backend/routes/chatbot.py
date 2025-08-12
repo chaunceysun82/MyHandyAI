@@ -206,3 +206,6 @@ async def save_information(session_id: str):
                                          "image_analysis":bot.image_analysis,
                                          "questions":bot.questions,
                                          "answers":bot.user_answers})
+        return {"message":"Data saved Successfully"}
+    else:
+        return {"messaage":"chat not complete"}
