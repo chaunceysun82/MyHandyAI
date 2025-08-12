@@ -246,8 +246,8 @@ class ImageAnalysisAgent:
                 {"role": "system", "content": "You are a classifier that only responds with either 'True' or 'False'. No explanations."},
                 {"role": "user", "content": message + " Respond with either 'True' or 'False'"}
             ],
-            "max_completion_tokens": 50,
-            "reasoning_effort": "low",
+            "max_completion_tokens": 100,
+            "reasoning_effort": "minimal",
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload)
