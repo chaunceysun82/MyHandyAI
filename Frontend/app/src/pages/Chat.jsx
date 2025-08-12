@@ -4,23 +4,54 @@ import { MoonIcon, SunIcon } from "@heroicons/react/24/solid";
 import {ReactComponent as Microphone} from '../assets/recorder-microphone.svg';
 import {ReactComponent as File} from '../assets/file-upload.svg';
 import SpeechRecognition, {useSpeechRecognition} from 'react-speech-recognition';
+import { useLocation, useNavigate } from "react-router-dom";
 
-const Chat = ({ projectId = "default" }) => {
-  const STORAGE_KEY = `chatMessages`;
-  const INTRO_SHOWN_KEY = "introShown";
+const Chat = () => {
+
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { projectId, projectName, userId } = location.state || {};
+
+  if(!projectId)
+  {
+    navigate("/", {replace: true});
+  }
+  const user = userId;
+  
+  // Call the /session/startchat endpoint:
+  useEffect(() => {
+    const fetchSession = async () => {
+        try {
+          const res = await axios.get(`${URL}/session`, 
+          {
+            user: userId,
+            project: projectId
+          },
+          { 
+            headers: { "Content-Type": "application/json" } 
+          })
+          localStorage.setItem("session", res.data.session);
+        } catch (errr) {
+          alert("Could not fetch the session ID successfully.");
+        }
+      }
+      fetchSession();
+  }, []);
+
+  const STORAGE_SESSION_KEY = localStorage.getItem("session");
+  const STORAGE_MESSAGES_KEY = `messages_${user}_${projectId}`;
+
 
   const [messages, setMessages] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(STORAGE_MESSAGES_KEY);
     return saved ? JSON.parse(saved) : [];
   });
 
   const [input, setInput] = useState("");
-  const [sessionId, setSessionId] = useState("");
+  const [sessionId, setSessionId] = useState(localStorage.getItem(STORAGE_SESSION_KEY) || "");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const messagesEndRef = useRef(null);
-
   const fileInputRef = useRef(null);
-
   const [theme, setTheme] = useState("light");
 
   const URL = process.env.REACT_APP_BASE_URL;
@@ -76,32 +107,41 @@ const Chat = ({ projectId = "default" }) => {
 
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-  }, [messages]);
+    localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messages));
+  }, [messages, STORAGE_MESSAGES_KEY]);
 
   useEffect(() => {
-    const introShown = localStorage.getItem(INTRO_SHOWN_KEY);
-    if (introShown) return;
-
-    const sendIntro = async () => {
-      try {
-        const res = await axios.post(
-          `${URL}/chatbot/start`,
-          { user: "test", project: "test" },
-          { headers: { "Content-Type": "application/json" } }
-        );
-
-        setMessages([{ sender: "bot", content: res.data.intro_message }]);
-        setSessionId(res.data.session_id);
-
-        localStorage.setItem(INTRO_SHOWN_KEY, "true");
-      } catch (err) {
-        console.error("Intro message error", err);
+    async function loadOrStartSession() {
+      if(!sessionId)
+      {
+        try {
+          const res = await axios.post(
+            `${URL}/chatbot/start`,
+            { user: userId, project: projectId },
+            { headers: { "Content-Type": "application/json" } 
+          });
+          setSessionId(res.data.session_id);
+          localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
+          setMessages([{ sender: "bot", content: res.data.intro_message }]);
+        } catch (err) 
+        {
+          console.error("Intro message error", err);
+        }
+      } else {
+        try {
+          const historyRes = await axios.get(`${URL}/chatbot/session/${sessionId}/history`);
+          const formattedMessages = historyRes.data.map(({role, message}) => ({
+            sender: role === "user" ? "user" : "bot",
+            content: message,
+          }));
+          setMessages(formattedMessages);
+        } catch (err) {
+          setMessages([{sender: "bot", content: "Failed to load chat history."}]);
+        }
       }
-    };
-
-    sendIntro();
-  }, [projectId]);
+    }
+    loadOrStartSession();
+  }, [projectId, userId]);
 
   const handleSend = async () => {
     if (!input.trim() && selectedFiles.length === 0) return;
@@ -179,9 +219,11 @@ const Chat = ({ projectId = "default" }) => {
     }
   };
 
+
   const handleKeyDown = (e) => {
     if (e.key === "Enter") handleSend();
   };
+
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === "light" ? "dark" : "light"));
@@ -205,6 +247,10 @@ const Chat = ({ projectId = "default" }) => {
 
       
       {/* Theme toggle button top right */}
+      <h1 className="text-center text-xl font-semibold">
+        {projectName || "Untitled Project"}
+      </h1>
+
       <div className="absolute top-4 right-4 z-20">
         <label className="flex items-center cursor-pointer select-none">
           <input

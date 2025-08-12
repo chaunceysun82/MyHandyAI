@@ -4,7 +4,7 @@ import { useNavigate }               from "react-router-dom";
 import Header                         from "../components/Header";
 import ProjectCard                    from "../components/ProjectCard";
 import LoadingPlaceholder             from "../components/LoadingPlaceholder";
-import { fetchProjects, createProject } from "../services/projects";
+import { fetchProjects, createProject, deleteProject } from "../services/projects";
 
 
 export default function Home() {
@@ -47,10 +47,19 @@ export default function Home() {
     localStorage.removeItem("authToken");
     sessionStorage.removeItem("authToken");
 
-    localStorage.removeItem(`chatMessages`);
-    localStorage.removeItem("introShown");
-
     navigate("/login", { replace: true });
+  }
+
+  async function handleRemoveProject(projectId)
+  {
+    try 
+    {
+      await deleteProject(projectId);
+
+      setProjects((prev) => prev.filter((p) => p._id !== projectId));
+    } catch (err) {
+      alert("Could not delete project. Please try again.");
+    }
   }
 
   function openModal() {
@@ -165,8 +174,8 @@ export default function Home() {
               projectTitle={p.projectTitle}
               lastActivity={p.lastActivity}
               percentComplete={p.percentComplete}
-              onStartChat={() => navigate("/chat")}
-              onRemove={() => console.log("Removing done")}
+              onStartChat={() => navigate("/chat", {state: {projectId: p._id, projectName: p.projectTitle, userId: token} })}
+              onRemove={() => handleRemoveProject(p._id)}
             />
             // <div
             //   key={p._id}

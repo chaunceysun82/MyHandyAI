@@ -1,4 +1,5 @@
 // src/services/projects.js
+import axios from "axios";
 const API_BASE = process.env.REACT_APP_BASE_URL ;
 
 /** GET /projects?user_id=... -> { message, projects: [...] } */
@@ -40,12 +41,23 @@ export async function createProject(userId, projectTitle) {
 
 
 export async function deleteProject(id) {
-  const res = await fetch(`${API_BASE}/projects/${id}`, { method: "DELETE" });
-  if (!res.ok) {
-    let msg = res.statusText;
-    try { msg = (await res.json()).detail || msg; } catch {}
+  try {
+    const res = await axios.delete(`${API_BASE}/projects/${id}`, {
+    });
+
+    // Axios automatically throws on non-2xx, so if we get here, it's successful.
+    return res.data;
+  } catch (err) {
+    // Extract error message safely
+    const msg =
+      err.response?.data?.detail ||
+      err.response?.statusText ||
+      err.message ||
+      "Unknown error";
+
     throw new Error(msg);
   }
 }
+
 
 
