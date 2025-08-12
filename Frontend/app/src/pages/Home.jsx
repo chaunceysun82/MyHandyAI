@@ -4,7 +4,7 @@ import { useNavigate }               from "react-router-dom";
 import Header                         from "../components/Header";
 import ProjectCard                    from "../components/ProjectCard";
 import LoadingPlaceholder             from "../components/LoadingPlaceholder";
-import { fetchProjects, createProject } from "../services/projects";
+import { fetchProjects, createProject, deleteProject } from "../services/projects";
 
 
 export default function Home() {
@@ -122,6 +122,26 @@ export default function Home() {
     }
   }
 
+  async function handleRemoveProject(id) {
+  try {
+    // optimistic UI: remove first
+    setProjects(prev => prev.filter(p => p._id !== id));
+
+    await deleteProject(id);
+    // (optional) toast/snackbar here
+  } catch (err) {
+    console.error("deleteProject:", err);
+    // revert if delete failed
+    setProjects(prev => {
+      // you might keep a copy to restore; simplest is to refetch
+      fetchProjects(token).then(setProjects).catch(() => {});
+      return prev;
+    });
+    setError("Could not delete project: " + err.message);
+  }
+}
+
+
   if (loading) return <LoadingPlaceholder />;
 
   return (
@@ -162,11 +182,13 @@ export default function Home() {
         >
           {projects.map((p) => (
             <ProjectCard
+              key={p._id}
+              id={p._id}
               projectTitle={p.projectTitle}
               lastActivity={p.lastActivity}
               percentComplete={p.percentComplete}
               onStartChat={() => navigate("/chat")}
-              onRemove={() => console.log("Removing done")}
+              onRemove={handleRemoveProject}
             />
             // <div
             //   key={p._id}
