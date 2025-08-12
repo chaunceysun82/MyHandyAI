@@ -306,6 +306,8 @@ class StepsAgentJSON:
             if r.status_code == 200:
                 content = r.json()["choices"][0]["message"]["content"].strip()
                 print (content)
+                print("Headers:", r.headers)
+                print("Body:", r.text)
                 steps_plan = self._parse_steps_text(content)
                 return self._convert_to_json_format(steps_plan)
             else:
