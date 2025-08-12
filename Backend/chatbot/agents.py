@@ -132,6 +132,7 @@ class ProblemRecognitionAgent:
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
             print(r.json()["choices"][0]["message"]["content"])
+            print ("testing bot")
             return r.json()["choices"][0]["message"]["content"] == "True"
         except:
             return False
