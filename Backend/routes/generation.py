@@ -66,10 +66,10 @@ async def generate_steps(project):
         # Generate steps using the independent agent
         steps_agent = StepsAgentJSON()
         steps_result = steps_agent.generate(
+            tools= cursor["tool_generation"],
             summary=cursor["summary"],
             user_answers=cursor["user_answers"],
-            questions=cursor["questions"],
-            tools= cursor["tool_generation"]
+            questions=cursor["questions"]
         )
 
         update_project(str(cursor["_id"]), {"step_generation":steps_result})

@@ -272,7 +272,7 @@ class StepsAgentJSON:
 
         return StepsPlan(total_steps=total_steps, estimated_time=estimated_time_minutes, steps=steps)
 
-    def generate(self, summary: str, user_answers: Dict[int, str] = None, questions: List[str] = None) -> Dict[str, Any]:
+    def generate(self, tools, summary: str, user_answers: Dict[int, str] = None, questions: List[str] = None) -> Dict[str, Any]:
         """
         Generate step-by-step plan in JSON format.
         Returns a dictionary with steps array and time estimation.
