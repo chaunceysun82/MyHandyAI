@@ -821,6 +821,8 @@ class AgenticChatbot:
                     combined
                 )
 
+                self.summary= final_summary
+
                 # The tools, steps, and estimations are now handled by the content planner
                 # The chatbot's job is complete - hand off to the next webapp page
                 reply = (

@@ -56,7 +56,7 @@ class ToolsAgentJSON:
             payload = {
                 "model": "gpt-5-mini",
                 "messages": messages,
-                "max_completion_tokens": 1000,
+                "max_completion_tokens": 2500,
                 "reasoning_effort": "low"
             }
             
@@ -279,7 +279,18 @@ class StepsAgentJSON:
         """
         # Prepare enhanced context including user answers and handling skipped questions
         enhanced_context = summary
-        
+
+        tools_context = "\n\nTools Context:\n"
+
+        if tools:
+            for tool in tools["tools"]:
+                tools_context += tool["tool_name"]+"\n"
+                tools_context += tool["description"]+"\n"
+                tools_context += tool["dimensions"]+"\n"
+                tools_context += tool["risk_factor"]+"\n"
+                tools_context += tool["safety_measure"]+"\n"
+            tools_context +="\n"
+
         if user_answers and questions:
             # Add user answers to the context
             answers_context = "\n\nUser's Answers to Questions:\n"
@@ -299,6 +310,7 @@ class StepsAgentJSON:
                 answers_context += "\n\nFor skipped questions, consider all reasonable possibilities and provide steps that cover different scenarios.\n"
             
             enhanced_context += answers_context
+            enhanced_context += tools_context
         
         # Use the prompt from text file
         base_prompt = steps_prompt_text
@@ -313,7 +325,7 @@ class StepsAgentJSON:
             payload = {
                 "model": "gpt-5-mini",
                 "messages": messages,
-                "max_completion_tokens": 1000,
+                "max_completion_tokens": 2500,
                 "reasoning_effort": "low"
             }
             
