@@ -81,7 +81,7 @@ def get_conversation_history(session_id):
     cursor = conversations_collection.find({"session_id": session_id}).sort("timestamp", 1)
     return [{"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]} for doc in cursor]
 
-@router.get("/session")
+@router.get("/session/{project}")
 def get_session(project):
     cursor = conversations_collection.find_one({"project":project,"chat_type":"project_intro"})
     if not cursor:
@@ -99,8 +99,6 @@ def delete_session_docs(session_id):
 
 # Store chatbot instances by session
 chatbot_instances = {}
-
-
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_bot(chat_message: ChatMessage):
@@ -127,8 +125,10 @@ async def chat_with_bot(chat_message: ChatMessage):
         response = chatbot.process_message(chat_message.message, uploaded_image)
         log_message(session_id, "assistant", response, chatbot, chat_message.user, chat_message.project)
 
-        if chatbot.current_state == "complete":
-            save_information(session_id=session_id)
+        print(getattr(chatbot, "current_state", None))
+
+        if getattr(chatbot, "current_state", None) == "complete":
+            await save_information(session_id=session_id)
 
         return ChatResponse(
             response=response,
@@ -214,11 +214,15 @@ async def save_information(session_id: str):
     bot=get_latest_chatbot(session_id)
     conv=conversations_collection.find_one({"session_id":session_id})
     if bot.current_state == "complete":
-        update_project(conv["project"], {"user_description":bot.user_description,
+        print (str(conv["project"]))
+        answers = bot.user_answers
+        if isinstance(answers, dict):
+            answers = {str(k): v for k, v in answers.items()}
+        update_project(str(conv["project"]), {"user_description":bot.user_description,
                                          "summary": bot.summary,
                                          "image_analysis":bot.image_analysis,
                                          "questions":bot.questions,
-                                         "answers":bot.user_answers})
+                                         "answers":answers})
         return {"message":"Data saved Successfully"}
     else:
         return {"messaage":"chat not complete"}

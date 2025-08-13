@@ -182,8 +182,8 @@ const Chat = () => {
       const formData = new FormData();
 
       formData.append('message', currInput);
-      formData.append('user', 'test');
-      formData.append('project', 'test');
+      formData.append('user', userId);
+      formData.append('project', projectId);
       formData.append('session_id', sessionId);
       
       

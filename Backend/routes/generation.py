@@ -18,7 +18,34 @@ router = APIRouter(prefix="/generation", tags=["generation"])
 
 # Pydantic models for request/response
 
-@router.post("/tools")
+@router.get("/tools/{project_id}")
+async def get_generated_tools(project_id: str):
+    doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"tool_generation": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if "tool_generation" not in doc or doc["tool_generation"] is None:
+        raise HTTPException(status_code=404, detail="Tools not generated yet")
+    return {"project_id": project_id, "tools_data": doc["tool_generation"]}
+
+@router.get("/steps/{project_id}")
+async def get_generated_steps(project_id: str):
+    doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"step_generation": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if "step_generation" not in doc or doc["step_generation"] is None:
+        raise HTTPException(status_code=404, detail="Steps not generated yet")
+    return {"project_id": project_id, "steps_data": doc["step_generation"]}
+
+@router.get("/estimation/{project_id}")
+async def get_generated_estimation(project_id: str):
+    doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"estimation_generation": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if "estimation_generation" not in doc or doc["estimation_generation"] is None:
+        raise HTTPException(status_code=404, detail="Estimation not generated yet")
+    return {"project_id": project_id, "estimation_data": doc["estimation_generation"]}
+
+@router.post("/tools/{project}")
 async def generate_tools(project:str):
     """
     Generate tools and materials for a DIY project.
@@ -35,11 +62,13 @@ async def generate_tools(project:str):
         tools_agent = ToolsAgentJSON()
         tools_result = tools_agent.generate(
             summary=cursor["summary"],
-            user_answers=["user_answers"],
+            user_answers=cursor.get("user_answers") or cursor.get("answers"),
             questions=cursor["questions"]
         )
+        if tools_result is None:
+            raise HTTPException(status_code=400, detail="Missing required fields (summary, answers, questions) on project")
 
-        
+        update_project(str(cursor["_id"]), {"tool_generation":tools_result})
         
         return {
             "success": True,
@@ -51,7 +80,7 @@ async def generate_tools(project:str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate tools: {str(e)}")
 
-@router.post("/steps")
+@router.post("/steps/{project}")
 async def generate_steps(project):
     """
     Generate step-by-step plan for a DIY project.
@@ -66,10 +95,13 @@ async def generate_steps(project):
         # Generate steps using the independent agent
         steps_agent = StepsAgentJSON()
         steps_result = steps_agent.generate(
-            summary=project,
-            user_answers=project,
-            questions=project
+            tools= cursor["tool_generation"],
+            summary=cursor["summary"],
+            user_answers=cursor.get("user_answers") or cursor.get("answers"),
+            questions=cursor["questions"]
         )
+
+        update_project(str(cursor["_id"]), {"step_generation":steps_result})
         
         return {
             "success": True,
@@ -81,7 +113,7 @@ async def generate_steps(project):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate steps: {str(e)}")
 
-@router.post("/estimation")
+@router.post("/estimation/{project}")
 async def generate_estimation(project):
     """
     Generate cost and time estimations for a DIY project.
@@ -96,9 +128,11 @@ async def generate_estimation(project):
         # Generate estimation using the independent agent
         estimation_agent = EstimationAgent()
         estimation_result = estimation_agent.generate_estimation(
-            tools_data=project,
-            steps_data=project
+            tools_data=cursor["tool_generation"],
+            steps_data=cursor["step_generation"]
         )
+
+        update_project(str(cursor["_id"]), {"estimation_generation": estimation_result})
         
         return {
             "success": True,

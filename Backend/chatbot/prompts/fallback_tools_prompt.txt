@@ -1,0 +1,191 @@
+{
+  "general_tools": [
+    {
+      "tool_name": "Protective Gloves",
+      "description": "Work gloves to protect hands from cuts, abrasions, and chemicals during DIY projects",
+      "dimensions": "Various sizes available",
+      "risk_factor": "Low - ill-fitting gloves may reduce dexterity",
+      "safety_measure": "Use gloves sized correctly for the task and material being handled"
+    },
+    {
+      "tool_name": "Safety Glasses",
+      "description": "Protective eyewear to shield eyes from flying debris, dust, and chemical splashes",
+      "dimensions": "One size fits most",
+      "risk_factor": "Low - may fog up in humid conditions",
+      "safety_measure": "Ensure proper fit and clean lenses before use"
+    },
+    {
+      "tool_name": "Measuring Tape",
+      "description": "Retractable tape measure for taking accurate measurements and marking precise points",
+      "dimensions": "Common sizes: 16ft, 25ft, 35ft",
+      "risk_factor": "Pinch risk during retraction",
+      "safety_measure": "Retract tape slowly and keep fingers clear of the edge"
+    },
+    {
+      "tool_name": "Utility Knife",
+      "description": "Retractable blade knife for cutting various materials like cardboard, plastic, and thin wood",
+      "dimensions": "Standard utility knife size",
+      "risk_factor": "Sharp blade can cause serious cuts",
+      "safety_measure": "Always retract blade when not in use, cut away from body, replace dull blades"
+    },
+    {
+      "tool_name": "Flashlight",
+      "description": "Portable light source for working in dark or poorly lit areas",
+      "dimensions": "Various sizes available",
+      "risk_factor": "Low - may cause eye strain in very dark conditions",
+      "safety_measure": "Use appropriate brightness level for the task"
+    }
+  ],
+  "hanging_mounting_tools": [
+    {
+      "tool_name": "Stud Finder",
+      "description": "Electronic device to detect wooden studs and metal pipes behind walls for secure mounting",
+      "dimensions": "Handheld size",
+      "risk_factor": "If inaccurate, may lead to anchors being placed incorrectly, risking fixture failure",
+      "safety_measure": "Scan the wall multiple times and confirm before drilling, wear safety glasses"
+    },
+    {
+      "tool_name": "Power Drill (with appropriate bits)",
+      "description": "Cordless or corded drill for making pilot holes and driving screws into various materials",
+      "dimensions": "Common chuck sizes: 3/8 inch, 1/2 inch",
+      "risk_factor": "Drilling can penetrate wiring/plumbing causing electrocution or water leaks",
+      "safety_measure": "Wear safety glasses and gloves, ensure drill bits are sharp and correct size"
+    },
+    {
+      "tool_name": "Heavy-duty Wall Anchors",
+      "description": "Anchors designed to hold heavy loads on drywall when studs are unavailable",
+      "dimensions": "Various sizes for different weight capacities",
+      "risk_factor": "Underrated anchors or improper installation may fail causing the object to fall",
+      "safety_measure": "Select anchors with verified weight rating greater than the object's weight"
+    },
+    {
+      "tool_name": "Level",
+      "description": "Tool to ensure objects are perfectly horizontal or vertical during installation",
+      "dimensions": "Common sizes: 24 inch, 48 inch",
+      "risk_factor": "Low - may cause crooked installations if not used properly",
+      "safety_measure": "Check level from multiple angles and secure before final tightening"
+    }
+  ],
+  "plumbing_tools": [
+    {
+      "tool_name": "Plunger",
+      "description": "Rubber suction cup tool for clearing clogs in sinks, toilets, and drains",
+      "dimensions": "Standard size: 6-8 inches diameter",
+      "risk_factor": "Minimal physical risk but improper use can splatter dirty water",
+      "safety_measure": "Wear gloves and goggles to protect from splashes"
+    },
+    {
+      "tool_name": "Pipe Wrench",
+      "description": "Heavy-duty adjustable wrench for loosening or tightening plumbing pipes and fittings",
+      "dimensions": "Common sizes: 10-18 inches length",
+      "risk_factor": "Risk of pinching fingers or scraping skin during use",
+      "safety_measure": "Ensure a firm grip and wear gloves to avoid injury"
+    },
+    {
+      "tool_name": "Drain Snake (Auger)",
+      "description": "Flexible, long tool to reach and break up clogs deep within pipes",
+      "dimensions": "Length varies, commonly 15-25 feet",
+      "risk_factor": "Risk of puncture or scratch injuries from metal coils",
+      "safety_measure": "Wear gloves and handle with care to avoid injury"
+    },
+    {
+      "tool_name": "Teflon Tape",
+      "description": "Thread seal tape to prevent leaks in threaded pipe connections",
+      "dimensions": "Standard 1/2 inch width",
+      "risk_factor": "Low - may cause leaks if not applied correctly",
+      "safety_measure": "Wrap tape clockwise around male threads, use 3-4 wraps"
+    }
+  ],
+  "electrical_tools": [
+    {
+      "tool_name": "Voltage Tester",
+      "description": "Non-contact device to detect live electrical current in wires and outlets",
+      "dimensions": "Pen-style design",
+      "risk_factor": "False readings can lead to dangerous assumptions about electrical safety",
+      "safety_measure": "Always test on known live circuit first, never assume power is off"
+    },
+    {
+      "tool_name": "Wire Strippers",
+      "description": "Tool to remove insulation from electrical wires for proper connections",
+      "dimensions": "Various sizes for different wire gauges",
+      "risk_factor": "Can damage wire conductors if used incorrectly",
+      "safety_measure": "Use correct size for wire gauge, don't over-strip insulation"
+    },
+    {
+      "tool_name": "Screwdriver Set",
+      "description": "Assorted screwdrivers for electrical work and general DIY tasks",
+      "dimensions": "Common sizes: Phillips #1, #2, #3 and flathead 1/4, 3/16",
+      "risk_factor": "Stripped screws if wrong size is used",
+      "safety_measure": "Use correct size and type, ensure good grip on screw head"
+    }
+  ],
+  "woodworking_tools": [
+    {
+      "tool_name": "Hand Saw",
+      "description": "Manual saw for cutting wood and other materials with precision",
+      "dimensions": "Common sizes: 20-26 inch blade",
+      "risk_factor": "Sharp teeth can cause cuts, sawdust can irritate eyes and lungs",
+      "safety_measure": "Wear safety glasses and dust mask, secure workpiece properly"
+    },
+    {
+      "tool_name": "Chisel Set",
+      "description": "Sharp-edged tools for carving, cutting, and shaping wood",
+      "dimensions": "Common sizes: 1/4, 1/2, 3/4, 1 inch widths",
+      "risk_factor": "Sharp edges can cause serious cuts if mishandled",
+      "safety_measure": "Keep chisels sharp, cut away from body, use mallet properly"
+    },
+    {
+      "tool_name": "Sandpaper (Various Grits)",
+      "description": "Abrasive paper for smoothing and finishing wood surfaces",
+      "dimensions": "Common sizes: 9x11 inch sheets",
+      "risk_factor": "Dust can irritate eyes and lungs, rough surfaces can cause abrasions",
+      "safety_measure": "Wear dust mask and safety glasses, work in well-ventilated area"
+    }
+  ],
+  "painting_tools": [
+    {
+      "tool_name": "Paint Brushes (Various Sizes)",
+      "description": "Bristle brushes for applying paint to different surfaces and areas",
+      "dimensions": "Common sizes: 1, 2, 3, 4 inch widths",
+      "risk_factor": "Paint fumes can be harmful, brushes can cause eye injury if mishandled",
+      "safety_measure": "Work in well-ventilated area, wear safety glasses, clean brushes properly"
+    },
+    {
+      "tool_name": "Paint Roller and Tray",
+      "description": "Roller system for applying paint to large flat surfaces efficiently",
+      "dimensions": "Common roller sizes: 3/8, 1/2, 3/4 inch nap",
+      "risk_factor": "Paint spills can create slippery surfaces, fumes can be harmful",
+      "safety_measure": "Use drop cloths, work in ventilated area, clean up spills immediately"
+    },
+    {
+      "tool_name": "Painter's Tape",
+      "description": "Low-adhesive tape for creating clean paint lines and protecting surfaces",
+      "dimensions": "Common widths: 1, 1.5, 2 inch",
+      "risk_factor": "Low - may damage some surfaces if left too long",
+      "safety_measure": "Remove tape while paint is still slightly wet, don't leave on for extended periods"
+    }
+  ],
+  "garden_tools": [
+    {
+      "tool_name": "Shovel",
+      "description": "Digging tool for moving soil, gravel, and other materials",
+      "dimensions": "Common sizes: standard and long-handled",
+      "risk_factor": "Strain injuries from improper lifting, foot injuries if stepped on",
+      "safety_measure": "Lift with legs not back, wear sturdy footwear, store properly"
+    },
+    {
+      "tool_name": "Pruning Shears",
+      "description": "Sharp cutting tool for trimming plants, branches, and small trees",
+      "dimensions": "Various sizes for different cutting capacities",
+      "risk_factor": "Sharp blades can cause serious cuts, falling branches can cause injury",
+      "safety_measure": "Wear gloves, cut away from body, be aware of falling debris"
+    },
+    {
+      "tool_name": "Garden Hose",
+      "description": "Flexible tube for watering plants and cleaning outdoor areas",
+      "dimensions": "Common sizes: 25, 50, 100 foot lengths",
+      "risk_factor": "Tripping hazard, water can create slippery surfaces",
+      "safety_measure": "Coil hose when not in use, avoid creating trip hazards"
+    }
+  ]
+}

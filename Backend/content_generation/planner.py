@@ -11,6 +11,7 @@ from chatbot.agents import load_prompt, clean_and_parse_json, minutes_to_human, 
 
 tools_prompt_text = load_prompt("tools_prompt.txt")
 steps_prompt_text = load_prompt("steps_prompt.txt")
+fallback_tools_text = load_prompt("fallback_tools_prompt.txt")
 
 
 class Step(BaseModel):
@@ -55,7 +56,7 @@ class ToolsAgentJSON:
             payload = {
                 "model": "gpt-5-mini",
                 "messages": messages,
-                "max_completion_tokens": 1000,
+                "max_completion_tokens": 2500,
                 "reasoning_effort": "low"
             }
             
@@ -93,48 +94,70 @@ class ToolsAgentJSON:
         }
 
     def _get_fallback_tools(self, summary_text: str) -> List[Dict[str, str]]:
-        """Fallback tools if generation fails"""
+        """Fallback tools if generation fails - uses comprehensive tool database from text file"""
         low = summary_text.lower()
         
-        if "mirror" in low or "hang" in low:
-            return [
-                {
-                    "tool_name": "Stud Finder",
-                    "description": "Handheld electronic device used to detect studs and wiring behind walls; recommended for locating secure mounting points for heavy fixtures.",
-                    "dimensions": "",
-                    "risk_factor": "If inaccurate, may lead to anchors being placed incorrectly, risking fixture failure or hitting hidden electrical wiring.",
-                    "safety_measure": "Scan the wall multiple times and confirm before drilling. Wear safety glasses."
-                },
-                {
-                    "tool_name": "Power Drill (with appropriate bits)",
-                    "description": "Cordless or corded drill used for pilot holes and installing anchors; choose drill size based on anchor/drywall type and screw diameter.",
-                    "dimensions": "",
-                    "risk_factor": "Drilling can penetrate wiring/plumbing causing electrocution or water leaks; bit kickback can injure hands.",
-                    "safety_measure": "Wear safety glasses and gloves, ensure drill bits are sharp and correct size."
-                },
-                {
-                    "tool_name": "Heavy-duty Wall Anchors (toggle or molly bolts)",
-                    "description": "Anchors designed to hold heavy loads on drywall when studs are unavailable; choose anchors rated for the mirror's weight.",
-                    "dimensions": "",
-                    "risk_factor": "Underrated anchors or improper installation may fail causing the mirror to fall.",
-                    "safety_measure": "Select anchors with verified weight rating greater than the object's weight and follow installation instructions."
-                }
-            ]
-        else:
+        try:
+            # Parse the JSON content from the fallback tools text file
+            fallback_tools_data = json.loads(fallback_tools_text)
+            
+            # Always include general safety tools
+            general_tools = fallback_tools_data.get("general_tools", [])
+            
+            # Add specific tools based on the task type
+            if any(word in low for word in ["mirror", "hang", "mount", "picture", "shelf"]):
+                # Hanging and mounting tools
+                specific_tools = fallback_tools_data.get("hanging_mounting_tools", [])
+                fallback_tools = general_tools + specific_tools
+                
+            elif any(word in low for word in ["sink", "drain", "pipe", "clog", "leak", "plumbing"]):
+                # Plumbing tools
+                specific_tools = fallback_tools_data.get("plumbing_tools", [])
+                fallback_tools = general_tools + specific_tools
+                
+            elif any(word in low for word in ["electrical", "outlet", "switch", "wire", "light"]):
+                # Electrical tools
+                specific_tools = fallback_tools_data.get("electrical_tools", [])
+                fallback_tools = general_tools + specific_tools
+                
+            elif any(word in low for word in ["wood", "cut", "saw", "drill", "sand"]):
+                # Woodworking tools
+                specific_tools = fallback_tools_data.get("woodworking_tools", [])
+                fallback_tools = general_tools + specific_tools
+                
+            elif any(word in low for word in ["paint", "brush", "roller", "wall"]):
+                # Painting tools
+                specific_tools = fallback_tools_data.get("painting_tools", [])
+                fallback_tools = general_tools + specific_tools
+                
+            elif any(word in low for word in ["garden", "outdoor", "plant", "soil", "shovel"]):
+                # Garden and outdoor tools
+                specific_tools = fallback_tools_data.get("garden_tools", [])
+                fallback_tools = general_tools + specific_tools
+                
+            else:
+                # Default to general tools for unknown tasks
+                fallback_tools = general_tools
+            
+            return fallback_tools
+            
+        except (json.JSONDecodeError, KeyError, Exception) as e:
+            # If parsing fails, fall back to basic safety tools
+            print(f"Warning: Failed to parse fallback tools from file: {e}")
             return [
                 {
                     "tool_name": "Protective Gloves",
-                    "description": "Gloves to protect hands from cuts and abrasions during the job.",
-                    "dimensions": "",
-                    "risk_factor": "Low — ill-fitting gloves may reduce dexterity.",
-                    "safety_measure": "Use gloves sized correctly for the task."
+                    "description": "Work gloves to protect hands from cuts and abrasions",
+                    "dimensions": "Various sizes available",
+                    "risk_factor": "Low - ill-fitting gloves may reduce dexterity",
+                    "safety_measure": "Use gloves sized correctly for the task"
                 },
                 {
-                    "tool_name": "Measuring Tape",
-                    "description": "Tape measure to take accurate measurements and mark mounting points precisely.",
-                    "dimensions": "",
-                    "risk_factor": "Pinch risk during retraction.",
-                    "safety_measure": "Retract tape slowly and keep fingers clear of the edge."
+                    "tool_name": "Safety Glasses",
+                    "description": "Protective eyewear to shield eyes from debris",
+                    "dimensions": "One size fits most",
+                    "risk_factor": "Low - may fog up in humid conditions",
+                    "safety_measure": "Ensure proper fit and clean lenses before use"
                 }
             ]
 
@@ -249,21 +272,36 @@ class StepsAgentJSON:
 
         return StepsPlan(total_steps=total_steps, estimated_time=estimated_time_minutes, steps=steps)
 
-    def generate(self, summary: str, user_answers: Dict[int, str] = None, questions: List[str] = None) -> Dict[str, Any]:
+    def generate(self, tools, summary: str, user_answers: Dict[int, str] = None, questions: List[str] = None) -> Dict[str, Any]:
         """
         Generate step-by-step plan in JSON format.
         Returns a dictionary with steps array and time estimation.
         """
         # Prepare enhanced context including user answers and handling skipped questions
         enhanced_context = summary
-        
+
+        tools_context = "\n\nTools Context:\n"
+
+        if tools:
+            for tool in tools["tools"]:
+                tools_context += tool["tool_name"]+"\n"
+                tools_context += tool["description"]+"\n"
+                tools_context += tool["dimensions"]+"\n"
+                tools_context += tool["risk_factor"]+"\n"
+                tools_context += tool["safety_measure"]+"\n"
+            tools_context +="\n"
+
         if user_answers and questions:
             # Add user answers to the context
             answers_context = "\n\nUser's Answers to Questions:\n"
             skipped_questions = []
             
-            for idx, answer in user_answers.items():
-                if idx < len(questions):
+            for k, answer in (user_answers or {}).items():
+                try:
+                    idx = int(k)
+                except Exception:
+                    idx = k
+                if isinstance(idx, int) and idx < len(questions):
                     question = questions[idx]
                     if answer.lower() == "skipped":
                         skipped_questions.append((idx, question))
@@ -276,6 +314,7 @@ class StepsAgentJSON:
                 answers_context += "\n\nFor skipped questions, consider all reasonable possibilities and provide steps that cover different scenarios.\n"
             
             enhanced_context += answers_context
+            enhanced_context += tools_context
         
         # Use the prompt from text file
         base_prompt = steps_prompt_text
@@ -290,7 +329,7 @@ class StepsAgentJSON:
             payload = {
                 "model": "gpt-5-mini",
                 "messages": messages,
-                "max_completion_tokens": 1000,
+                "max_completion_tokens": 2500,
                 "reasoning_effort": "low"
             }
             
