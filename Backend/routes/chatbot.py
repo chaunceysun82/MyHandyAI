@@ -212,7 +212,7 @@ async def save_information(session_id: str):
     bot=get_latest_chatbot(session_id)
     conv=conversations_collection.find_one({"session_id":session_id})
     if bot.current_state == "complete":
-        update_project(conv["project"], {"user_description":bot.user_description,
+        update_project(str(conv["project"]), {"user_description":bot.user_description,
                                          "summary": bot.summary,
                                          "image_analysis":bot.image_analysis,
                                          "questions":bot.questions,
