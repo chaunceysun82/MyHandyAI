@@ -85,7 +85,7 @@ def get_conversation_history(session_id):
 def get_session(project):
     cursor = conversations_collection.find_one({"project":project,"chat_type":"project_intro"})
     if not cursor:
-        raise HTTPException(status_code=404, detail=f"session not found")
+        return {"session": None}
     return {"session": cursor["session_id"]}
 
 
