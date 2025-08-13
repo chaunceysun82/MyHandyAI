@@ -125,7 +125,9 @@ async def chat_with_bot(chat_message: ChatMessage):
         response = chatbot.process_message(chat_message.message, uploaded_image)
         log_message(session_id, "assistant", response, chatbot, chat_message.user, chat_message.project)
 
-        if chatbot.current_state == "complete":
+        print(getattr(chatbot, "current_state", None))
+
+        if getattr(chatbot, "current_state", None) == "complete":
             save_information(session_id=session_id)
 
         return ChatResponse(

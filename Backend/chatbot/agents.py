@@ -241,9 +241,9 @@ class ImageAnalysisAgent:
 
     def skip_image(self, message):
         payload = {
-            "model": "gpt-5-nano",
+            "model": "gpt-5-mini",
             "messages": [
-                {"role": "system", "content": "You are a classifier that only responds with either 'True' or 'False'. No explanations. Detemine if the user wants to skip the image upload or dont have any photo"},
+                {"role": "system", "content": "You are a classifier that only responds with either 'True' or 'False'. No explanations. Detemine if the user wants to skip the image upload or dont have any photo e.g I dont have any photo, I want to skip th photo "},
                 {"role": "user", "content": message + " Respond with either 'True' or 'False'"}
             ],
             "max_completion_tokens": 100,
