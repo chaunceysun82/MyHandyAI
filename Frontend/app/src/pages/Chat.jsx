@@ -21,25 +21,25 @@ const Chat = () => {
   const user = userId;
   
   // Call the /session/startchat endpoint:
-  // useEffect(() => {
-  //   const fetchSession = async () => {
-  //       try {
-  //         const res = await axios.get(`${URL}/session`, { 
-  //           params: {
-  //             user: user,
-  //             project: projectId
-  //           },
-  //           headers: { "Content-Type": "application/json" } 
-  //         });
-  //         localStorage.setItem("session", res.data.session);
-  //       } catch (errr) {
-  //         alert("Could not fetch the session ID successfully.");
-  //       }
-  //     }
-  //     fetchSession();
-  // }, []);
+  console.log("Project ID:", projectId);
 
-  const STORAGE_SESSION_KEY = `sessionId_${user}_${projectId}`;
+  useEffect(() => {
+    const fetchSession = async () => {
+        try {
+          const res = await axios.get(`${URL}/chatbot/session/${projectId}`, { 
+
+            headers: { "Content-Type": "application/json" } 
+          });
+          localStorage.setItem("session", res.data.session);
+        } catch (err) {
+          alert("Could not fetch the session ID successfully.");
+        }
+      }
+      fetchSession();
+  }, []);
+
+  // const STORAGE_SESSION_KEY = `sessionId_${user}_${projectId}`;
+  const STORAGE_SESSION_KEY = localStorage.getItem("session");
   const STORAGE_MESSAGES_KEY = `messages_${user}_${projectId}`;
 
 
