@@ -128,7 +128,7 @@ async def chat_with_bot(chat_message: ChatMessage):
         print(getattr(chatbot, "current_state", None))
 
         if getattr(chatbot, "current_state", None) == "complete":
-            save_information(session_id=session_id)
+            await save_information(session_id=session_id)
 
         return ChatResponse(
             response=response,
