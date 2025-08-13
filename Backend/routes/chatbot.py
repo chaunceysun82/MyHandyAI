@@ -100,8 +100,6 @@ def delete_session_docs(session_id):
 # Store chatbot instances by session
 chatbot_instances = {}
 
-
-
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_bot(chat_message: ChatMessage):
     """
