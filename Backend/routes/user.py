@@ -34,8 +34,6 @@ def create_user(user: User):
     new_user["createdAt"] = datetime.utcnow()
     result = users_collection.insert_one(new_user)
 
-    conversations_collection.insert_one({ "userId": result.inserted_id })
-
     return {"id": str(result.inserted_id)}
 
 @router.get("/users/{user_id}")

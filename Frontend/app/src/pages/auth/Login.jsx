@@ -7,6 +7,7 @@ import {ReactComponent as Google} from '../../assets/google.svg';
 import {ReactComponent as Facebook} from '../../assets/Facebook.svg';
 import {getAuth, GoogleAuthProvider, signInWithPopup} from "firebase/auth";
 import { app } from "../../firebase";
+import { getUserById } from "../../services/auth";
 
 const Login = () => {
 	const location = useLocation();
@@ -39,9 +40,20 @@ const Login = () => {
 	const signUpWithGoogle = () => {
 		signInWithPopup(auth, googleProvider).then((result) => {
 			const user = result.user;
-			console.log("User:", user.id)
 			console.log("Google login successful");
-			navigate("/");
+			if(rememberMe)
+			{
+				localStorage.setItem("authToken", user.uid);
+			}
+			else
+			{
+				sessionStorage.setItem("authToken", user.uid);
+			}
+			const store = rememberMe ? localStorage : sessionStorage;
+     		store.setItem("authToken", user.uid);               // your app uses this as userId
+     		const name = user.displayName || (user.email?.split("@")[0]) || "User";
+		     store.setItem("displayName", name);
+			navigate("/home");
 		}).catch((error) => {
 			console.log("An Error occured while google sign in.");
 		});
@@ -53,20 +65,28 @@ const Login = () => {
 			console.log("Calling the loginUser function");
 			const res = await loginUser(email, password);
 			
-			if(res.id)
-			{
-				if(rememberMe)
-				{
-					localStorage.setItem("authToken", res.id);
-				}
-				else
-				{
-					sessionStorage.setItem("authToken", res.id);
-				}
-			}
+			//if(res.id)
+			//{
+				//if(rememberMe)
+				//{
+					//localStorage.setItem("authToken", res.id);
+				//}
+				//else
+				//{
+					//sessionStorage.setItem("authToken", res.id);
+				//}
+			//}
+			const store = rememberMe ? localStorage : sessionStorage;
+     		store.setItem("authToken", res.id);
+    		// fetch name and cache it for the header
+     		try {
+       		const u = await getUserById(res.id);
+       		const full = [u.firstname, u.lastname].filter(Boolean).join(" ") || (u.email ?? "User");
+       		store.setItem("displayName", full);
+     		} catch { /* ignore; we'll fallback in Home */ }
 
 			console.log("Login result: ", res);
-			navigate("/")
+			navigate("/home")
 		}
 		catch (err) {
 			console.log("Login error: ", err.message);
@@ -76,7 +96,7 @@ const Login = () => {
 
 
 	return (
-		<div className="h-auto flex flex-col items-center p-4">
+		<div className="min-h-screen flex flex-col items-center p-4">
 			<h1 className="text-[20px] mt-[-24px] font-semibold p-10">Welcome back!</h1>
 			<div className="relative w-full max-w-sm mx-auto mb-8">
 				{/* Tab buttons */}

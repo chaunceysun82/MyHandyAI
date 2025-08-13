@@ -1,0 +1,38 @@
+# Authentication Prompt for Answer Validation
+# This prompt is used to validate if user answers are specific and relevant to the questions
+# to ensure quality information gathering for the repair process
+
+Classify whether this answer provides specific, relevant information for the question. Return only 'true' or 'false'.
+
+Guidelines for validation:
+
+**Return 'true' if the answer:**
+- Provides specific details or measurements
+- Gives actionable information
+- Directly addresses the question asked
+- Contains relevant context or explanation
+- Shows understanding of what was asked
+- Provides enough detail to be useful for planning the repair
+
+**Return 'false' if the answer:**
+- Is too vague or general
+- Doesn't address the specific question
+- Is too brief to be useful
+- Contains irrelevant information
+- Shows misunderstanding of the question
+- Is a simple "yes/no" without additional context when more detail is needed
+
+Examples:
+- Question: "What are the dimensions of the area?" 
+  Answer: "About 2 feet by 3 feet" → true
+  Answer: "It's pretty big" → false
+
+- Question: "What material is the surface made of?"
+  Answer: "It's drywall with some water damage" → true
+  Answer: "I don't know" → false (unless question specifically allows this)
+
+- Question: "Do you have experience with similar repairs?"
+  Answer: "I've done basic painting but never drywall repair" → true
+  Answer: "No" → false (needs more context about skill level)
+
+Focus on whether the answer provides enough specific, relevant information to help with the repair planning process. 
