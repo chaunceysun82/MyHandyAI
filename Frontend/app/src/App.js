@@ -10,6 +10,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import Onboarding from "./pages/onboarding/Onboarding.jsx";
 import OnboardingWelcome from "./pages/onboarding/OnboardingWelcome.jsx";
 import OnboardingComplete from "./pages/onboarding/OnboardingComplete.jsx";
+import ProjectOverview from "./pages/ProjectOverview.jsx";
 
 function App() {
 	const navigate = useNavigate();
@@ -42,6 +43,7 @@ function App() {
 				<Route path="/onboarding/" element={<OnboardingWelcome />} />
 				<Route path="/onboarding/:step" element={<Onboarding />} />
 				<Route path="/onboarding/complete" element={<OnboardingComplete />} />
+				<Route path="/projects/:id/overview" element={<ProjectOverview />} />
 			</Routes>
 		</MobileWrapper>
 	);
