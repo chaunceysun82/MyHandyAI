@@ -72,9 +72,9 @@ def update_project(project_id: str, update_data: dict):
         {"_id": ObjectId(project_id)},
         {"$set": update_data}
     )
-    if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Project not found or no changes made")
-    return {"message": "Project updated"}
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"message": "Project updated", "modified": bool(result.modified_count)}
 
 
 @router.delete("/projects/{project_id}")

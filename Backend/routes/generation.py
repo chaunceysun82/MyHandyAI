@@ -35,9 +35,11 @@ async def generate_tools(project:str):
         tools_agent = ToolsAgentJSON()
         tools_result = tools_agent.generate(
             summary=cursor["summary"],
-            user_answers=cursor["user_answers"],
+            user_answers=cursor.get("user_answers") or cursor.get("answers"),
             questions=cursor["questions"]
         )
+        if tools_result is None:
+            raise HTTPException(status_code=400, detail="Missing required fields (summary, answers, questions) on project")
 
         update_project(str(cursor["_id"]), {"tool_generation":tools_result})
         
@@ -68,7 +70,7 @@ async def generate_steps(project):
         steps_result = steps_agent.generate(
             tools= cursor["tool_generation"],
             summary=cursor["summary"],
-            user_answers=cursor["user_answers"],
+            user_answers=cursor.get("user_answers") or cursor.get("answers"),
             questions=cursor["questions"]
         )
 

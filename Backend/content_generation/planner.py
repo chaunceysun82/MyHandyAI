@@ -296,8 +296,12 @@ class StepsAgentJSON:
             answers_context = "\n\nUser's Answers to Questions:\n"
             skipped_questions = []
             
-            for idx, answer in user_answers.items():
-                if idx < len(questions):
+            for k, answer in (user_answers or {}).items():
+                try:
+                    idx = int(k)
+                except Exception:
+                    idx = k
+                if isinstance(idx, int) and idx < len(questions):
                     question = questions[idx]
                     if answer.lower() == "skipped":
                         skipped_questions.append((idx, question))
