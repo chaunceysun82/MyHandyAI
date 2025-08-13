@@ -35,11 +35,11 @@ async def generate_tools(project:str):
         tools_agent = ToolsAgentJSON()
         tools_result = tools_agent.generate(
             summary=cursor["summary"],
-            user_answers=["user_answers"],
+            user_answers=cursor["user_answers"],
             questions=cursor["questions"]
         )
 
-        
+        update_project(str(cursor["_id"]), {"tool_generation":tools_result})
         
         return {
             "success": True,
@@ -66,10 +66,13 @@ async def generate_steps(project):
         # Generate steps using the independent agent
         steps_agent = StepsAgentJSON()
         steps_result = steps_agent.generate(
-            summary=project,
-            user_answers=project,
-            questions=project
+            summary=cursor["summary"],
+            user_answers=cursor["user_answers"],
+            questions=cursor["questions"],
+            tools= cursor["tool_generation"]
         )
+
+        update_project(str(cursor["_id"]), {"step_generation":steps_result})
         
         return {
             "success": True,
@@ -96,8 +99,8 @@ async def generate_estimation(project):
         # Generate estimation using the independent agent
         estimation_agent = EstimationAgent()
         estimation_result = estimation_agent.generate_estimation(
-            tools_data=project,
-            steps_data=project
+            tools_data=cursor["tool_generation"],
+            steps_data=cursor["step_generation"]
         )
         
         return {
