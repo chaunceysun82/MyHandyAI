@@ -21,25 +21,42 @@ const Chat = () => {
   const user = userId;
   
   // Call the /session/startchat endpoint:
+  // console.log("Project ID:", projectId);
+
   // useEffect(() => {
   //   const fetchSession = async () => {
   //       try {
-  //         const res = await axios.get(`${URL}/session`, { 
-  //           params: {
-  //             user: user,
-  //             project: projectId
-  //           },
+  //         const res = await axios.get(`${URL}/chatbot/session/${projectId}`, { 
+
   //           headers: { "Content-Type": "application/json" } 
   //         });
-  //         localStorage.setItem("session", res.data.session);
-  //       } catch (errr) {
-  //         alert("Could not fetch the session ID successfully.");
+  //         if(!res.data.session)
+  //         {
+  //           // Call start
+  //         }
+  //         else{
+  //           // Call history
+  //           localStorage.setItem("session", res.data.session);
+  //         }
+          
+  //       } catch (err) {
+  //         console.log("Error");
   //       }
   //     }
   //     fetchSession();
-  // }, []);
+  // }, [projectId]);
+  
+
+  // call get session function
+  // if session id is there, then call history
+  // else, call start
+
+  
+
+  // once I click start chat, then STORAGE SESSION KEY is updated based off user and projectID
 
   const STORAGE_SESSION_KEY = `sessionId_${user}_${projectId}`;
+  // const STORAGE_SESSION_KEY = localStorage.getItem("session");
   const STORAGE_MESSAGES_KEY = `messages_${user}_${projectId}`;
 
 
@@ -49,6 +66,7 @@ const Chat = () => {
   });
 
   const [input, setInput] = useState("");
+
   const [sessionId, setSessionId] = useState(localStorage.getItem(STORAGE_SESSION_KEY) || "");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const messagesEndRef = useRef(null);
@@ -244,9 +262,25 @@ const Chat = () => {
         accept="*/*"
       />
 
+      <div
+        className="flex justify-center items-center"
+      >
+        <button
+          onClick={() => navigate(`/projects/${projectId}/overview`)}
+          className= {`rounded-[10px] py-1 w-40 flex text-[16px] items-center justify-center text-center mb-4 font-bold ${
+            theme === "dark" ? "bg-white text-black" : "bg-black text-white" 
+          }`}
+        >
+          Project Overview
+        </button>
+      </div>
+
       
       {/* Theme toggle button top right */}
-      <h1 className="text-center text-xl font-semibold">
+      <h1 className={`text-center text-xl font-semibold ${
+        theme === 'dark'? "text-blue-300" : "text-blue-700"
+      }`}
+      >
         {projectName || "Untitled Project"}
       </h1>
 
