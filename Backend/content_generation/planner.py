@@ -19,7 +19,10 @@ class Step(BaseModel):
     step_title: str = Field(..., alias="Step Title")
     time: int = Field(..., alias="Time")          
     time_text: str = Field(..., alias="TimeText") 
-    description: str = Field(..., alias="Description")
+    instructions: List[str] = Field(..., alias="Instructions")
+    tools_needed: List[str] = Field(default=[], alias="Tools Needed")
+    safety_warnings: List[str] = Field(default=[], alias="Safety Warnings")
+    tips: List[str] = Field(default=[], alias="Tips")
 
 
 class StepsPlan(BaseModel):
@@ -171,6 +174,54 @@ class StepsAgentJSON:
             "Content-Type": "application/json",
         }
 
+    def _parse_list_items(self, text: str) -> List[str]:
+        """
+        Parse text into a list of items, handling numbered lists and bullet points.
+        More robust parsing with better error handling.
+        """
+        if not text or not text.strip():
+            return []
+        
+        try:
+            # Split by newlines and clean up
+            lines = [line.strip() for line in text.split('\n') if line.strip()]
+            
+            # Remove common list markers and clean up
+            cleaned_items = []
+            for line in lines:
+                if not line:
+                    continue
+                    
+                # Remove numbered list markers (1., 2., etc.)
+                line = re.sub(r'^\d+\.\s*', '', line)
+                # Remove bullet points
+                line = re.sub(r'^[-•*]\s*', '', line)
+                # Remove other common markers
+                line = re.sub(r'^[a-z]\)\s*', '', line, flags=re.IGNORECASE)
+                # Remove extra whitespace
+                line = re.sub(r'\s+', ' ', line).strip()
+                
+                if line and len(line) > 1:  # Ensure meaningful content
+                    cleaned_items.append(line)
+            
+            # If no items were parsed, try alternative parsing
+            if not cleaned_items and text.strip():
+                # Try splitting by common separators
+                alt_items = re.split(r'[;,]|\band\b', text, flags=re.IGNORECASE)
+                for item in alt_items:
+                    item = item.strip()
+                    if item and len(item) > 1:
+                        cleaned_items.append(item)
+            
+            return cleaned_items
+            
+        except Exception as e:
+            print(f"Warning: Error parsing list items: {str(e)}")
+            # Fallback: return the original text as a single item if it's not empty
+            if text.strip():
+                return [text.strip()]
+            return []
+
     def _parse_time_to_minutes(self, text: str) -> int:
         """
         Parse human time expressions into integer minutes.
@@ -227,50 +278,126 @@ class StepsAgentJSON:
         return 0
 
     def _parse_steps_text(self, text: str) -> StepsPlan:
-        # header
+        """Parse step-by-step plan text into structured data with robust error handling"""
+        if not text or not text.strip():
+            raise ValueError("Empty or invalid text provided for parsing")
+        
+        # Parse header information
         total_steps = None
         estimated_time_minutes = 0
 
+        # Look for total steps in header
         m_total = re.search(r"Total\s*Steps\s*[:\-]\s*(\d+)", text, re.IGNORECASE)
         if m_total:
-            total_steps = int(m_total.group(1))
+            try:
+                total_steps = int(m_total.group(1))
+            except ValueError:
+                print(f"Warning: Could not parse total steps: {m_total.group(1)}")
 
+        # Look for estimated time in header
         m_est = re.search(r"Estimated\s*Time\s*[:\-]\s*(.+)", text, re.IGNORECASE)
         if m_est:
             est_text = m_est.group(1).strip()
             estimated_time_minutes = self._parse_time_to_minutes(est_text)
 
-        # Parse step blocks
+        # Parse step blocks with more flexible regex
         step_block_re = re.compile(
             r"Step\s*No\.?\s*:\s*(?P<no>\d+)\s*[\r\n]+"
             r"Step\s*Title\s*:\s*(?P<title>.+?)\s*[\r\n]+"
             r"Time\s*:\s*(?P<time>.+?)\s*[\r\n]+"
-            r"Description\s*:\s*(?P<desc>.+?)(?=(?:\n\s*\n)|\Z)",
+            r"Instructions\s*:\s*(?P<instructions>.+?)\s*[\r\n]+"
+            r"Tools\s*Needed\s*:\s*(?P<tools>.+?)\s*[\r\n]+"
+            r"Safety\s*Warnings\s*:\s*(?P<safety>.+?)\s*[\r\n]+"
+            r"Tips\s*:\s*(?P<tips>.+?)(?=(?:\n\s*\n)|\Z)",
             re.IGNORECASE | re.DOTALL,
         )
 
         steps = []
         for m in step_block_re.finditer(text):
-            no = int(m.group("no").strip())
-            title = m.group("title").strip()
-            time_text = m.group("time").strip()
-            time_mins = self._parse_time_to_minutes(time_text)
-            desc = m.group("desc").strip().replace("\n", " ").strip()
-            steps.append(Step(**{
-                "Step No.": no,
-                "Step Title": title,
-                "Time": time_mins,
-                "TimeText": time_text,
-                "Description": desc
-            }))
+            try:
+                # Parse and validate step number
+                no = int(m.group("no").strip())
+                if no <= 0:
+                    print(f"Warning: Invalid step number {no}, skipping")
+                    continue
+                
+                # Parse and validate title
+                title = m.group("title").strip()
+                if not title:
+                    print(f"Warning: Empty title for step {no}, skipping")
+                    continue
+                
+                # Parse and validate time
+                time_text = m.group("time").strip()
+                time_mins = self._parse_time_to_minutes(time_text)
+                if time_mins <= 0:
+                    print(f"Warning: Invalid time for step {no}: {time_text}")
+                    time_mins = 10  # Default to 10 minutes
+                
+                # Parse the new fields and convert them to lists
+                instructions_text = m.group("instructions").strip()
+                tools_text = m.group("tools").strip()
+                safety_text = m.group("safety").strip()
+                tips_text = m.group("tips").strip()
+                
+                # Convert text to lists using the helper method
+                instructions = self._parse_list_items(instructions_text)
+                tools_needed = self._parse_list_items(tools_text)
+                safety_warnings = self._parse_list_items(safety_text)
+                tips = self._parse_list_items(tips_text)
+                
+                # Validate that instructions are not empty
+                if not instructions:
+                    print(f"Warning: No instructions found for step {no}, using title as instruction")
+                    instructions = [title]
+                
+                steps.append(Step(**{
+                    "Step No.": no,
+                    "Step Title": title,
+                    "Time": time_mins,
+                    "TimeText": time_text,
+                    "Instructions": instructions,
+                    "Tools Needed": tools_needed,
+                    "Safety Warnings": safety_warnings,
+                    "Tips": tips
+                }))
+                
+            except Exception as e:
+                print(f"Warning: Error parsing step {m.group('no') if m.group('no') else 'unknown'}: {str(e)}")
+                continue
 
+        # Validate that we found at least one step
+        if not steps:
+            raise ValueError("No valid steps could be parsed from the text")
+        
+        # Set defaults if not found in header
         if total_steps is None:
             total_steps = len(steps)
-
+        
         if estimated_time_minutes == 0:
+            estimated_time_minutes = sum(s.time for s in steps)
+        
+        # Validate final data
+        if total_steps != len(steps):
+            print(f"Warning: Header shows {total_steps} steps but parsed {len(steps)} steps")
+            total_steps = len(steps)
+        
+        if estimated_time_minutes <= 0:
+            print(f"Warning: Invalid total time {estimated_time_minutes}, using sum of step times")
             estimated_time_minutes = sum(s.time for s in steps)
 
         return StepsPlan(total_steps=total_steps, estimated_time=estimated_time_minutes, steps=steps)
+
+    def _assess_complexity(self, total_time: int, total_steps: int) -> str:
+        """Assess the complexity level based on time and steps"""
+        if total_time <= 60 and total_steps <= 3:
+            return "Easy"
+        elif total_time <= 180 and total_steps <= 5:
+            return "Moderate"
+        elif total_time <= 360 and total_steps <= 8:
+            return "Challenging"
+        else:
+            return "Complex"
 
     def generate(self, tools, summary: str, user_answers: Dict[int, str] = None, questions: List[str] = None) -> Dict[str, Any]:
         """
@@ -336,40 +463,32 @@ class StepsAgentJSON:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=25)
             if r.status_code == 200:
                 content = r.json()["choices"][0]["message"]["content"].strip()
-                print(content)
-                print("Headers:", r.headers)
-                print("Body:", r.text)
-                steps_plan = self._parse_steps_text(content)
-                return self._convert_to_json_format(steps_plan)
+                print(f"✅ LLM Response received, length: {len(content)} characters")
+                
+                try:
+                    steps_plan = self._parse_steps_text(content)
+                    print(f"✅ Successfully parsed {len(steps_plan.steps)} steps")
+                    return self._convert_to_json_format(steps_plan)
+                except ValueError as ve:
+                    print(f"❌ Parsing error: {str(ve)}")
+                    raise HTTPException(status_code=500, detail=f"Failed to parse LLM response: {str(ve)}")
+                except Exception as pe:
+                    print(f"❌ Unexpected parsing error: {str(pe)}")
+                    raise HTTPException(status_code=500, detail=f"Unexpected error during parsing: {str(pe)}")
             else:
-                print(f"❌ Error {r.status_code}")
-                print("Headers:", r.headers)
-                print("Body:", r.text)
+                print(f"❌ API Error {r.status_code}")
+                print(f"Response: {r.text}")
+                raise HTTPException(status_code=r.status_code, detail=f"LLM API error: {r.status_code}")
+                
+        except requests.exceptions.Timeout:
+            print("❌ Request timeout")
+            raise HTTPException(status_code=500, detail="LLM request timed out")
+        except requests.exceptions.RequestException as re:
+            print(f"❌ Request error: {str(re)}")
+            raise HTTPException(status_code=500, detail=f"LLM request failed: {str(re)}")
         except Exception as e:
-            print("❌ ERROR:", str(e))
-            raise HTTPException(status_code=500, detail="LLM personality generation")
-
-        # # Enhanced fallback that considers skipped questions
-        # if user_answers and questions:
-        #     fallback_text = (
-        #         "Here is your comprehensive step-by-step plan (considering all possibilities for skipped questions):\n\n"
-        #         "Step No. : 1\nStep Title : Assess the situation\nTime : 15-20 min\nDescription : Evaluate all possible scenarios and determine the best approach based on available information.\n\n"
-        #         "Step No. : 2\nStep Title : Prepare materials and tools\nTime : 10-15 min\nDescription : Gather all necessary tools and materials for the most comprehensive solution.\n\n"
-        #         "Step No. : 3\nStep Title : Execute primary solution\nTime : 20-30 min\nDescription : Implement the main solution while being prepared for alternative approaches.\n\n"
-        #         "Step No. : 4\nStep Title : Verify and adjust\nTime : 10-15 min\nDescription : Test the solution and make adjustments if needed for different scenarios.\n\n"
-        #         "Step No. : 5\nStep Title : Final inspection\nTime : 5-10 min\nDescription : Ensure everything is properly completed and safe."
-        #     )
-        # else:
-        #     fallback_text = (
-        #         "Here is your step-by-step plan:\n\n"
-        #         "Step No. : 1\nStep Title : Locate studs\nTime : 10-15 min\nDescription : Find studs for secure mounting.\n\n"
-        #         "Step No. : 2\nStep Title : Mark mounting points\nTime : 10-15 min\nDescription : Measure and mark bracket positions.\n\n"
-        #         "Step No. : 3\nStep Title : Install brackets\nTime : 15-20 min\nDescription : Drill pilot holes and mount wall brackets.\n\n"
-        #         "Step No. : 4\nStep Title : Attach item\nTime : 5-10 min\nDescription : Mount securely and check level."
-        #     )
-        
-        # steps_plan = self._parse_steps_text(fallback_text)
-        # return self._convert_to_json_format(steps_plan)
+            print(f"❌ Unexpected error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
     def _convert_to_json_format(self, steps_plan: StepsPlan) -> Dict[str, Any]:
         """Convert StepsPlan to JSON format"""
@@ -380,15 +499,31 @@ class StepsAgentJSON:
                 "title": step.step_title,
                 "est_time_min": step.time,
                 "time_text": step.time_text,
-                "summary": step.description,
-                "status": "pending"
+                "instructions": step.instructions,
+                "status": "pending",
+                "tools_needed": step.tools_needed,
+                "safety_warnings": step.safety_warnings,
+                "tips": step.tips
             })
+        
+        # Generate project summary card
+        project_summary = {
+            "step_count": f"Step {1}/{steps_plan.total_steps}",
+            "estimated_duration": minutes_to_human(steps_plan.estimated_time),
+            "status": "Ongoing",
+            "complexity": self._assess_complexity(steps_plan.estimated_time, steps_plan.total_steps)
+        }
         
         return {
             "steps": steps_json,
             "total_est_time_min": steps_plan.estimated_time,
             "total_steps": steps_plan.total_steps,
-            "notes": f"Total estimated time: {minutes_to_human(steps_plan.estimated_time)}"
+            "notes": f"Total estimated time: {minutes_to_human(steps_plan.estimated_time)}",
+            "project_status": "pending",
+            "current_step": 1,
+            "progress_percentage": 0,
+            "estimated_completion": "TBD",
+            "project_summary": project_summary
         }
 
 
@@ -496,4 +631,6 @@ class ContentPlanner:
                 "error": f"Failed to generate plan: {str(e)}",
                 "project_summary": summary
             }
+
+
 
