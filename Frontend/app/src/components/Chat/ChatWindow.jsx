@@ -17,6 +17,8 @@ export default function ChatWindow({
   const [render, setRender] = useState(isOpen);
   const [closing, setClosing] = useState(false);
   const [opening, setOpening] = useState(false);
+  const [loading, setLoading] = useState(false);
+
 
   const [drag, setDrag] = useState({ active: false, startY: 0, dy: 0 });
   const THRESHOLD = 120;
@@ -211,34 +213,42 @@ const handleSend = async (text, files = []) => {
       
       
       if(currFile) 
-	  {
-		const base64 = await new Promise((resolve, reject) => {
-			const reader = new FileReader();
-			reader.onload = () => resolve(reader.result.split(",")[1]);
-			reader.onerror = reject;
-			reader.readAsDataURL(currFile);
-		});
+      {
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(",")[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(currFile);
+        });
 
-		formData.append("uploaded_image", base64);
-	  }
+        formData.append("uploaded_image", base64);
+	    }
 
-      const res = await axios.post(
-        `${URL}/chatbot/chat`,
-        // {
-        //   message: input,
-        //   user: "test",
-        //   project: "test",
-        //   session_id: sessionId,
-        // },
-        formData,
-        { 
-          headers: 
-            { "Content-Type": "application/json" } 
-        }
-      );
+      setLoading(true);
 
-      const botMsg = { sender: "bot", content: res.data.response };
-      setMessages((prev) => [...prev, botMsg]);
+      try   
+      {
+        const res = await axios.post(
+          `${URL}/chatbot/chat`,
+          // {
+          //   message: input,
+          //   user: "test",
+          //   project: "test",
+          //   session_id: sessionId,
+          // },
+          formData,
+          { 
+            headers: 
+              { "Content-Type": "application/json" } 
+          }
+        );
+        const botMsg = { sender: "bot", content: res.data.response };
+        setMessages((prev) => [...prev, botMsg]);
+      } catch (err) {
+        console.log(err);
+      } finally {
+        setLoading(false);
+      }
 
     } catch (err) {
       console.error("Chat error", err);
@@ -248,8 +258,6 @@ const handleSend = async (text, files = []) => {
       ]);
     }
   };
-
-
 
 
 
@@ -271,50 +279,67 @@ const handleSend = async (text, files = []) => {
         className={`absolute inset-0 bg-gray-200 transition-opacity duration-300 ${
           closing ? "opacity-0" : "opacity-100"
         }`}
-        onClick={onClose}
       />
 
-      <div
-        className={`absolute bottom-0 h-[90svh] md:h-[95vh] left-1/2 w-full max-w-[420px] -translate-x-1/2 px-4 pt-4 pb-0 ${
-          isDragging ? "transition-none" : "transition-[transform,opacity] duration-300 ease-out"
-        }`}
-        style={{
-          transform: `translate(-50%, ${translateY}) ${closing ? "scale(0.98)" : "scale(1)"}`,
-          opacity: closing ? 0.98 : 1,
-          willChange: "transform, opacity",
-        }}
-        onClick={(e) => e.stopPropagation()}
-        onTransitionEnd={(e) => {
-          if (closing && e.target === e.currentTarget) {
-            setRender(false);
-            setClosing(false);
-          }
-        }}
-      >
-        <div className="mx-auto max-w-[380px] rounded-t-3xl bg-white shadow-md flex flex-col h-full overflow-hidden">
-          <ChatHeader onClose={onClose} dragHandleProps={{ onPointerDown: startDrag }} />
+        <div
+          className={`absolute bottom-0 h-[90svh] md:h-[95vh] left-1/2 w-full max-w-[420px] -translate-x-1/2 px-4 pt-4 pb-0 ${
+            isDragging ? "transition-none" : "transition-[transform,opacity] duration-300 ease-out"
+          }`}
+          style={{
+            transform: `translate(-50%, ${translateY}) ${closing ? "scale(0.98)" : "scale(1)"}`,
+            opacity: closing ? 0.98 : 1,
+            willChange: "transform, opacity",
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onTransitionEnd={(e) => {
+            if (closing && e.target === e.currentTarget) {
+              setRender(false);
+              setClosing(false);
+            }
+          }}
+        >
 
-		<div 
-			ref={messagesEndRef}
-			className="flex-1 overflow-y-auto px-5 pt-1 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-			<MessageList messages={messages} />
-		</div>
+          <div className="mx-auto max-w-[380px] rounded-t-3xl bg-white shadow-md flex flex-col h-full overflow-hidden">
+            <ChatHeader onClose={onClose} dragHandleProps={{ onPointerDown: startDrag }} />
 
-			<div className="flex-shrink-0 flex flex-col px-4 py-3 gap-2">
-				<hr className="border-t border-gray-200/70" />
-				<ChatInput onSend={handleSend} />
-			</div>
+          <div 
+            ref={messagesEndRef}
+            className="flex-1 overflow-y-auto px-5 pt-1 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <MessageList messages={messages} />
 
-		  	<div className="mt-auto grid grid-cols-2 gap-4 px-4 pb-4">
-				<button 
-					onClick={() => navigate("/home")}
-					className="rounded-[8px] font-regular bg-[#D9D9D9] px-4 py-2 text-black-700">
-					Previous
-				</button>
-				<button className="rounded-[8px] font-regular bg-[#D9D9D9] px-4 py-2 text-black-700">
-					Next
-				</button>
-			</div>
+            {loading && (
+              <div className="flex items-center gap-2 text-gray-500 mt-2">
+                <div className="loader w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
+                
+                <div className="flex items-center gap-1">
+                  <span>Bot is thinking</span>
+                  <div className="flex items-center gap-1 translate-y-[4px]">
+                    <span className="w-1 h-1 bg-gray-400 rounded-full animate-typing-wave"></span>
+                    <span className="w-1 h-1 bg-gray-400 rounded-full animate-typing-wave [animation-delay:0.2s]"></span>
+                    <span className="w-1 h-1 bg-gray-400 rounded-full animate-typing-wave [animation-delay:0.4s]"></span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex-shrink-0 flex flex-col px-4 py-3 gap-2">
+            <hr className="border-t border-gray-200/70" />
+            <ChatInput onSend={handleSend} />
+          </div>
+
+          <div className="mt-auto grid grid-cols-2 gap-4 px-4 pb-4">
+            <button 
+              onClick={() => navigate("/home")}
+              className="rounded-[8px] font-regular bg-[#D9D9D9] px-4 py-2 text-black-700">
+              Previous
+            </button>
+
+            <button className="rounded-[8px] font-regular bg-[#D9D9D9] px-4 py-2 text-black-700">
+              Next
+            </button>
+
+          </div>
         </div>
       </div>
     </div>,

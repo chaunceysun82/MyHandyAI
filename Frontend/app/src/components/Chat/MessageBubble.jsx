@@ -5,7 +5,7 @@ export default function MessageBubble({ role = "bot", children }) {
 				<div className="h-7 w-7 rounded-full bg-gray-200 flex items-center justify-center shrink-0">
 					<span className="text-xs">🤖</span>
 				</div>
-				<div className="max-w-[78%] rounded-xl bg-gray-200 px-3.5 py-2.5 text-[15px] leading-snug text-gray-800">
+				<div className="max-w-[78%] text-[15px] rounded-xl bg-gray-200 px-3.5 py-2.5 leading-snug text-gray-800">
 					{children}
 				</div>
 			</div>
