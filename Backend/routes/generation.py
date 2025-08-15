@@ -108,7 +108,7 @@ async def generate_steps(project):
                 "projectId": ObjectId(project),
                 "stepNumber": step["order"],
                 "title": step["title"],
-                "description": step["summary"],
+                "description": " ".join(step.get("instructions", [])),
                 "tools": [], #update
                 "materials": [],
                 "images": [],
