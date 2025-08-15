@@ -90,14 +90,14 @@ async def generate(project):
     
     sqs = boto3.client("sqs")
     message = {
-            "project":json.dumps(project)
+            "project":project
         }
     
     update_project(str(cursor["_id"]), {"generation_status":"in-progress"})
     
     sqs.send_message(
             QueueUrl=os.getenv("SQS_URL"),
-            MessageBody=message
+            MessageBody=json.dumps(message)
     )
     
     return {"message": "Request In progress"}
