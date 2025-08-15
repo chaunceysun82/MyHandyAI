@@ -102,7 +102,7 @@ async def generate(project):
     
     return {"message": "Request In progress"}
 
-router.get("/status/{project}")
+@router.get("/status/{project}")
 async def status(project):
     cursor = project_collection.find_one({"_id": ObjectId(project)})
     if not cursor:
