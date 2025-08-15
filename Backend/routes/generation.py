@@ -45,7 +45,7 @@ async def get_generated_estimation(project_id: str):
         raise HTTPException(status_code=404, detail="Estimation not generated yet")
     return {"project_id": project_id, "estimation_data": doc["estimation_generation"]}
 
-@router.post("/tools")
+@router.post("/tools/{project}")
 async def generate_tools(project:str):
     """
     Generate tools and materials for a DIY project.
@@ -80,7 +80,7 @@ async def generate_tools(project:str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate tools: {str(e)}")
 
-@router.post("/steps")
+@router.post("/steps/{project}")
 async def generate_steps(project):
     """
     Generate step-by-step plan for a DIY project.
@@ -129,7 +129,7 @@ async def generate_steps(project):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate steps: {str(e)}")
 
-@router.post("/estimation")
+@router.post("/estimation/{project}")
 async def generate_estimation(project):
     """
     Generate cost and time estimations for a DIY project.

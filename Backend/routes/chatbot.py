@@ -81,11 +81,11 @@ def get_conversation_history(session_id):
     cursor = conversations_collection.find({"session_id": session_id}).sort("timestamp", 1)
     return [{"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]} for doc in cursor]
 
-@router.get("/session")
+@router.get("/session/{project}")
 def get_session(project):
     cursor = conversations_collection.find_one({"project":project,"chat_type":"project_intro"})
     if not cursor:
-        raise HTTPException(status_code=404, detail=f"session not found")
+        return {"session": None}
     return {"session": cursor["session_id"]}
 
 
