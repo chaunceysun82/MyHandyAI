@@ -10,6 +10,7 @@ import sys
 import os
 import base64
 import uuid
+import boto3
 from pymongo import DESCENDING
 from db import project_collection, steps_collection
 from datetime import datetime
@@ -79,6 +80,67 @@ async def generate_tools(project:str):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate tools: {str(e)}")
+    
+@router.post("/all/{project}")
+async def generate(project):
+    
+    cursor = project_collection.find_one({"_id": ObjectId(project)})
+    if not cursor:
+        print("Project not found")
+        return {"message": "Project not found"}
+    
+    sqs = boto3.client("sqs")
+    message = {
+            "project":project
+        }
+    
+    update_project(str(cursor["_id"]), {"generation_status":"in-progress"})
+    
+    sqs.send_message(
+            QueueUrl=os.getenv("SQS_URL"),
+            MessageBody=message
+    )
+    
+    return {"message": "Request In progress"}
+
+router.get("/status/{project}")
+async def status(project):
+    cursor = project_collection.find_one({"_id": ObjectId(project)})
+    if not cursor:
+        print("Project not found")
+        return {"message": "Project not found"}
+    
+    if not "generation_status" in cursor:
+        return {"message": "Generation not started"}
+    
+    if "tools_generation" in cursor and "status" in cursor["tools_generation"]:
+        tools= cursor["tools_generation"]["status"]
+    else:
+        tools= "Not started"
+        
+    if "step_generation" in cursor and "status" in cursor["step_generation"]:
+        steps= cursor["step_generation"]["status"]
+    else:
+        steps= "Not started"
+        
+    if "estimation_generation" in cursor and "status" in cursor["estimation_generation"]:
+        estimation= cursor["estimation_generation"]["status"]
+    else:
+        estimation= "Not started"
+    
+    if cursor["generation_status"]=="complete":
+        return {"message": "genertion completed",
+                "tools":tools,
+                "steps": steps,
+                "estimation":estimation}
+    
+    if cursor["generation_status"]=="in-progress":
+        return {"message": "genertion in progress",
+                "tools":tools,
+                "steps": steps,
+                "estimation":estimation}
+        
+    return {"message":"Something went wrong"}
 
 @router.post("/steps/{project}")
 async def generate_steps(project):
