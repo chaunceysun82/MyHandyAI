@@ -1,4 +1,4 @@
-from content_generation.planner import ToolsAgentJSON, StepsAgentJSON, EstimationAgent
+from content_generation.planner import ToolsAgent, StepsAgentJSON, EstimationAgent
 from chatbot.agents import load_prompt, clean_and_parse_json, AgenticChatbot
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from .chatbot import get_session, get_latest_chatbot
@@ -60,11 +60,10 @@ async def generate_tools(project:str):
         
         
         # Generate tools using the independent agent
-        tools_agent = ToolsAgentJSON()
-        tools_result = tools_agent.generate(
+        tools_agent = ToolsAgent()
+        tools_result = tools_agent.recommend_tools(
             summary=cursor["summary"],
-            user_answers=cursor.get("user_answers") or cursor.get("answers"),
-            questions=cursor["questions"]
+            include_json=True
         )
         if tools_result is None:
             raise HTTPException(status_code=400, detail="Missing required fields (summary, answers, questions) on project")
@@ -225,24 +224,24 @@ async def generate_estimation(project):
         raise HTTPException(status_code=500, detail=f"Failed to generate estimation: {str(e)}")
 
 # Legacy endpoints for backward compatibility (can be removed later)
-@router.post("/tools/legacy")
-async def get_tools_legacy(projectId: str):
-    """Legacy endpoint - kept for backward compatibility"""
-    cursor = project_collection.find_one({"_id": ObjectId(projectId)})
-    if not cursor:
-        raise HTTPException(status_code=404, detail="Project not found")
+# @router.post("/tools/legacy")
+# async def get_tools_legacy(projectId: str):
+#     """Legacy endpoint - kept for backward compatibility"""
+#     cursor = project_collection.find_one({"_id": ObjectId(projectId)})
+#     if not cursor:
+#         raise HTTPException(status_code=404, detail="Project not found")
     
-    user = cursor['userId']
-    tools = ToolsAgentJSON()
-    return tools.generate("I want to hang a mirror")
+#     user = cursor['userId']
+#     tools = ToolsAgent()
+#     return tools.("I want to hang a mirror")
 
-@router.post("/steps/legacy")
-async def get_steps_legacy(projectId: str):
-    """Legacy endpoint - kept for backward compatibility"""
-    cursor = project_collection.find_one({"_id": ObjectId(projectId)})
-    if not cursor:
-        raise HTTPException(status_code=404, detail="Project not found")
+# @router.post("/steps/legacy")
+# async def get_steps_legacy(projectId: str):
+#     """Legacy endpoint - kept for backward compatibility"""
+#     cursor = project_collection.find_one({"_id": ObjectId(projectId)})
+#     if not cursor:
+#         raise HTTPException(status_code=404, detail="Project not found")
     
-    user = cursor['userId']
-    steps = StepsAgentJSON()
-    return steps.generate("There is a hole in my living room I want to repair it")
+#     user = cursor['userId']
+#     steps = StepsAgentJSON()
+#     return steps.generate("There is a hole in my living room I want to repair it")

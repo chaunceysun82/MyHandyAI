@@ -83,7 +83,7 @@ Project summary:
         self,
         serpapi_api_key: Optional[str] = None,
         openai_api_key: Optional[str] = None,
-        openai_model: str="gpt-5",
+        openai_model: str="gpt-5-mini",
         amazon_affiliate_tag: str="myhandyai-20",
     ) -> None:
         self.serpapi_api_key=serpapi_api_key or os.getenv("SERPAPI_API_KEY")

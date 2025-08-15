@@ -5,7 +5,7 @@ from datetime import datetime
 from bson.objectid import ObjectId
 from db import project_collection, steps_collection
 from datetime import datetime
-from planner import ToolsAgentJSON, StepsAgentJSON, EstimationAgent
+from planner import ToolsAgent, StepsAgentJSON, EstimationAgent
 
 def lambda_handler(event, context):
     for record in event.get("Records", []):
@@ -28,11 +28,10 @@ def lambda_handler(event, context):
             update_project(str(cursor["_id"]), {"tool_generation":{"status": "in progress"}})
             
             # Generate tools using the independent agent
-            tools_agent = ToolsAgentJSON()
-            tools_result = tools_agent.generate(
+            tools_agent = ToolsAgent()
+            tools_result = tools_agent.recommend_tools(
                 summary=cursor["summary"],
-                user_answers=cursor.get("user_answers") or cursor.get("answers"),
-                questions=cursor["questions"]
+                include_json=True
             )
             if tools_result is None:
                 print("LLM Generation tools failed")
