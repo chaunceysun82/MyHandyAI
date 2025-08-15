@@ -151,7 +151,7 @@ class ProblemRecognitionAgent:
             response = requests.post(
                 self.api_url,
                 headers=self.headers,
-                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 500, "reasoning_effort": "low"}
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 500, "reasoning_effort": "medium"}
             )
 
             if response.status_code == 200:
@@ -290,7 +290,7 @@ class ImageAnalysisAgent:
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800,"reasoning_effort": "low"},
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800,"reasoning_effort": "medium"},
             )
             if r.status_code == 200:
                 txt = r.json()["choices"][0]["message"]["content"].strip()

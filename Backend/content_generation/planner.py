@@ -460,7 +460,7 @@ class StepsAgentJSON:
                 "reasoning_effort": "low"
             }
             
-            r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=25)
+            r = requests.post(self.api_url, headers=self.headers, json=payload)
             if r.status_code == 200:
                 content = r.json()["choices"][0]["message"]["content"].strip()
                 print(f"✅ LLM Response received, length: {len(content)} characters")

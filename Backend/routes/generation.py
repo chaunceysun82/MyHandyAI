@@ -101,6 +101,8 @@ async def generate_steps(project):
             questions=cursor["questions"]
         )
 
+        print("Steps Generated")
+
         update_project(str(cursor["_id"]), {"step_generation":steps_result})
         
         for idx, step in enumerate(steps_result["steps"], start=1):
