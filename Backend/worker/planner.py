@@ -14,8 +14,39 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Import utility functions from agents.py
-from chatbot.agents import load_prompt, clean_and_parse_json, minutes_to_human, extract_number_from_maybe_price
+# utility functions
+def load_prompt(filename):
+    """Load prompt from file, removing comment lines starting with #"""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(script_dir, "prompts", filename)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        
+        return "".join(line for line in lines if not line.strip().startswith("#"))
+    except FileNotFoundError:
+        print(f"❌ Could not find prompt file: {path}")
+        return f"Error: Could not load {filename}"
+    except Exception as e:
+        print(f"❌ Error loading prompt file {filename}: {e}")
+        return f"Error: Could not load {filename}"
+    
+def minutes_to_human(minutes: int) -> str:
+    """Convert integer minutes to 'X hr Y min' or 'Y min'."""
+    if minutes is None:
+        return "unknown"
+    try:
+        m = int(minutes)
+    except Exception:
+        return str(minutes)
+    if m <= 0:
+        return "0 min"
+    hrs, mins = divmod(m, 60)
+    if hrs and mins:
+        return f"{hrs} hr {mins} min"
+    if hrs:
+        return f"{hrs} hr"
+    return f"{mins} min"
 
 tools_prompt_text = load_prompt("tools_prompt.txt")
 steps_prompt_text = load_prompt("steps_prompt.txt")

@@ -1,4 +1,4 @@
-from content_generation.planner import ToolsAgentJSON, StepsAgentJSON, EstimationAgent
+from content_generation.planner import ToolsAgent, StepsAgentJSON, EstimationAgent
 from chatbot.agents import load_prompt, clean_and_parse_json, AgenticChatbot
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from .chatbot import get_session, get_latest_chatbot
@@ -6,12 +6,13 @@ from pydantic import BaseModel
 from bson import ObjectId
 from .project import update_project
 from typing import List, Dict, Any, Optional
-import sys
+import json
 import os
 import base64
 import uuid
+import boto3
 from pymongo import DESCENDING
-from db import project_collection
+from db import project_collection, steps_collection
 from datetime import datetime
 
 router = APIRouter(prefix="/generation", tags=["generation"])
@@ -59,11 +60,10 @@ async def generate_tools(project:str):
         
         
         # Generate tools using the independent agent
-        tools_agent = ToolsAgentJSON()
-        tools_result = tools_agent.generate(
+        tools_agent = ToolsAgent()
+        tools_result = tools_agent.recommend_tools(
             summary=cursor["summary"],
-            user_answers=cursor.get("user_answers") or cursor.get("answers"),
-            questions=cursor["questions"]
+            include_json=True
         )
         if tools_result is None:
             raise HTTPException(status_code=400, detail="Missing required fields (summary, answers, questions) on project")
@@ -79,6 +79,67 @@ async def generate_tools(project:str):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate tools: {str(e)}")
+    
+@router.post("/all/{project}")
+async def generate(project):
+    
+    cursor = project_collection.find_one({"_id": ObjectId(project)})
+    if not cursor:
+        print("Project not found")
+        return {"message": "Project not found"}
+    
+    sqs = boto3.client("sqs")
+    message = {
+            "project":project
+        }
+    
+    update_project(str(cursor["_id"]), {"generation_status":"in-progress"})
+    
+    sqs.send_message(
+            QueueUrl=os.getenv("SQS_URL"),
+            MessageBody=json.dumps(message)
+    )
+    
+    return {"message": "Request In progress"}
+
+@router.get("/status/{project}")
+async def status(project):
+    cursor = project_collection.find_one({"_id": ObjectId(project)})
+    if not cursor:
+        print("Project not found")
+        return {"message": "Project not found"}
+    
+    if not "generation_status" in cursor:
+        return {"message": "Generation not started"}
+    
+    if "tools_generation" in cursor and "status" in cursor["tools_generation"]:
+        tools= cursor["tools_generation"]["status"]
+    else:
+        tools= "Not started"
+        
+    if "step_generation" in cursor and "status" in cursor["step_generation"]:
+        steps= cursor["step_generation"]["status"]
+    else:
+        steps= "Not started"
+        
+    if "estimation_generation" in cursor and "status" in cursor["estimation_generation"]:
+        estimation= cursor["estimation_generation"]["status"]
+    else:
+        estimation= "Not started"
+    
+    if cursor["generation_status"]=="complete":
+        return {"message": "genertion completed",
+                "tools":tools,
+                "steps": steps,
+                "estimation":estimation}
+    
+    if cursor["generation_status"]=="in-progress":
+        return {"message": "genertion in progress",
+                "tools":tools,
+                "steps": steps,
+                "estimation":estimation}
+        
+    return {"message":"Something went wrong"}
 
 @router.post("/steps/{project}")
 async def generate_steps(project):
@@ -101,8 +162,26 @@ async def generate_steps(project):
             questions=cursor["questions"]
         )
 
+        print("Steps Generated")
+
         update_project(str(cursor["_id"]), {"step_generation":steps_result})
         
+        for idx, step in enumerate(steps_result["steps"], start=1):
+            step_doc = {
+                "projectId": ObjectId(project),
+                "stepNumber": step["order"],
+                "title": step["title"],
+                "description": " ".join(step.get("instructions", [])),
+                "tools": [], #update
+                "materials": [],
+                "images": [],
+                "videoTutorialLink": None,
+                "referenceLinks": [],
+                "completed": False,
+                "createdAt": datetime.utcnow()
+            }
+            steps_collection.insert_one(step_doc)
+
         return {
             "success": True,
             "project_id": project,
@@ -145,24 +224,24 @@ async def generate_estimation(project):
         raise HTTPException(status_code=500, detail=f"Failed to generate estimation: {str(e)}")
 
 # Legacy endpoints for backward compatibility (can be removed later)
-@router.post("/tools/legacy")
-async def get_tools_legacy(projectId: str):
-    """Legacy endpoint - kept for backward compatibility"""
-    cursor = project_collection.find_one({"_id": ObjectId(projectId)})
-    if not cursor:
-        raise HTTPException(status_code=404, detail="Project not found")
+# @router.post("/tools/legacy")
+# async def get_tools_legacy(projectId: str):
+#     """Legacy endpoint - kept for backward compatibility"""
+#     cursor = project_collection.find_one({"_id": ObjectId(projectId)})
+#     if not cursor:
+#         raise HTTPException(status_code=404, detail="Project not found")
     
-    user = cursor['userId']
-    tools = ToolsAgentJSON()
-    return tools.generate("I want to hang a mirror")
+#     user = cursor['userId']
+#     tools = ToolsAgent()
+#     return tools.("I want to hang a mirror")
 
-@router.post("/steps/legacy")
-async def get_steps_legacy(projectId: str):
-    """Legacy endpoint - kept for backward compatibility"""
-    cursor = project_collection.find_one({"_id": ObjectId(projectId)})
-    if not cursor:
-        raise HTTPException(status_code=404, detail="Project not found")
+# @router.post("/steps/legacy")
+# async def get_steps_legacy(projectId: str):
+#     """Legacy endpoint - kept for backward compatibility"""
+#     cursor = project_collection.find_one({"_id": ObjectId(projectId)})
+#     if not cursor:
+#         raise HTTPException(status_code=404, detail="Project not found")
     
-    user = cursor['userId']
-    steps = StepsAgentJSON()
-    return steps.generate("There is a hole in my living room I want to repair it")
+#     user = cursor['userId']
+#     steps = StepsAgentJSON()
+#     return steps.generate("There is a hole in my living room I want to repair it")

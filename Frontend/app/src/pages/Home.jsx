@@ -106,6 +106,12 @@ export default function Home() {
   //   }
   // }
 
+  const handleKeyDown = (e) => {
+    if(e.key === 'Enter'){
+      startProject();
+    }
+  };
+
   async function startProject() 
   {
     const name = projectName.trim();
@@ -261,6 +267,7 @@ export default function Home() {
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
               disabled={creating}
+              onKeyDown={handleKeyDown}
             />
 
             <div className="flex justify-end space-x-3">
@@ -280,7 +287,7 @@ export default function Home() {
                       : "bg-blue-600 text-white"
                     : "bg-blue-200 text-blue-600 cursor-not-allowed")
                 }
-                onClick={startProject}
+                onKeyDown={handleKeyDown}
                 disabled={!projectName.trim() || creating}
               >
                 {creating ? "Starting…" : "Start"}
