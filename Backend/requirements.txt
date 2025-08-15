@@ -17,5 +17,6 @@ pillow==10.0.0
 python-multipart
 serpapi
 google-search-results
+smart_questions
 
 
