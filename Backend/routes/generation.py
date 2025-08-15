@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from bson import ObjectId
 from .project import update_project
 from typing import List, Dict, Any, Optional
-import sys
+import json
 import os
 import base64
 import uuid
@@ -90,7 +90,7 @@ async def generate(project):
     
     sqs = boto3.client("sqs")
     message = {
-            "project":project
+            "project":json.dumps(project)
         }
     
     update_project(str(cursor["_id"]), {"generation_status":"in-progress"})
