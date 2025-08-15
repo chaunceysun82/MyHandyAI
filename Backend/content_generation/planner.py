@@ -62,18 +62,14 @@ class ToolsAgent:
     explicitly. You can pass serpapi_api_key or google_api_key to the constructor to override.
     """
 
-    PROMPT_TEXT = """
-You are an expert Tools & Materials recommender.
+    PROMPT_TEXT = """You are an expert Tools & Materials recommender.
 
-Given the project summary below, return a single JSON object that matches the Pydantic schema exactly (no surrounding text):
-{format_instructions}
-
+Given the project summary below, return ONLY a JSON object that matches the schema exactly.
 Rules:
-- `tools` should be a JSON array containing the recommended tools. Let the LLM decide how many tools are appropriate.
-- For each tool include: name, description (1-2 sentences), price (numeric USD), risk_factors, safety_measures.
-- Keep descriptions concise.
-- Do not image_link in the LLM output (those will be added by the program).
-- Limit recommendations to practical, procurable items.
+- `tools` is an array of recommended tools/materials (LLM decides length).
+- Each tool must include: name, description (1–2 sentences), price (numeric USD), risk_factors, safety_measures.
+- Keep descriptions concise and practical. Do NOT include image links (those are added later).
+- Limit to procurable, realistic items.
 
 Project summary:
 {summary}
@@ -83,23 +79,57 @@ Project summary:
         self,
         serpapi_api_key: Optional[str] = None,
         openai_api_key: Optional[str] = None,
-        openai_model: str="gpt-5-mini",
-        amazon_affiliate_tag: str="myhandyai-20",
+        openai_model: str = "gpt-5-mini",
+        amazon_affiliate_tag: str = "myhandyai-20",
+        openai_base_url: str = "https://api.openai.com/v1",
+        timeout: int = 90,
     ) -> None:
-        self.serpapi_api_key=serpapi_api_key or os.getenv("SERPAPI_API_KEY")
-        self.openai_api_key=openai_api_key or os.getenv("OPENAI_API_KEY")
+        self.serpapi_api_key = serpapi_api_key or os.getenv("SERPAPI_API_KEY")
+        self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
         if not self.openai_api_key:
             raise RuntimeError("OPENAI API key required")
 
-        self.model = ChatOpenAI(model=openai_model, api_key=self.openai_api_key)
+        self.model = openai_model
         self.amazon_affiliate_tag = amazon_affiliate_tag
+        self.base_url = openai_base_url.rstrip("/")
+        self.timeout = timeout
 
-        self.parser = PydanticOutputParser(pydantic_object=ToolsLLM)
-        self.prompt = PromptTemplate(
-            template=self.PROMPT_TEXT,
-            input_variables=["summary"],
-            partial_variables={"format_instructions": self.parser.get_format_instructions()},
-        )
+        # JSON Schema used by Structured Outputs (strict=True)
+        self.response_format = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "ToolsLLM",
+                "strict": True,  # enforce schema adherence
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "tools": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "description": {"type": "string"},
+                                    "price": {"type": "number"},
+                                    "risk_factors": {"type": "string"},
+                                    "safety_measures": {"type": "string"},
+                                },
+                                "required": [
+                                    "name",
+                                    "description",
+                                    "price",
+                                    "risk_factors",
+                                    "safety_measures",
+                                ],
+                            },
+                        }
+                    },
+                    "required": ["tools"],
+                },
+            },
+        }
 
     def _get_image_url(self, query: str, retries: int = 2, pause: float = 0.3) -> Optional[str]:
         """Query SerpAPI Google Images and return the top thumbnail URL (or None).
@@ -136,31 +166,74 @@ Project summary:
         s = re.sub(r"[^A-Za-z0-9\s+\-]", "", s)
         s = s.strip().replace(" ", "+")
         return s
+    
+    def _post_openai(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        url = f"{self.base_url}/responses"
+        headers = {
+            "Authorization": f"Bearer {self.openai_api_key}",
+            "Content-Type": "application/json",
+        }
+        r = requests.post(url, headers=headers, json=payload, timeout=self.timeout)
+        if r.status_code >= 400:
+            raise RuntimeError(f"OpenAI API error {r.status_code}: {r.text}")
+        return r.json()
 
-    def _build_chain(self):
-        return self.prompt|self.model|self.parser
+    @staticmethod
+    def _extract_output_text(resp: Dict[str, Any]) -> str:
+        """
+        The Responses API typically returns:
+          resp["output"][0]["content"][0]["text"]
+        Be defensive and search known paths.
+        """
+        # Preferred path
+        try:
+            parts = resp.get("output") or []
+            if parts:
+                content = parts[0].get("content") or []
+                texts = []
+                for c in content:
+                    # Some SDKs label as "output_text", others "text"
+                    if "text" in c:
+                        texts.append(c["text"])
+                    elif c.get("type") in ("output_text", "text") and "text" in c:
+                        texts.append(c["text"])
+                if texts:
+                    return "".join(texts).strip()
+        except Exception:
+            pass
+
+        # Fallbacks (older/alternate formats)
+        choice = (resp.get("choices") or [{}])[0]
+        msg = choice.get("message") or {}
+        if "content" in msg and isinstance(msg["content"], str):
+            return msg["content"].strip()
+
+        # Last resort: stringify
+        return json.dumps(resp)
 
     def recommend_tools(self, summary: str, include_json: bool = False) -> Dict[str, Any]:
-        """Generate tool recommendations for the provided project summary.
+        prompt = self.PROMPT_TEXT.format(summary=summary)
 
-        Returns a dict with keys:
-            - tools: list of tool dicts (name, description, price, risk_factors, safety_measures, image_link, amazon_link)
-            - raw: the raw pydantic-parsed ToolsLLM object
-            - json: optional JSON string (if include_json True)
+        payload = {
+            "model": self.model,
+            "input": [
+                {"role": "system", "content": "You return ONLY JSON that matches the provided schema."},
+                {"role": "user", "content": prompt},
+            ],
+            "response_format": self.response_format,  # Structured Outputs (strict schema)
+        }
 
-        The function is defensive about missing fields and will attempt to populate image and amazon links.
-        """
-        chain = self._build_chain()
+        resp = self._post_openai(payload)
+        raw_text = self._extract_output_text(resp)
 
         try:
-            result = chain.invoke({"summary": summary})
-        except ValidationError as e:  
-            raise
+            parsed_obj = ToolsLLM(**json.loads(raw_text))
         except Exception as e:
-            raise RuntimeError(f"LLM invocation failed: {e}")
+            # Surface what the model returned to help debugging
+            raise ValidationError([e], ToolsLLM)  # or raise RuntimeError(f"Schema parse error: {e}\nRAW: {raw_text}")
 
         tools_list: List[Dict[str, Any]] = []
-        for i in result.tools:
+        for i in parsed_obj.tools:
             tool: Dict[str, Any] = {
                 "name": i.name,
                 "description": i.description,
@@ -182,7 +255,7 @@ Project summary:
 
             tools_list.append(tool)
 
-        out: Dict[str, Any] = {"tools": tools_list, "raw": result}
+        out: Dict[str, Any] = {"tools": tools_list, "raw": parsed_obj}
         if include_json:
             out["json"] = json.dumps(tools_list, indent=4)
 
