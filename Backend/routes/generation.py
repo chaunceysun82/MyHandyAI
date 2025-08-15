@@ -11,7 +11,7 @@ import os
 import base64
 import uuid
 from pymongo import DESCENDING
-from db import project_collection
+from db import project_collection, steps_collection
 from datetime import datetime
 
 router = APIRouter(prefix="/generation", tags=["generation"])
@@ -103,6 +103,22 @@ async def generate_steps(project):
 
         update_project(str(cursor["_id"]), {"step_generation":steps_result})
         
+        for idx, step in enumerate(steps_result["steps"], start=1):
+            step_doc = {
+                "projectId": ObjectId(project),
+                "stepNumber": step["order"],
+                "title": step["title"],
+                "description": step["summary"],
+                "tools": [], #update
+                "materials": [],
+                "images": [],
+                "videoTutorialLink": None,
+                "referenceLinks": [],
+                "completed": False,
+                "createdAt": datetime.utcnow()
+            }
+            steps_collection.insert_one(step_doc)
+
         return {
             "success": True,
             "project_id": project,
