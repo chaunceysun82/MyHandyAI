@@ -204,34 +204,70 @@ Project summary:
     @staticmethod
     def _extract_output_text(resp: Dict[str, Any]) -> str:
         """
-        The Responses API typically returns:
-          resp["output"][0]["content"][0]["text"]
-        Be defensive and search known paths.
+        Robustly extract text from an OpenAI Responses API payload.
+
+        Priority:
+        1) Responses API: scan `output` for the first completed "message"
+        2) Legacy chat-style: `choices[0].message.content` (string or list of text parts)
+        3) Top-level "text"
+        4) Deep fallback: search any nested "text" fields
         """
-        # Preferred path
+        # 1) Newer Responses API shape
         try:
-            parts = resp.get("output") or []
-            if parts:
-                content = parts[0].get("content") or []
-                texts = []
-                for c in content:
-                    # Some SDKs label as "output_text", others "text"
-                    if "text" in c:
-                        texts.append(c["text"])
-                    elif c.get("type") in ("output_text", "text") and "text" in c:
-                        texts.append(c["text"])
+            output = resp.get("output")
+            if isinstance(output, list):
+                for part in output:
+                    if part.get("type") == "message" and part.get("status") in (None, "completed"):
+                        content = part.get("content") or []
+                        texts = []
+                        for c in content:
+                            if not isinstance(c, dict):
+                                continue
+                            # Preferred keys/types
+                            if c.get("type") in ("output_text", "text") and isinstance(c.get("text"), str):
+                                texts.append(c["text"])
+                            elif isinstance(c.get("text"), str):
+                                texts.append(c["text"])
+                        if texts:
+                            return "".join(texts).strip()
+        except Exception:
+            pass
+
+        # 2) Legacy/alternate: chat-style responses
+        try:
+            choice = (resp.get("choices") or [{}])[0]
+            msg = choice.get("message") or {}
+            content = msg.get("content")
+            if isinstance(content, str):
+                return content.strip()
+            if isinstance(content, list):
+                texts = [d.get("text") for d in content if isinstance(d, dict) and isinstance(d.get("text"), str)]
                 if texts:
                     return "".join(texts).strip()
         except Exception:
             pass
 
-        # Fallbacks (older/alternate formats)
-        choice = (resp.get("choices") or [{}])[0]
-        msg = choice.get("message") or {}
-        if "content" in msg and isinstance(msg["content"], str):
-            return msg["content"].strip()
+        # 3) Sometimes a plain top-level "text"
+        if isinstance(resp.get("text"), str):
+            return resp["text"].strip()
 
-        # Last resort: stringify
+        # 4) Deep fallback: walk structure for any "text" strings
+        def _walk_text(x):
+            if isinstance(x, dict):
+                for k, v in x.items():
+                    if k == "text" and isinstance(v, str):
+                        yield v
+                    else:
+                        yield from _walk_text(v)
+            elif isinstance(x, list):
+                for i in x:
+                    yield from _walk_text(i)
+
+        texts = list(_walk_text(resp))
+        if texts:
+            return "".join(texts).strip()
+
+        # Last resort: stringify full response to aid debugging
         return json.dumps(resp)
 
     def recommend_tools(self, summary: str, include_json: bool = False) -> Dict[str, Any]:
