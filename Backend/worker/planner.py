@@ -257,9 +257,12 @@ Project summary:
         resp = self._post_openai(payload)
         print(resp)
         raw_text = self._extract_output_text(resp)
-
+        print(raw_text)
+        
         try:
             parsed_obj = ToolsLLM(**json.loads(raw_text))
+            print(parsed_obj)
+            
         except Exception as e:
             # Surface what the model returned to help debugging
             raise ValidationError([e], ToolsLLM)  # or raise RuntimeError(f"Schema parse error: {e}\nRAW: {raw_text}")
