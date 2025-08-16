@@ -287,7 +287,7 @@ Project summary:
 
             tools_list.append(tool)
 
-        out: Dict[str, Any] = {"tools": tools_list, "raw": parsed_obj}
+        out: Dict[str, Any] = {"tools": tools_list, "raw": parsed_obj.model_dump()}
         if include_json:
             out["json"] = json.dumps(tools_list, indent=4)
 
