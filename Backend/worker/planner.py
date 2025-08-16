@@ -579,11 +579,11 @@ class StepsAgentJSON:
 
         if tools:
             for tool in tools["tools"]:
-                tools_context += tool["tool_name"]+"\n"
+                tools_context += tool["name"]+"\n"
                 tools_context += tool["description"]+"\n"
-                tools_context += tool["dimensions"]+"\n"
-                tools_context += tool["risk_factor"]+"\n"
-                tools_context += tool["safety_measure"]+"\n"
+                tools_context += tool["image_link"]+"\n"
+                tools_context += tool["risk_factors"]+"\n"
+                tools_context += tool["safety_measures"]+"\n"
             tools_context +="\n"
 
         if user_answers and questions:
