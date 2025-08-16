@@ -94,7 +94,7 @@ question_clarification_prompt_text = load_prompt("question_clarification_prompt.
 problem_recognition_prompt_text = load_prompt("problem_recognition_prompt.txt")
 image_analysis_prompt_text = load_prompt("image_analysis_prompt.txt")
 description_assessment_prompt_text = load_prompt("description_assessment_prompt.txt")
-print("accessing prompt: "+qa_prompt_text)
+
 
 
 class ProblemRecognitionAgent:
@@ -773,6 +773,7 @@ Description: \"\"\"{description}\"\"\"
 class AgenticChatbot:
     """Main chatbot that coordinates between agents."""
 
+    print("accessing prompt: "+qa_prompt_text)
     def __init__(self):
         self.problem_agent         = ProblemRecognitionAgent()
         self.image_agent           = ImageAnalysisAgent()
