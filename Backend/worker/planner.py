@@ -214,7 +214,6 @@ Project summary:
                 {"role": "system", "content": "You return ONLY JSON that matches the provided schema."},
                 {"role": "user", "content": prompt},
             ],
-            "modalities": ["text"],
             "text": {
                 "format": {
                     "type": "json_schema",
