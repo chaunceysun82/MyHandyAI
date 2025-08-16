@@ -94,7 +94,7 @@ question_clarification_prompt_text = load_prompt("question_clarification_prompt.
 problem_recognition_prompt_text = load_prompt("problem_recognition_prompt.txt")
 image_analysis_prompt_text = load_prompt("image_analysis_prompt.txt")
 description_assessment_prompt_text = load_prompt("description_assessment_prompt.txt")
-print(qa_prompt_text)
+print("accessing prompt: "+qa_prompt_text)
 
 
 class ProblemRecognitionAgent:
