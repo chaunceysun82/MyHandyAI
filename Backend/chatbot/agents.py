@@ -7,7 +7,7 @@ import base64
 from PIL import Image
 import re
 import json
-from smart_questions import SmartQuestionManager
+from .smart_questions import SmartQuestionManager
 
 load_dotenv()
 
