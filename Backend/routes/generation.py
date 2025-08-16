@@ -112,8 +112,8 @@ async def status(project):
     if not "generation_status" in cursor:
         return {"message": "Generation not started"}
     
-    if "tools_generation" in cursor and "status" in cursor["tools_generation"]:
-        tools= cursor["tools_generation"]["status"]
+    if "tool_generation" in cursor and "status" in cursor["tools_generation"]:
+        tools= cursor["tool_generation"]["status"]
     else:
         tools= "Not started"
         
