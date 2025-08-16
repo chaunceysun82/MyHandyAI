@@ -125,43 +125,6 @@ Project summary:
         self.base_url = openai_base_url.rstrip("/")
         self.timeout = timeout
 
-        # JSON Schema used by Structured Outputs (strict=True)
-        self.response_format = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "ToolsLLM",
-                "strict": True,  # enforce schema adherence
-                "schema": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "properties": {
-                        "tools": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "additionalProperties": False,
-                                "properties": {
-                                    "name": {"type": "string"},
-                                    "description": {"type": "string"},
-                                    "price": {"type": "number"},
-                                    "risk_factors": {"type": "string"},
-                                    "safety_measures": {"type": "string"},
-                                },
-                                "required": [
-                                    "name",
-                                    "description",
-                                    "price",
-                                    "risk_factors",
-                                    "safety_measures",
-                                ],
-                            },
-                        }
-                    },
-                    "required": ["tools"],
-                },
-            },
-        }
-
     def _get_image_url(self, query: str, retries: int = 2, pause: float = 0.3) -> Optional[str]:
         """Query SerpAPI Google Images and return the top thumbnail URL (or None).
 
@@ -251,7 +214,44 @@ Project summary:
                 {"role": "system", "content": "You return ONLY JSON that matches the provided schema."},
                 {"role": "user", "content": prompt},
             ],
-            "response_format": self.response_format,  # Structured Outputs (strict schema)
+            "modalities": ["text"],
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "ToolsLLM",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "tools": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "additionalProperties": False,
+                                        "properties": {
+                                            "name": {"type": "string"},
+                                            "description": {"type": "string"},
+                                            "price": {"type": "number"},
+                                            "risk_factors": {"type": "string"},
+                                            "safety_measures": {"type": "string"},
+                                        },
+                                        "required": [
+                                            "name",
+                                            "description",
+                                            "price",
+                                            "risk_factors",
+                                            "safety_measures",
+                                        ],
+                                    },
+                                }
+                            },
+                            "required": ["tools"],
+                        },
+                    },
+                }
+            },
         }
 
         resp = self._post_openai(payload)
