@@ -58,6 +58,22 @@ def lambda_handler(event, context):
             steps_result["status"]="complete"
 
             update_project(str(cursor["_id"]), {"step_generation":steps_result})
+
+            for idx, step in enumerate(steps_result.get("steps", []), start=1):
+                step_doc = {
+                    "projectId": ObjectId(str(cursor["_id"])),
+                    "stepNumber": step.get("order", idx),
+                    "title": step.get("title", f"Step {idx}"),
+                    "description": " ".join(step.get("instructions", [])),
+                    "tools": [],
+                    "materials": [],
+                    "images": [],
+                    "videoTutorialLink": None,
+                    "referenceLinks": [],
+                    "completed": False,
+                    "createdAt": datetime.utcnow(),
+                }
+                steps_collection.insert_one(step_doc)
             
             print("Steps Generated")
             
