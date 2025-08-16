@@ -246,12 +246,11 @@ Project summary:
             "text": {
                 "format": {
                     "type": "json_schema",
-                    "json_schema": {
-                        "name": "ToolsLLM",
-                        "strict": True,
-                        "schema": self._schema,
-                    },
-                }
+                    "name": "ToolsLLM",
+                    "strict": True,
+                    "schema": self._schema,
+                },
+                
             }
         }
 
