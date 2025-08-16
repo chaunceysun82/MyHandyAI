@@ -18,7 +18,7 @@ load_dotenv()
 def load_prompt(filename):
     """Load prompt from file, removing comment lines starting with #"""
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(script_dir, "prompts", filename)
+    path = os.path.join(script_dir, "./prompts", filename)
     try:
         with open(path, "r", encoding="utf-8") as f:
             lines = f.readlines()
