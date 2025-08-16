@@ -41,6 +41,8 @@ def lambda_handler(event, context):
 
             update_project(str(cursor["_id"]), {"tool_generation":tools_result})
             
+            cursor = project_collection.find_one({"_id": ObjectId(project)})
+            
             update_project(str(cursor["_id"]), {"step_generation":{"status": "in progress"}})
             
             steps_agent = StepsAgentJSON()
@@ -76,6 +78,8 @@ def lambda_handler(event, context):
                 steps_collection.insert_one(step_doc)
             
             print("Steps Generated")
+            
+            cursor = project_collection.find_one({"_id": ObjectId(project)})
             
             update_project(str(cursor["_id"]), {"estimation_generation":{"status": "in progress"}})
             
