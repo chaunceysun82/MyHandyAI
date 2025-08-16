@@ -255,6 +255,7 @@ Project summary:
         }
 
         resp = self._post_openai(payload)
+        print(resp)
         raw_text = self._extract_output_text(resp)
 
         try:
