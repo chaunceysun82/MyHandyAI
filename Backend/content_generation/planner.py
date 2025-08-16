@@ -93,42 +93,34 @@ Project summary:
         self.amazon_affiliate_tag = amazon_affiliate_tag
         self.base_url = openai_base_url.rstrip("/")
         self.timeout = timeout
-
-        # JSON Schema used by Structured Outputs (strict=True)
-        self.response_format = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "ToolsLLM",
-                "strict": True,  # enforce schema adherence
-                "schema": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "properties": {
-                        "tools": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "additionalProperties": False,
-                                "properties": {
-                                    "name": {"type": "string"},
-                                    "description": {"type": "string"},
-                                    "price": {"type": "number"},
-                                    "risk_factors": {"type": "string"},
-                                    "safety_measures": {"type": "string"},
-                                },
-                                "required": [
-                                    "name",
-                                    "description",
-                                    "price",
-                                    "risk_factors",
-                                    "safety_measures",
-                                ],
-                            },
-                        }
+        
+        self._schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "tools": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "name": {"type": "string"},
+                            "description": {"type": "string"},
+                            "price": {"type": "number"},
+                            "risk_factors": {"type": "string"},
+                            "safety_measures": {"type": "string"},
+                        },
+                        "required": [
+                            "name",
+                            "description",
+                            "price",
+                            "risk_factors",
+                            "safety_measures",
+                        ],
                     },
-                    "required": ["tools"],
-                },
+                }
             },
+            "required": ["tools"],
         }
 
     def _get_image_url(self, query: str, retries: int = 2, pause: float = 0.3) -> Optional[str]:
@@ -181,34 +173,70 @@ Project summary:
     @staticmethod
     def _extract_output_text(resp: Dict[str, Any]) -> str:
         """
-        The Responses API typically returns:
-          resp["output"][0]["content"][0]["text"]
-        Be defensive and search known paths.
+        Robustly extract text from an OpenAI Responses API payload.
+
+        Priority:
+        1) Responses API: scan `output` for the first completed "message"
+        2) Legacy chat-style: `choices[0].message.content` (string or list of text parts)
+        3) Top-level "text"
+        4) Deep fallback: search any nested "text" fields
         """
-        # Preferred path
+        # 1) Newer Responses API shape
         try:
-            parts = resp.get("output") or []
-            if parts:
-                content = parts[0].get("content") or []
-                texts = []
-                for c in content:
-                    # Some SDKs label as "output_text", others "text"
-                    if "text" in c:
-                        texts.append(c["text"])
-                    elif c.get("type") in ("output_text", "text") and "text" in c:
-                        texts.append(c["text"])
+            output = resp.get("output")
+            if isinstance(output, list):
+                for part in output:
+                    if part.get("type") == "message" and part.get("status") in (None, "completed"):
+                        content = part.get("content") or []
+                        texts = []
+                        for c in content:
+                            if not isinstance(c, dict):
+                                continue
+                            # Preferred keys/types
+                            if c.get("type") in ("output_text", "text") and isinstance(c.get("text"), str):
+                                texts.append(c["text"])
+                            elif isinstance(c.get("text"), str):
+                                texts.append(c["text"])
+                        if texts:
+                            return "".join(texts).strip()
+        except Exception:
+            pass
+
+        # 2) Legacy/alternate: chat-style responses
+        try:
+            choice = (resp.get("choices") or [{}])[0]
+            msg = choice.get("message") or {}
+            content = msg.get("content")
+            if isinstance(content, str):
+                return content.strip()
+            if isinstance(content, list):
+                texts = [d.get("text") for d in content if isinstance(d, dict) and isinstance(d.get("text"), str)]
                 if texts:
                     return "".join(texts).strip()
         except Exception:
             pass
 
-        # Fallbacks (older/alternate formats)
-        choice = (resp.get("choices") or [{}])[0]
-        msg = choice.get("message") or {}
-        if "content" in msg and isinstance(msg["content"], str):
-            return msg["content"].strip()
+        # 3) Sometimes a plain top-level "text"
+        if isinstance(resp.get("text"), str):
+            return resp["text"].strip()
 
-        # Last resort: stringify
+        # 4) Deep fallback: walk structure for any "text" strings
+        def _walk_text(x):
+            if isinstance(x, dict):
+                for k, v in x.items():
+                    if k == "text" and isinstance(v, str):
+                        yield v
+                    else:
+                        yield from _walk_text(v)
+            elif isinstance(x, list):
+                for i in x:
+                    yield from _walk_text(i)
+
+        texts = list(_walk_text(resp))
+        if texts:
+            return "".join(texts).strip()
+
+        # Last resort: stringify full response to aid debugging
         return json.dumps(resp)
 
     def recommend_tools(self, summary: str, include_json: bool = False) -> Dict[str, Any]:
@@ -220,14 +248,26 @@ Project summary:
                 {"role": "system", "content": "You return ONLY JSON that matches the provided schema."},
                 {"role": "user", "content": prompt},
             ],
-            "response_format": self.response_format,  # Structured Outputs (strict schema)
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "ToolsLLM",
+                    "strict": True,
+                    "schema": self._schema,
+                },
+                
+            }
         }
 
         resp = self._post_openai(payload)
+        print(resp)
         raw_text = self._extract_output_text(resp)
-
+        print(raw_text)
+        
         try:
             parsed_obj = ToolsLLM(**json.loads(raw_text))
+            print(parsed_obj)
+            
         except Exception as e:
             # Surface what the model returned to help debugging
             raise ValidationError([e], ToolsLLM)  # or raise RuntimeError(f"Schema parse error: {e}\nRAW: {raw_text}")
@@ -255,7 +295,7 @@ Project summary:
 
             tools_list.append(tool)
 
-        out: Dict[str, Any] = {"tools": tools_list, "raw": parsed_obj}
+        out: Dict[str, Any] = {"tools": tools_list, "raw": parsed_obj.model_dump()}
         if include_json:
             out["json"] = json.dumps(tools_list, indent=4)
 
