@@ -124,6 +124,35 @@ Project summary:
         self.amazon_affiliate_tag = amazon_affiliate_tag
         self.base_url = openai_base_url.rstrip("/")
         self.timeout = timeout
+        
+        self._schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "tools": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "name": {"type": "string"},
+                            "description": {"type": "string"},
+                            "price": {"type": "number"},
+                            "risk_factors": {"type": "string"},
+                            "safety_measures": {"type": "string"},
+                        },
+                        "required": [
+                            "name",
+                            "description",
+                            "price",
+                            "risk_factors",
+                            "safety_measures",
+                        ],
+                    },
+                }
+            },
+            "required": ["tools"],
+        }
 
     def _get_image_url(self, query: str, retries: int = 2, pause: float = 0.3) -> Optional[str]:
         """Query SerpAPI Google Images and return the top thumbnail URL (or None).
@@ -220,37 +249,10 @@ Project summary:
                     "json_schema": {
                         "name": "ToolsLLM",
                         "strict": True,
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": False,
-                            "properties": {
-                                "tools": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "object",
-                                        "additionalProperties": False,
-                                        "properties": {
-                                            "name": {"type": "string"},
-                                            "description": {"type": "string"},
-                                            "price": {"type": "number"},
-                                            "risk_factors": {"type": "string"},
-                                            "safety_measures": {"type": "string"},
-                                        },
-                                        "required": [
-                                            "name",
-                                            "description",
-                                            "price",
-                                            "risk_factors",
-                                            "safety_measures",
-                                        ],
-                                    },
-                                }
-                            },
-                            "required": ["tools"],
-                        },
+                        "schema": self._schema,
                     },
                 }
-            },
+            }
         }
 
         resp = self._post_openai(payload)
