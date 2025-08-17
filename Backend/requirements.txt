@@ -10,6 +10,7 @@ python-dateutil==2.9.0.post0
 langchain
 langchain-core
 langchain-community
+langchain_openai 
 langgraph
 requests==2.31.0
 pillow==10.0.0
