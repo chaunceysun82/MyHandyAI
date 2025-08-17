@@ -4,7 +4,8 @@ import { useNavigate }               from "react-router-dom";
 import Header                         from "../components/Header";
 import ProjectCard                    from "../components/ProjectCard";
 import LoadingPlaceholder             from "../components/LoadingPlaceholder";
-import { fetchProjects, createProject } from "../services/projects";
+import { fetchProjects, createProject, deleteProject } from "../services/projects";
+import { getUserById } from "../services/auth";
 
 
 export default function Home() {
@@ -12,7 +13,12 @@ export default function Home() {
   const token    =
     localStorage.getItem("authToken") ||
     sessionStorage.getItem("authToken");
-  const userName = "User";
+  
+    const [userName, setUserName] = useState(
+    localStorage.getItem("displayName") ||
+    sessionStorage.getItem("displayName") ||
+    "User"
+  );
 
   // const projectsKey = `${token}`;
 
@@ -31,6 +37,16 @@ export default function Home() {
       navigate("/login", { replace: true });
       return;
     }
+    if (!localStorage.getItem("displayName") &&
+       !sessionStorage.getItem("displayName")) {
+     getUserById(token).then(u => {
+       const full = [u.firstname, u.lastname].filter(Boolean).join(" ") || (u.email ?? "User");
+       setUserName(full);
+       const store = localStorage.getItem("authToken") ? localStorage : sessionStorage;
+       store.setItem("displayName", full);
+     }).catch(() => {}); // ignore for Google-only ids
+    }
+
     fetchProjects(token)
       .then(data => {
         setProjects(data);
@@ -49,6 +65,8 @@ export default function Home() {
 
     localStorage.removeItem(`chatMessages`);
     localStorage.removeItem("introShown");
+    localStorage.removeItem("displayName");
+    sessionStorage.removeItem("displayName");
 
     navigate("/login", { replace: true });
   }
@@ -88,6 +106,12 @@ export default function Home() {
   //   }
   // }
 
+  const handleKeyDown = (e) => {
+    if(e.key === 'Enter'){
+      startProject();
+    }
+  };
+
   async function startProject() 
   {
     const name = projectName.trim();
@@ -121,6 +145,26 @@ export default function Home() {
       setCreating(false);
     }
   }
+
+  async function handleRemoveProject(id) {
+  try {
+    // optimistic UI: remove first
+    setProjects(prev => prev.filter(p => p._id !== id));
+
+    await deleteProject(id);
+    // (optional) toast/snackbar here
+  } catch (err) {
+    console.error("deleteProject:", err);
+    // revert if delete failed
+    setProjects(prev => {
+      // you might keep a copy to restore; simplest is to refetch
+      fetchProjects(token).then(setProjects).catch(() => {});
+      return prev;
+    });
+    setError("Could not delete project: " + err.message);
+  }
+}
+
 
   if (loading) return <LoadingPlaceholder />;
 
@@ -162,11 +206,13 @@ export default function Home() {
         >
           {projects.map((p) => (
             <ProjectCard
+              key={p._id}
+              id={p._id}
               projectTitle={p.projectTitle}
               lastActivity={p.lastActivity}
               percentComplete={p.percentComplete}
-              onStartChat={() => navigate("/chat")}
-              onRemove={() => console.log("Removing done")}
+              onStartChat={() => navigate("/chat", {state: {projectId: p._id, projectName: p.projectTitle, userId: token}})}
+              onRemove={handleRemoveProject}
             />
             // <div
             //   key={p._id}
@@ -221,6 +267,7 @@ export default function Home() {
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
               disabled={creating}
+              onKeyDown={handleKeyDown}
             />
 
             <div className="flex justify-end space-x-3">
@@ -240,7 +287,7 @@ export default function Home() {
                       : "bg-blue-600 text-white"
                     : "bg-blue-200 text-blue-600 cursor-not-allowed")
                 }
-                onClick={startProject}
+                onKeyDown={handleKeyDown}
                 disabled={!projectName.trim() || creating}
               >
                 {creating ? "Starting…" : "Start"}

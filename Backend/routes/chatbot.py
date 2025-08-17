@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import sys
@@ -9,6 +10,7 @@ from pymongo import DESCENDING
 import pickle
 from db import conversations_collection
 from datetime import datetime
+from .project import update_project
 
 
 # Add the chatbot directory to the path
@@ -51,14 +53,14 @@ class SessionInfo(BaseModel):
 
 # ==== Utility Functions ====
 
-def log_message(session_id, role, message, chatbot, user, project, message_type="text"):
+def log_message(session_id, role, message, chatbot, user, project, message_type="project_intro"):
     doc = {
         "session_id": session_id,
         "user": user,
         "project": project,
         "role": role,
         "message": message,
-        "message_type": message_type,
+        "chat_type": message_type,
         "timestamp": datetime.utcnow(),
         "chatbot_state": pickle.dumps(chatbot),
         "current_state": getattr(chatbot, "current_state", None)
@@ -74,10 +76,19 @@ def get_latest_chatbot(session_id):
         return pickle.loads(doc["chatbot_state"])
     else:
         return AgenticChatbot()
+    
 
 def get_conversation_history(session_id):
     cursor = conversations_collection.find({"session_id": session_id}).sort("timestamp", 1)
     return [{"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]} for doc in cursor]
+
+@router.get("/session/{project}")
+def get_session(project):
+    cursor = conversations_collection.find_one({"project":project,"chat_type":"project_intro"})
+    if not cursor:
+        return {"session": None}
+    return {"session": cursor["session_id"]}
+
 
 def reset_session(session_id, user, project):
     chatbot = AgenticChatbot()
@@ -115,11 +126,16 @@ async def chat_with_bot(chat_message: ChatMessage):
         response = chatbot.process_message(chat_message.message, uploaded_image)
         log_message(session_id, "assistant", response, chatbot, chat_message.user, chat_message.project)
 
-        return ChatResponse(
-            response=response,
-            session_id=session_id,
-            current_state=getattr(chatbot, "current_state", None)
-        )
+        print(getattr(chatbot, "current_state", None))
+
+        if getattr(chatbot, "current_state", None) == "complete":
+            await save_information(session_id=session_id)
+
+        return JSONResponse(content={
+            "response":response,
+            "session_id":session_id,
+            "current_state":getattr(chatbot, "current_state", None)
+        })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chatbot error: {str(e)}")
 
@@ -131,8 +147,9 @@ async def start_new_session(payload: StartChat):
     session_id = uuid.uuid4().hex
     chatbot = AgenticChatbot()
     intro_message = chatbot.greet()
-    log_message(session_id, "assistant", intro_message, chatbot, payload.user, payload.project, message_type="intro")
+    log_message(session_id, "assistant", intro_message, chatbot, payload.user, payload.project, message_type="project_intro")
     return ChatSession(session_id=session_id, intro_message=intro_message)
+
 
 @router.get("/session/{session_id}/history")
 async def get_chat_history(session_id: str):
@@ -140,6 +157,7 @@ async def get_chat_history(session_id: str):
     Returns the full message history for a session.
     """
     return get_conversation_history(session_id)
+
 
 @router.get("/session/{session_id}/info", response_model=SessionInfo)
 async def get_session_info(session_id: str):
@@ -163,6 +181,7 @@ async def get_session_info(session_id: str):
         questions_remaining=questions_remaining
     )
 
+
 @router.post("/session/{session_id}/reset")
 async def reset_conversation(payload: ResetChat):
     """
@@ -172,6 +191,8 @@ async def reset_conversation(payload: ResetChat):
     intro_message = chatbot.greet()
     return {"message": "Conversation reset successfully", "intro_message": intro_message}
 
+
+
 @router.delete("/session/{session_id}")
 async def delete_session(session_id: str):
     """
@@ -180,7 +201,29 @@ async def delete_session(session_id: str):
     delete_session_docs(session_id)
     return {"message": f"Session {session_id} deleted successfully"}
 
+
+
 @router.get("/health")
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "message": "Chatbot API is running"}
+
+
+
+@router.post("/session/{session_id}/save")
+async def save_information(session_id: str):
+    bot=get_latest_chatbot(session_id)
+    conv=conversations_collection.find_one({"session_id":session_id})
+    if bot.current_state == "complete":
+        print (str(conv["project"]))
+        answers = bot.user_answers
+        if isinstance(answers, dict):
+            answers = {str(k): v for k, v in answers.items()}
+        update_project(str(conv["project"]), {"user_description":bot.user_description,
+                                         "summary": bot.summary,
+                                         "image_analysis":bot.image_analysis,
+                                         "questions":bot.questions,
+                                         "answers":answers})
+        return {"message":"Data saved Successfully"}
+    else:
+        return {"messaage":"chat not complete"}

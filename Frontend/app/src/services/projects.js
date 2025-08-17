@@ -1,31 +1,53 @@
 // src/services/projects.js
-const API_BASE = process.env.REACT_APP_BASE_URL || "";  
+import axios from "axios";
+const API_BASE = process.env.REACT_APP_BASE_URL ;
 
+/** GET /projects?user_id=... -> { message, projects: [...] } */
+export async function fetchProjects(userId) {
+  const res = await fetch(`${API_BASE}/projects?user_id=${encodeURIComponent(userId)}`);
 
+  
+  if (res.status === 405) return [];
 
-export async function fetchProjects(/* userId */) {
-  // No-op → always return empty list for now
-  return [];
+  if (!res.ok) {
+    
+    let msg = res.statusText;
+    try { msg = (await res.json()).detail || msg; } catch {}
+    throw new Error(msg);
+  }
+
+  const data = await res.json();
+  // backend returns { message, projects }
+  return Array.isArray(data.projects) ? data.projects : [];
 }
 
-/**
- * POST /projects
- * payload must include exactly { projectTitle, userId }
- * Returns the new project’s ID.
- */
+/** POST /projects -> { id } */
 export async function createProject(userId, projectTitle) {
   const res = await fetch(`${API_BASE}/projects`, {
-    method:  "POST",
+    method: "POST",
     headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({ projectTitle, userId }),
+    body: JSON.stringify({ projectTitle, userId }),
   });
 
   if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(errText || res.statusText);
+    let msg = res.statusText;
+    try { msg = (await res.json()).detail || msg; } catch {}
+    throw new Error(msg);
   }
 
-  
   const { id } = await res.json();
   return id;
 }
+
+
+export async function deleteProject(id) {
+  const res = await fetch(`${API_BASE}/projects/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { msg = (await res.json()).detail || msg; } catch {}
+    throw new Error(msg);
+  }
+}
+
+
+

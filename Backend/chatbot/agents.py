@@ -1,26 +1,83 @@
+# agents.py  (fixed & defensive)
 import os
 import requests
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Iterable
 from dotenv import load_dotenv
 import base64
 from PIL import Image
 import re
 import json
-from langchain_community.tools.tavily_search import TavilySearchResults
+from .smart_questions import SmartQuestionManager
 
 load_dotenv()
 
-search=TavilySearchResults(api_key=os.environ.get("TAVILY_API_KEY"))
-ASIN_DATA_API_KEY=os.getenv("ASIN_DATA_API_KEY")
+def clean_and_parse_json(raw_str: str):
+    """
+    Cleans code fences (```json ... ```) from a string and parses it as JSON.
+    """
+    if raw_str is None:
+        raise ValueError("No input string")
+    s = raw_str.strip()
+    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)           # strip fences
+    m = re.search(r"\{.*\}\s*$", s, flags=re.S)               # grab last JSON object
+    if m: s = m.group(0)
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON format: {e}")
+
+
+def minutes_to_human(minutes: int) -> str:
+    """Convert integer minutes to 'X hr Y min' or 'Y min'."""
+    if minutes is None:
+        return "unknown"
+    try:
+        m = int(minutes)
+    except Exception:
+        return str(minutes)
+    if m <= 0:
+        return "0 min"
+    hrs, mins = divmod(m, 60)
+    if hrs and mins:
+        return f"{hrs} hr {mins} min"
+    if hrs:
+        return f"{hrs} hr"
+    return f"{mins} min"
+
+
+def extract_number_from_maybe_price(value) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, dict):
+        for k in ("price", "extracted_price", "amount", "value"):
+            if k in value:
+                return extract_number_from_maybe_price(value[k])
+        for v in value.values():
+            n = extract_number_from_maybe_price(v)
+            if n is not None:
+                return n
+        return None
+    s = str(value).strip()
+    if s == "":
+        return None
+    m = re.search(r"[-+]?\d{1,3}(?:[,\d{3}]*\d)?(?:\.\d+)?", s.replace(",", ""))
+    if m:
+        try:
+            return float(m.group(0))
+        except Exception:
+            return None
+    return None
 
 def load_prompt(filename):
     """Load prompt from file, removing comment lines starting with #"""
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(script_dir, "prompts", filename)
+    path = os.path.join(script_dir, "../prompts", filename)
     try:
         with open(path, "r", encoding="utf-8") as f:
             lines = f.readlines()
-        # Remove lines starting with #
+        
         return "".join(line for line in lines if not line.strip().startswith("#"))
     except FileNotFoundError:
         print(f"❌ Could not find prompt file: {path}")
@@ -30,46 +87,19 @@ def load_prompt(filename):
         return f"Error: Could not load {filename}"
 
 
-def clean_and_parse_json(raw_str):
-    """
-    Cleans code fences (```json ... ```) from a string and parses it as JSON.
-
-    Args:
-        raw_str (str): The input string from the LLM.
-
-    Returns:
-        dict or list: Parsed JSON object.
-
-    Raises:
-        ValueError: If the string cannot be parsed as valid JSON.
-    """
-    # Remove triple backtick code fences and optional language identifier
-    cleaned = re.sub(r"```(?:json)?\s*", "", raw_str.strip())
-    cleaned = re.sub(r"\s*```$", "", cleaned)
-
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON format: {e}")
-
-def extract_asin(url):
-    match = re.search(r"(?:dp|gp/product)/([A-Z0-9]{10})", url)
-    return match.group(1) if match else None
-
-def get_asin_data(asin):
-    endpoint = "https://api.asindataapi.com/product"
-    params = {"api_key": ASIN_DATA_API_KEY, "asin": asin}
-    resp = requests.get(endpoint, params=params)
-    resp.raise_for_status()
-    return resp.json()
-
 # Load the prompts
-qa_prompt_text = load_prompt("qa_prompt.txt")
-summary_prompt_text = load_prompt("summary_prompt.txt")
-question_clarification_prompt_text = load_prompt("question_clarification_prompt.txt")
-problem_recognition_prompt_text = load_prompt("problem_recognition_prompt.txt")
-image_analysis_prompt_text = load_prompt("image_analysis_prompt.txt")
-description_assessment_prompt_text = load_prompt("description_assessment_prompt.txt")
+qa_prompt_text = load_prompt("chat_qa_prompt.txt")
+summary_prompt_text = load_prompt("chat_summary_prompt.txt")
+question_clarification_prompt_text = load_prompt("chat_question_clarification_prompt.txt")
+problem_recognition_prompt_text = load_prompt("chat_problem_recognition_prompt.txt")
+image_analysis_prompt_text = load_prompt("chat_image_analysis_prompt.txt")
+description_assessment_prompt_text = load_prompt("chat_description_assessment_prompt.txt")
+greetings_prompt_text=load_prompt("chat_greetings_prompt.txt")
+valid_description_prompt_text=load_prompt("chat_valid_description_prompt.txt")
+skip_image_prompt_text=load_prompt("chat_skip_image_prompt.txt")
+revision_request_prompt_text=load_prompt("chat_revision_request_prompt.txt")
+summary_answer_prompt_text=load_prompt("chat_summary_answer_prompt.txt")
+
 
 class ProblemRecognitionAgent:
     """Agent 1: Recognizes problems and requests relevant photos"""
@@ -81,15 +111,15 @@ class ProblemRecognitionAgent:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-    
+
     def greetings(self):
         payload = {
-            "model": "gpt-4.1-nano",
+            "model": "gpt-5-nano",
             "messages": [
-                {"role": "system", "content": "You are a DIY customer service agent called MyHandyAI , your task is to greet the user, introduce yourself and ask the user to describe the project/repair/fix to be done"},
+                {"role": "system", "content": greetings_prompt_text},
             ],
-            "max_tokens": 50,
-            "temperature": 0.7
+            "max_completion_tokens": 200,
+            "reasoning_effort": "minimal",
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -99,58 +129,104 @@ class ProblemRecognitionAgent:
 
     def valid_description(self, message):
         payload = {
-            "model": "gpt-4.1-nano",
+            "model": "gpt-5-nano",
             "messages": [
-                {"role": "system", "content": "You are a DIY customer service agent, your task is to determine if the description/context of the repair/fix/project is coherent respond only 'True' or 'False'"},
+                {"role": "system", 
+                 "content": valid_description_prompt_text
+                 },
                 {"role": "user", "content": message}
             ],
-            "max_tokens": 50,
-            "temperature": 0.0
+            "max_completion_tokens": 20,
+            "reasoning_effort": "minimal",
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
-            return r.json()["choices"][0]["message"]["content"] == "True"
-        except:
-            return False
+            content = r.json()["choices"][0]["message"]["content"]
+            # be tolerant to whitespace/casing/fences
+            s = re.sub(r"[`\s]", "", content).lower()
+            return s == "true"
+        except Exception:
+            # Do NOT block the user on transient issues
+            # optional: quick local heuristic fallback
+            return len(message.split()) >= 3
 
     def analyze_problem(self, user_message: str) -> Dict[str, Any]:
         """Analyze user problem and determine what photos are needed"""
-        
+
         system_prompt = problem_recognition_prompt_text
 
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"User problem: {user_message}"}
         ]
-        
+
         try:
             response = requests.post(
                 self.api_url,
                 headers=self.headers,
-                json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 500}
+                json={
+                    "model": "gpt-5-mini", 
+                    "messages": messages, 
+                    "max_completion_tokens": 300, 
+                    "reasoning_effort": "medium"
+                },
+                timeout=15,
             )
-            
+
             if response.status_code == 200:
                 data = response.json()
-                text = data["choices"][0]["message"]["content"].strip()
                 
+                # Check if model was stopped due to content filtering
+                if "choices" in data and len(data["choices"]) > 0:
+                    choice = data["choices"][0]
+                    if "finish_reason" in choice:
+                        pass
+                    if "finish_details" in choice:
+                        pass
+                
+                text = data["choices"][0]["message"]["content"].strip()
+
+                # Check if model returned empty response
+                if not text:
+                    return self._get_fallback_response(user_message)
+
                 # Try to parse JSON from response
                 try:
-                    result = clean_and_parse_json(text)
-                    return result
-                except:
-                    # Fallback if JSON parsing fails
-                    return {
-                        "problem_type": "general",
-                        "photo_requests": ["Please share a photo of the area you're working on"],
-                        "response_message": text
-                    }
-            else:
-                return self._get_fallback_response(user_message)
+                    raw = clean_and_parse_json(text)
+                except Exception:
+                    raw = {}
+
+                # Defensive defaults
+                problem_type = (raw.get("problem_type") or "general_repair").strip()
+                photo_requests = raw.get("photo_requests") or [
+                    "Photo of the problem area",
+                    "A wider photo showing the surrounding context"
+                ]
                 
-        except Exception as e:
+                # Use custom prompt content if no response_message, not generic fallback
+                if raw.get("response_message"):
+                    response_message = raw["response_message"]
+                else:
+                    # Create response using the photo requests but mention they're optional
+                    response_message = (
+                        "Got it — please share:\n"
+                        + "\n".join(f"{i+1}. {p}" for i, p in enumerate(photo_requests))
+                        + "\n\n(Photos are optional — you can also type 'skip'.)"
+                    )
+
+                # Preserve any extra fields the model added (e.g., triage_state)
+                safe = dict(raw)
+                safe["problem_type"] = problem_type
+                safe["photo_requests"] = photo_requests
+                safe["response_message"] = response_message
+                return safe
+
+            # Non-200 → fallback
             return self._get_fallback_response(user_message)
-    
+
+        except Exception:
+            return self._get_fallback_response(user_message)
+
     def _get_fallback_response(self, user_message: str) -> Dict[str, Any]:
         """Fallback response if API fails - use simple AI-based approach"""
         
@@ -167,43 +243,46 @@ Be specific about what photos would help diagnose the problem."""
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"User problem: {user_message}"}
         ]
-        
+
         try:
             response = requests.post(
                 self.api_url,
                 headers=self.headers,
-                json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 300}
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 500, "reasoning_effort": "low"}
             )
-            
+
             if response.status_code == 200:
                 data = response.json()
                 text = data["choices"][0]["message"]["content"].strip()
-                
+
                 try:
                     result = clean_and_parse_json(text)
                     return result
-                except:
+                except Exception:
                     # If JSON parsing fails, return a generic response
-                    return {
+                    generic = {
                         "problem_type": "general_repair",
                         "photo_requests": ["Photo of the problem area", "Photo showing the context"],
                         "response_message": f"I can help with your issue! Please share:\n1. A photo of the problem area\n2. A photo showing the surrounding context"
                     }
+                    return generic
             else:
                 # If API fails, return a generic response
-                return {
+                generic = {
                     "problem_type": "general_repair",
                     "photo_requests": ["Photo of the problem area", "Photo showing the context"],
                     "response_message": f"I can help with your issue! Please share:\n1. A photo of the problem area\n2. A photo showing the surrounding context"
                 }
-                
-        except Exception as e:
-            # If any error occurs, return a generic response
-            return {
+                return generic
+
+        except Exception:
+            generic = {
                 "problem_type": "general_repair",
                 "photo_requests": ["Photo of the problem area", "Photo showing the context"],
                 "response_message": f"I can help with your issue! Please share:\n1. A photo of the problem area\n2. A photo showing the surrounding context"
             }
+            return generic
+
 
 class ImageAnalysisAgent:
     """Agent 2: analyses an uploaded image and returns clarifying questions"""
@@ -213,27 +292,33 @@ class ImageAnalysisAgent:
         self.api_url = "https://api.openai.com/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type":  "application/json",
+            "Content-Type": "application/json",
         }
 
     def skip_image(self, message):
         payload = {
-            "model": "gpt-4.1-nano",
+            "model": "gpt-5-mini",
             "messages": [
-                {"role": "system", "content": "Detect if the user doesn't have an image or want to skip the image upload (e.g 'skip','I dont have an image', etc...)  Respond only with 'True' or 'False'"},
-                {"role": "user","content": message}
+                {"role": "system", "content": skip_image_prompt_text},
+                {"role": "user", "content": message + " Respond with either 'True' or 'False'"}
             ],
-            "max_tokens": 50,
-            "temperature": 0.0
+            "max_completion_tokens": 100,
+            "reasoning_effort": "minimal",
         }
         try:
-            r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
-            return r.json()["choices"][0]["message"]["content"] == "True"
-        except:
-            return True
+            r = requests.post(self.api_url, headers=self.headers, json=payload)
+            content = r.json()["choices"][0]["message"]["content"]
+            
+            if r.status_code == 200:
+                return content == "True"
+            else:
+                return True  # Default to allowing skip on error
+                
+        except Exception as e:
+            return True  # Default to allowing skip on error
 
     def analyze_image(self, image_data: bytes, problem_type: str) -> Dict[str, Any]:
-        """Call GPT-4o Vision with a base64-encoded image and get back questions"""
+        """Call GPT-5 Vision with a base64-encoded image and get back questions"""
 
         b64 = base64.b64encode(image_data).decode("utf-8")
 
@@ -263,31 +348,30 @@ class ImageAnalysisAgent:
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-4o", "messages": messages, "max_tokens": 800},
-                timeout=20
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800,"reasoning_effort": "medium"},
             )
             if r.status_code == 200:
                 txt = r.json()["choices"][0]["message"]["content"].strip()
                 try:
                     result = json.loads(txt)
-                    # Validate the result has the expected structure
+                   
                     if isinstance(result, dict) and "analysis" in result and "questions" in result:
                         return result
                     else:
-                        # If structure is wrong, fall back
+                        
                         return self._get_fallback_questions(problem_type)
                 except (json.JSONDecodeError, KeyError, TypeError):
-                    # If JSON parsing fails, fall back
+                    
                     return self._get_fallback_questions(problem_type)
         except Exception:
-            pass                                # fall through to fallback
+            pass  
 
         # ─── fallback set ───
         return self._get_fallback_questions(problem_type)
-    
+
     def analyze_image_without_image(self, problem_type: str, user_description: str) -> Dict[str, Any]:
         """Generate questions based on problem description when no image is provided"""
-        
+
         system_prompt = (
             f"{image_analysis_prompt_text}\n\n"
             f"Problem type: {problem_type}\n"
@@ -308,28 +392,25 @@ class ImageAnalysisAgent:
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 800},
-                timeout=20
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800, "reasoning_effort": "low"}
             )
             if r.status_code == 200:
                 txt = r.json()["choices"][0]["message"]["content"].strip()
                 try:
                     result = clean_and_parse_json(txt)
-                    # Validate the result has the expected structure
                     if isinstance(result, dict) and "analysis" in result and "questions" in result:
                         return result
                     else:
-                        # If structure is wrong, fall back
                         return self._get_fallback_questions(problem_type)
                 except (json.JSONDecodeError, KeyError, TypeError):
-                    # If JSON parsing fails, fall back
+                   
                     return self._get_fallback_questions(problem_type)
         except Exception:
-            pass                                # fall through to fallback
+            pass  
 
         # ─── fallback set ───
         return self._get_fallback_questions(problem_type)
-    
+
     def _get_fallback_questions(self, problem_type: str) -> Dict[str, Any]:
         """Fallback questions if image analysis fails"""
         question_templates = {
@@ -384,7 +465,7 @@ class ImageAnalysisAgent:
                 "first_question": "What type of furniture is it (table, chair, cabinet, etc.)?"
             }
         }
-        
+
         return question_templates.get(problem_type, {
             "analysis": "I can see your project. Let me ask some questions to help you.",
             "questions": [
@@ -395,9 +476,10 @@ class ImageAnalysisAgent:
             "first_question": "What are the dimensions of the area you're working with?"
         })
 
+
 class SummaryAgent:
     """Agent 3: Creates a summary of the problem based on image and user answers"""
-    
+
     def __init__(self):
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.api_url = "https://api.openai.com/v1/chat/completions"
@@ -405,16 +487,17 @@ class SummaryAgent:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-    
+
     def affirmative_negative_response(self, message):
+        system_prompt = summary_answer_prompt_text
         payload = {
-            "model": "gpt-4.1-nano",
+            "model": "gpt-5-nano",
             "messages": [
-                {"role": "system", "content": "You are a affirmative/negative detector, your task is to determine if the user answer is affirmative to proceed with next steps or negative to not continue answer only '1' for affirmative '2' for negative and '0' if you cannot determine with the message"},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": message}
             ],
-            "max_tokens": 50,
-            "temperature": 0.0
+            "max_completion_tokens": 100,
+            "reasoning_effort": "minimal",
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -424,12 +507,12 @@ class SummaryAgent:
 
     def create_summary(self, problem_type: str, image_analysis: str, user_answers: Dict[int, str]) -> str:
         """Create a comprehensive summary of the problem"""
-        
+
         # Format user answers for the prompt
         answers_text = ""
         for i, answer in user_answers.items():
             answers_text += f"Q{i+1}: {answer}\n"
-        
+
         system_prompt = f"""{summary_prompt_text}
 
 Problem type: {problem_type}
@@ -443,162 +526,20 @@ Please create a summary of this DIY problem."""
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": "Please create a summary of this DIY problem."}
         ]
-        
+
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-4.1", "messages": messages, "max_tokens": 300},
-                timeout=20
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 1000, "reasoning_effort": "low"}
             )
             if r.status_code == 200:
                 return r.json()["choices"][0]["message"]["content"].strip()
         except Exception:
             pass
-        
+
         # Fallback summary
         return f"I understand you have a {problem_type.replace('_', ' ')} issue. Based on the image and your answers, I can help you resolve this problem."
 
-class PydanticToolAgent:
-    """
-    Updated Agent: Given the final summary, generate a TEXT-formatted
-    list of tools with descriptive fields and dimensions (if available).
-    Output is plain text (no code fences) with one field per line:
-      Tool name : ...
-      Tool description : ...
-      Tool dimensions : ...   <-- only if provided by LLM
-      Risk Factor : ...
-      Safety Measure: ...
-    Blank line between tools.
-    """
-    def __init__(self):
-        self.api_key = os.getenv("OPENAI_API_KEY")
-        self.api_url = "https://api.openai.com/v1/chat/completions"
-        self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-
-    def create_pydantic_output(self, summary_text: str) -> str:
-        """
-        Returns plain-text string (chat) formatted as requested.
-        The LLM is instructed to return a JSON array ONLY with:
-        tool_name, description, dimensions (optional), risk_factor, safety_measure.
-        """
-        
-        system_prompt = (
-            "You are an assistant that converts a DIY problem summary into a structured list of tools and materials. "
-            "Produce a JSON array ONLY (no extra text) where each item is an object with the following keys:\n"
-            " - tool_name (string)\n"
-            " - description (string): provide a descriptive explanation of the tool's use and any important attributes such as type, typical dimensions, or variants.\n"
-            " - dimensions (string, OPTIONAL): if the summary includes numeric measurements or if typical/recommended dimensions or sizes are relevant, include them here (e.g., '60 x 90 cm', '1/4 inch drill bit'). If not applicable, omit or set to ''.\n"
-            " - risk_factor (string): a descriptive risk assessment (state what can go wrong, severity, and likely failure modes).\n"
-            " - safety_measure (string): actionable safety steps, PPE recommendations, and precautions specific to using the tool.\n\n"
-            "Be detailed and explicit: descriptions, risk factors, and safety measures should be several words to a few sentences (not single words). "
-            "Return 3 relevant tools when possible. Do NOT include any explanatory prose outside the JSON array. Return JSON only."
-        )
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Summary:\n{summary_text}\n\nReturn the JSON array now."}
-        ]
-
-        tools = None
-        try:
-            r = requests.post(self.api_url, headers=self.headers,
-                              json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 900},
-                              timeout=25)
-            if r.status_code == 200:
-                raw = r.json()["choices"][0]["message"]["content"].strip()
-                try:
-                    tools = clean_and_parse_json(raw)
-                except Exception:
-                    # Try to extract a JSON array substring inside the response
-                    try:
-                        m = re.search(r"\[.*\]", raw, flags=re.DOTALL)
-                        if m:
-                            tools = json.loads(m.group(0))
-                    except Exception:
-                        tools = None
-        except Exception:
-            tools = None
-
-        # If parsing failed or returned something not useful, create a descriptive fallback
-        if not isinstance(tools, list) or not tools:
-            # Heuristic fallback: inspect summary for keywords and dimensions
-            fallback_tools = []
-            low = summary_text.lower()
-            # detect numeric dimensions from summary
-            dim_matches = re.findall(r"(\d+\s*(?:cm|mm|in|inch|kg|lb|lbs))", summary_text, flags=re.I)
-            inferred_dims = dim_matches[0] if dim_matches else ""
-
-            if "mirror" in low or "hang" in low:
-                fallback_tools = [
-                    {
-                        "tool_name": "Stud Finder",
-                        "description": "Handheld electronic device used to detect wood or metal studs and sometimes live wiring behind walls; recommended for locating secure mounting points for heavy fixtures.",
-                        "dimensions": "",
-                        "risk_factor": "If inaccurate, may lead to anchors being placed incorrectly, risking fixture failure or hitting hidden electrical wiring which can cause shock or short circuits.",
-                        "safety_measure": "Scan the wall multiple times, avoid areas where wiring runs vertically from outlets; when unsure, confirm with small pilot holes or a secondary locating method."
-                    },
-                    {
-                        "tool_name": "Power Drill (with appropriate bits)",
-                        "description": "Cordless or corded drill used for pilot holes and installing anchors; choose drill size based on anchor/drywall type and screw diameter.",
-                        "dimensions": inferred_dims or "",
-                        "risk_factor": "Drilling can penetrate wiring/plumbing causing electrocution or water leaks; bit kickback can cause hand injuries.",
-                        "safety_measure": "Wear safety glasses and gloves, ensure drill bits are sharp and correct size, keep a firm grip, and do not drill where wiring or pipes are expected."
-                    },
-                    {
-                        "tool_name": "Heavy-duty Wall Anchors (toggle or molly bolts)",
-                        "description": "Anchors designed to hold heavy loads on drywall when studs are unavailable; choose anchors rated for the mirror's weight.",
-                        "dimensions": "",
-                        "risk_factor": "Underrated anchors or improper installation may fail, leading to the fixture falling and causing injury or damage.",
-                        "safety_measure": "Select anchors with verified weight rating greater than the object's weight, follow installation instructions, and test load carefully before finalizing."
-                    }
-                ]
-            else:
-                # generic fallback
-                fallback_tools = [
-                    {
-                        "tool_name": "Protective Gloves",
-                        "description": "Gloves to protect hands from cuts, abrasions, and drill slippage during the job.",
-                        "dimensions": "",
-                        "risk_factor": "Low — ill-fitting gloves may reduce dexterity.",
-                        "safety_measure": "Use gloves sized correctly and appropriate for the task."
-                    },
-                    {
-                        "tool_name": "Measuring Tape",
-                        "description": "Tape measure to take accurate measurements and mark mounting points precisely.",
-                        "dimensions": "",
-                        "risk_factor": "Pinch risk during retraction.",
-                        "safety_measure": "Retract tape slowly and keep fingers clear of the edge."
-                    }
-                ]
-            tools = fallback_tools
-
-        lines = []
-        lines.append("ASSISTANT : Here are the tools and materials required for your task:\n\n")
-        for t in tools:
-            
-            name = (t.get("tool_name") or t.get("name") or "Unknown Tool").strip()
-            desc = (t.get("description") or "").strip()
-            dims = (t.get("dimensions") or "").strip()
-            risk = (t.get("risk_factor") or t.get("risk") or "").strip()
-            safety = (t.get("safety_measure") or t.get("safety") or "").strip()
-
-            search_query="Can you provide me the purchase link and the price of the "+ name+" from Amazon?"
-            results=search.invoke(search_query)
-
-            lines.append(f"Tool name : {name}\n")
-            if len(results):
-                lines.append(f"Amazon URL : {results[0].get('url')}\n")
-            lines.append(f"Tool description : {desc if desc else '<Description not available>'}\n")
-            if dims:
-                lines.append(f"Tool dimensions : {dims}\n")
-            lines.append(f"Risk Factor : {risk if risk else '<Risk Factors>'}\n")
-            lines.append(f"Safety Measure: {safety if safety else '<Safety Measures>'}\n")
-            lines.append("\n\n\n")  # blank line between tools
-
-        return "\n".join(lines).rstrip()
 
 class QuestionClarificationAgent:
     """Agent 4: Uses an LLM to (1) detect 'skip', (2) detect 'don't know' and rephrase,
@@ -621,13 +562,13 @@ class QuestionClarificationAgent:
         # Replace placeholders manually to avoid conflicts with JSON braces in the prompt
         system_prompt = question_clarification_prompt_text.replace("{question}", question).replace("{user_response}", user_response)
         payload = {
-            "model": "gpt-4.1-mini",
+            "model": "gpt-5-mini",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user",   "content": "Please classify and respond in JSON."}
             ],
-            "max_tokens": 200,
-            "temperature": 0.2
+            "max_completion_tokens": 1000,
+            "reasoning_effort": "low",
         }
         try:
             resp = requests.post(self.api_url, headers=self.headers, json=payload, timeout=15)
@@ -657,36 +598,11 @@ class QuestionClarificationAgent:
             target_question_index: Optional[int] - Which question to go back to (None if unclear)
             clarification_message: str - Message to send to user
         """
+        previous_questions=""
+        previous_questions+= "".join(f"\n {i+1}. {q}" for i, q in enumerate(question_history))
+        question_number=len(question_history) + 1
         
-        system_prompt = f"""You are a revision detection agent. The user is currently answering question {len(question_history) + 1}.
-
-Current question: "{current_question}"
-
-Previous questions:
-{chr(10).join(f"{i+1}. {q}" for i, q in enumerate(question_history))}
-
-User message: "{user_message}"
-
-Determine if the user wants to:
-1. Go back to a specific previous question (using natural language reference)
-2. Just clarify their current answer
-3. Continue normally
-
-Return JSON with:
-- "is_revision_request": true/false
-- "target_question_index": number (1-based) or null
-- "message": explanation for user
-- "action": "go_back", "clarify_current", or "continue"
-- "confidence": 0.0-1.0 (how confident you are in the match)
-
-Examples:
-- "I want to change my answer about the wall type" → go_back, target=wall question index
-- "I made a mistake in the previous question about dimensions" → go_back, target=dimension question index
-- "Actually, let me re-answer the question about materials" → go_back, target=materials question index
-- "I meant to say..." → clarify_current
-- "The answer is..." → continue
-
-Use semantic matching to find the best question match."""
+        system_prompt=revision_request_prompt_text.replace("{current_question}", current_question).replace("{previous_questions}", previous_questions).replace("{user_message}", user_message).replace("{question_number}", question_number)
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -696,8 +612,7 @@ Use semantic matching to find the best question match."""
         try:
             response = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-4.1-mini", "messages": messages, "max_tokens": 300},
-                timeout=10
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 500, "reasoning_effort": "low"}
             )
             
             if response.status_code == 200:
@@ -819,13 +734,13 @@ class DescriptionAssessmentAgent:
 Description: \"\"\"{description}\"\"\" 
 """
         payload = {
-            "model": "gpt-4.1-mini",
+            "model": "gpt-5-nano",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user",   "content": "Please respond with JSON only."}
             ],
-            "max_tokens": 50,
-            "temperature": 0.0
+            "max_completion_tokens": 50,
+            "reasoning_effort": "low",
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -836,24 +751,54 @@ Description: \"\"\"{description}\"\"\"
 
 class AgenticChatbot:
     """Main chatbot that coordinates between agents."""
-
+    
     def __init__(self):
         self.problem_agent         = ProblemRecognitionAgent()
         self.image_agent           = ImageAnalysisAgent()
         self.summary_agent         = SummaryAgent()
-        self.pydantic_agent        = PydanticToolAgent()   # <-- updated agent added here
         self.clarification_agent   = QuestionClarificationAgent()
         self.description_agent     = DescriptionAssessmentAgent()
+        self.smart_question_manager = SmartQuestionManager()
+        
         self.reset()
 
     def reset(self):
         self.current_state          = "waiting_for_problem"
         self.problem_type           = None
         self.user_description       = ""
+        self.summary                = ""
         self.questions              = []
         self.current_question_index = 0
         self.user_answers           = {}
         self.image_analysis         = None
+        self.triage_state = {
+            "domain": None,          # plumbing | electrical | carpentry | hvac | general
+            "system": None,          # supply | drain | fixture | wiring | structure | other
+            "thing": None,           # sink | pipe | faucet | outlet | mirror | shelf | ...
+            "area_type": None,       # indoor | outdoor | vehicle | other
+            "location": None,        # kitchen | bathroom | hallway | garden | garage | ...
+            "room": None,            # finer indoor granularity
+            "materials": [],         # ["drywall","tile","pvc","copper",...]
+            "symptoms": [],          # ["slow_drain","no_power","leaking",...]
+            "dimensions": {},        # e.g. {"item":{"w_in":24,"h_in":36}}
+            "tools_available": [],   # ["stud_finder","plunger","multimeter"]
+            "hazards": []            # ["live_electric","active_leak","gas_smell"]
+        }
+
+    def update_triage_state(self, patch: dict):
+        if not patch:
+            return
+        for k, v in patch.items():
+            if v in (None, "", [], {}):
+                continue
+            if k in ("materials", "symptoms", "tools_available", "hazards") and isinstance(v, list):
+                merged = set(self.triage_state.get(k, []))
+                merged.update(v)
+                self.triage_state[k] = sorted(merged)
+            elif k == "dimensions" and isinstance(v, dict):
+                self.triage_state.setdefault("dimensions", {}).update(v)
+            else:
+                self.triage_state[k] = v
 
     def greet(self):
         return self.problem_agent.greetings()
@@ -864,31 +809,43 @@ class AgenticChatbot:
         if self.current_state == "waiting_for_problem":
             if not self.problem_agent.valid_description(user_message):
                 return "Not quite understand the description, could you please send again a description of the issue, repair or project you are facing?"
+            
             self.user_description = user_message
             result = self.problem_agent.analyze_problem(user_message)
-            self.problem_type = result["problem_type"]
+            
+            # Don't assume keys exist
+            self.problem_type = (result.get("problem_type") or "general_repair").strip()
+            
+            msg = result.get("response_message") or (
+                "Got it — please share a photo of the problem area and a wider photo for context."
+            )
+            
+            # Optional triage bootstrap if the recognizer returns any
+            if isinstance(result, dict) and result.get("triage_state"):
+                self.update_triage_state(result["triage_state"])
+            
             self.current_state = "waiting_for_photos"
-            return result["response_message"]
+            return msg
 
         # 2) Handle photo upload or skip
         if self.current_state == "waiting_for_photos":
-            # Check if user wants to skip photos
+            # Check if image was uploaded FIRST (priority)
+            if uploaded_image:
+                result = self.image_agent.analyze_image(uploaded_image, self.problem_type)
+                if not isinstance(result, dict) or "analysis" not in result or "questions" not in result:
+                    return "Sorry, I had trouble analyzing the image. Please try uploading it again."
+                
+                self.image_analysis = str(result.get("analysis") or "Image analysis completed")
+                return self._prepare_questions_from_result(result)
+            
+            # Only check for skip if no image was uploaded
             if self.image_agent.skip_image(user_message):
                 # Skip photos and go directly to questions based on description
                 result = self.image_agent.analyze_image_without_image(self.problem_type, self.user_description)
                 if not isinstance(result, dict) or "analysis" not in result or "questions" not in result:
                     return "Sorry, I had trouble processing your request. Please try again."
                 
-                self.image_analysis = str(result["analysis"])
-                return self._prepare_questions_from_result(result)
-            
-            # Check if image was uploaded
-            if uploaded_image:
-                result = self.image_agent.analyze_image(uploaded_image, self.problem_type)
-                if not isinstance(result, dict) or "analysis" not in result or "questions" not in result:
-                    return "Sorry, I had trouble analyzing the image. Please try uploading it again."
-                
-                self.image_analysis = str(result["analysis"])
+                self.image_analysis = str(result.get("analysis") or "No image analysis available")
                 return self._prepare_questions_from_result(result)
             
             # No image uploaded and no skip command
@@ -899,18 +856,18 @@ class AgenticChatbot:
             current_q = self.questions[self.current_question_index]
             
             # NEW: Check for revision request first
-            is_revision, target_index, revision_message = self.clarification_agent.detect_revision_request(
-                user_message, current_q, self.questions[:self.current_question_index]
-            )
+            # is_revision, target_index, revision_message = self.clarification_agent.detect_revision_request(
+            #     user_message, current_q, self.questions[:self.current_question_index]
+            # )
             
-            if is_revision:
-                if target_index is not None and 1 <= target_index <= len(self.questions):
-                    # Go back to specific question
-                    self.current_question_index = target_index - 1
-                    return f"{revision_message}\n\n**Question {target_index}:**\n{self.questions[target_index - 1]}"
-                else:
-                    # Ask user to specify which question
-                    return revision_message
+            # if is_revision:
+            #     if target_index is not None and 1 <= target_index <= len(self.questions):
+            #         # Go back to specific question
+            #         self.current_question_index = target_index - 1
+            #         return f"{revision_message}\n\n**Question {target_index}:**\n{self.questions[target_index - 1]}"
+            #     else:
+            #         # Ask user to specify which question
+            #         return revision_message
             
             # Continue with normal clarification logic
             clarification, advance = self.clarification_agent.handle_user_response(
@@ -921,6 +878,19 @@ class AgenticChatbot:
                 # store either "skipped" or the real answer
                 answer = "skipped" if clarification.startswith("Got it") else user_message
                 self.user_answers[self.current_question_index] = answer
+                
+                # 6a) Heuristic: if this looks like a dimensions question, parse and store
+                if isinstance(current_q, str) and re.search(r"\b(dimension|size|width|height)\b", current_q.lower()):
+                    dims = self.smart_question_manager.parse_dimensions(answer)
+                    if dims:
+                        self.update_triage_state({"dimensions": {"item": dims}})
+
+                # 6b) Extract extra context (location/materials/tools/symptoms) from the free-text answer
+                ctx_patch = self.smart_question_manager.extract_context_from_answers(
+                    {self.current_question_index: answer}
+                )
+                self.update_triage_state(ctx_patch)
+                
                 self.current_question_index += 1
                 return self._proceed_after_question(preamble=clarification)
 
@@ -930,7 +900,7 @@ class AgenticChatbot:
         if self.current_state == "showing_summary":
             resp = self.summary_agent.affirmative_negative_response(user_message)
             if resp == 1:
-                # User confirmed the summary; create final summary and hand over to PydanticToolAgent
+                # User confirmed the summary; create final summary
                 combined = {0: self.user_description}
                 for idx, ans in self.user_answers.items():
                     combined[idx + 1] = ans
@@ -940,16 +910,38 @@ class AgenticChatbot:
                     combined
                 )
 
-                # Generate TEXT-formatted output using the updated agent
-                tools_text = self.pydantic_agent.create_pydantic_output(final_summary)
+                # Enrich the summary with triage context
+                if self.triage_state and any(v for v in self.triage_state.values() if v):
+                    triage_context = []
+                    if self.triage_state.get("location"):
+                        triage_context.append(f"Location: {self.triage_state['location']}")
+                    if self.triage_state.get("materials"):
+                        triage_context.append(f"Materials: {', '.join(self.triage_state['materials'])}")
+                    if self.triage_state.get("dimensions"):
+                        for item, dims in self.triage_state["dimensions"].items():
+                            if isinstance(dims, dict) and "w_in" in dims and "h_in" in dims:
+                                triage_context.append(f"{item.title()} dimensions: {dims['w_in']}×{dims['h_in']} inches")
+                    if self.triage_state.get("tools_available"):
+                        triage_context.append(f"Tools available: {', '.join(self.triage_state['tools_available'])}")
+                    if triage_context:
+                        final_summary += f"\n\n**Context:** {' | '.join(triage_context)}"
 
+                self.summary= final_summary
+
+                # The tools, steps, and estimations are now handled by the content planner
+                # The chatbot's job is complete - hand off to the next webapp page
                 reply = (
-                    f"{tools_text}\n\n"
-                    "If you'd like, I can now provide step-by-step repair instructions using these tools — would you like that?"
+                    f"Perfect! I've analyzed your {self.problem_type.replace('_', ' ')} project and gathered all the information needed.\n\n"
+                    f"**Summary:** {final_summary}\n\n"
+                    "Your project plan is ready! The next page will show you:\n"
+                    "• Tools and materials required\n"
+                    "• Step-by-step instructions\n"
+                    "• Time and cost estimates\n\n"
+                    "Let's proceed to your personalized project plan!"
                 )
 
-                # reset the conversation state after producing the pydantic-style text output
-                self.reset()
+                # reset the conversation state after producing the complete solution
+                self.current_state = "complete"
                 return reply
 
             if resp == 2:
@@ -978,10 +970,27 @@ class AgenticChatbot:
             self.image_analysis,
             combined
         )
+        
+        # Enrich the summary with triage context
+        if self.triage_state and any(v for v in self.triage_state.values() if v):
+            triage_context = []
+            if self.triage_state.get("location"):
+                triage_context.append(f"Location: {self.triage_state['location']}")
+            if self.triage_state.get("materials"):
+                triage_context.append(f"Materials: {', '.join(self.triage_state['materials'])}")
+            if self.triage_state.get("dimensions"):
+                for item, dims in self.triage_state["dimensions"].items():
+                    if isinstance(dims, dict) and "w_in" in dims and "h_in" in dims:
+                        triage_context.append(f"{item.title()} dimensions: {dims['w_in']}×{dims['h_in']} inches")
+            if self.triage_state.get("tools_available"):
+                triage_context.append(f"Tools available: {', '.join(self.triage_state['tools_available'])}")
+            if triage_context:
+                summary += f"\n\n**Context:** {' | '.join(triage_context)}"
+        
         return (
             (preamble + "\n\n") if preamble else ""
         ) + (
-            f"Perfect! Here’s what I’ve got so far:\n\n**{summary}**\n\n"
+            f"Perfect! Here's what I've got so far:\n\n**{summary}**\n\n"
             "Does that look right? Reply 'yes' or 'no'."
         )
 
@@ -995,9 +1004,9 @@ class AgenticChatbot:
     
     def _prepare_questions_from_result(self, result: Dict[str, Any]) -> str:
         """Helper method to prepare questions from image analysis result"""
-                            # 2a) If the description alone suffices, skip the Q&A loop
+                    
         if self.description_agent.assess(self.user_description):
-                # combine description as answer #0
+                
                 combined = {0: self.user_description}
                 summary = self.summary_agent.create_summary(
                     self.problem_type,
@@ -1019,16 +1028,17 @@ class AgenticChatbot:
                 )
 
         # 2b) Otherwise, prepare the questions
-        raw_qs = [
-            (q["text"] if isinstance(q, dict) and "text" in q else str(q))
-            for q in result["questions"]
-        ]
+        raw_qs = result.get("questions") or []
+        # Normalize to strings safely
+        raw_qs = [(q["text"] if isinstance(q, dict) and "text" in q else str(q)).strip() for q in raw_qs]
+        raw_qs = [q for q in raw_qs if q]
 
-        # 2c) Filter out any "dimension" question if the description includes a measurement
-        desc = self.user_description.lower()
-        has_measure = bool(__import__("re").search(r"\d+\s*(cm|mm|in)", desc))
-        if has_measure:
-            self.questions = [q for q in raw_qs if "dimension" not in q.lower()]
+        # If dimensions already in the description or state, drop dimension questions
+        desc = (self.user_description or "").lower()
+        has_measure = bool(re.search(r"\d+\s*(cm|mm|in|inch|inches|ft|')", desc))
+        has_state_dims = bool(self.triage_state.get("dimensions"))
+        if has_measure or has_state_dims:
+            self.questions = [q for q in raw_qs if "dimension" not in q.lower() and "size" not in q.lower()]
         else:
             self.questions = raw_qs
 
