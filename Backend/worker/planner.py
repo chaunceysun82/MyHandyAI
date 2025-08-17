@@ -330,7 +330,7 @@ Project summary:
         if include_json:
             out["json"] = json.dumps(tools_list, indent=4)
 
-        return out
+        return {"tools":out["tools"]}
 
 
 class StepsAgentJSON:
@@ -671,7 +671,8 @@ class StepsAgentJSON:
                 "status": "pending",
                 "tools_needed": step.tools_needed,
                 "safety_warnings": step.safety_warnings,
-                "tips": step.tips
+                "tips": step.tips,
+                "completed":False
             })
         
         # Generate project summary card
@@ -711,7 +712,12 @@ class EstimationAgent:
         Generate comprehensive estimation including cost and time breakdown.
         Returns JSON with cost estimates, time estimates, and step-by-step breakdown.
         """
-        total_cost = tools_data.get("total_cost", 0.0)
+        
+        if "tools" in tools_data:
+            total_cost = sum(tool["price"] for tool in tools_data["tools"])
+        else:
+            total_cost = 0
+            
         total_time = steps_data.get("total_est_time_min", 0)
         
         # Generate step-by-step time breakdown
@@ -728,13 +734,11 @@ class EstimationAgent:
             "total_estimated_cost": {
                 "amount": total_cost,
                 "currency": "USD",
-                "available": tools_data.get("cost_available", False)
             },
             "total_estimated_time": {
                 "minutes": total_time,
                 "human_readable": minutes_to_human(total_time)
             },
-            "step_breakdown": step_breakdown,
             "summary": {
                 "total_steps": steps_data.get("total_steps", 0),
                 "tools_required": len(tools_data.get("tools", [])),

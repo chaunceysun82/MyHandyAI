@@ -90,3 +90,13 @@ def delete_project(project_id: str):
     conversations_collection.delete_many({"projectId": project_obj_id})
 
     return {"message": "Project and associated conversations deleted"}
+
+@router.put("/complete-step/{project_id}/{step}")
+def complete_step(project_id: str, step: int):
+    result = project_collection.update_one(
+        {"_id": ObjectId(project_id), "step_generation.steps.order": step},
+        {"$set": {"step_generation.steps.$.completed": True}}
+    )
+    if result.matched_count == 0:
+        print("Project not found")
+    return {"message": "Step updated", "modified": bool(result.modified_count)}
