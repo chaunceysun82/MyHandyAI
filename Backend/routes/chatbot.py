@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import sys
@@ -130,11 +131,11 @@ async def chat_with_bot(chat_message: ChatMessage):
         if getattr(chatbot, "current_state", None) == "complete":
             await save_information(session_id=session_id)
 
-        return ChatResponse(
-            response=response,
-            session_id=session_id,
-            current_state=getattr(chatbot, "current_state", None)
-        )
+        return JSONResponse(content={
+            "response":response,
+            "session_id":session_id,
+            "current_state":getattr(chatbot, "current_state", None)
+        })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chatbot error: {str(e)}")
 
