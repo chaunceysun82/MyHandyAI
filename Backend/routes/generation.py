@@ -82,25 +82,29 @@ async def generate_tools(project:str):
     
 @router.post("/all/{project}")
 async def generate(project):
-    
-    cursor = project_collection.find_one({"_id": ObjectId(project)})
-    if not cursor:
-        print("Project not found")
-        return {"message": "Project not found"}
-    
-    sqs = boto3.client("sqs")
-    message = {
-            "project":project
-        }
-    
-    update_project(str(cursor["_id"]), {"generation_status":"in-progress"})
-    
-    sqs.send_message(
-            QueueUrl=os.getenv("SQS_URL"),
-            MessageBody=json.dumps(message)
-    )
-    
-    return {"message": "Request In progress"}
+    try:
+        cursor = project_collection.find_one({"_id": ObjectId(project)})
+        if not cursor:
+            print("Project not found")
+            return {"message": "Project not found"}
+        
+        sqs = boto3.client("sqs")
+        message = {
+                "project":project
+            }
+        
+        update_project(str(cursor["_id"]), {"generation_status":"in-progress"})
+        
+        sqs.send_message(
+                QueueUrl=os.getenv("SQS_URL"),
+                MessageBody=json.dumps(message)
+        )
+        
+        return {"message": "Request In progress"}
+    except:
+        return {"message": "Request could not be processed"}
+
+
 
 @router.get("/status/{project}")
 async def status(project):
