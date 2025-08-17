@@ -88,13 +88,17 @@ def load_prompt(filename):
 
 
 # Load the prompts
-qa_prompt_text = load_prompt("qa_prompt.txt")
-summary_prompt_text = load_prompt("summary_prompt.txt")
-question_clarification_prompt_text = load_prompt("question_clarification_prompt.txt")
-problem_recognition_prompt_text = load_prompt("problem_recognition_prompt.txt")
-image_analysis_prompt_text = load_prompt("image_analysis_prompt.txt")
-description_assessment_prompt_text = load_prompt("description_assessment_prompt.txt")
-
+qa_prompt_text = load_prompt("chat_qa_prompt.txt")
+summary_prompt_text = load_prompt("chat_summary_prompt.txt")
+question_clarification_prompt_text = load_prompt("chat_question_clarification_prompt.txt")
+problem_recognition_prompt_text = load_prompt("chat_problem_recognition_prompt.txt")
+image_analysis_prompt_text = load_prompt("chat_image_analysis_prompt.txt")
+description_assessment_prompt_text = load_prompt("chat_description_assessment_prompt.txt")
+greetings_prompt_text=load_prompt("chat_greetings_prompt.txt")
+valid_description_prompt_text=load_prompt("chat_valid_description_prompt.txt")
+skip_image_prompt_text=load_prompt("chat_skip_image_prompt.txt")
+revision_request_prompt_text=load_prompt("chat_revision_request_prompt.txt")
+summary_answer_prompt_text=load_prompt("chat_summary_answer_prompt.txt")
 
 
 class ProblemRecognitionAgent:
@@ -112,7 +116,7 @@ class ProblemRecognitionAgent:
         payload = {
             "model": "gpt-5-nano",
             "messages": [
-                {"role": "system", "content": "You are a DIY customer service agent called MyHandyAI , your task is to greet the user, introduce yourself and ask the user to describe the project/repair/fix to be done"},
+                {"role": "system", "content": greetings_prompt_text},
             ],
             "max_completion_tokens": 200,
             "reasoning_effort": "minimal",
@@ -128,9 +132,8 @@ class ProblemRecognitionAgent:
             "model": "gpt-5-nano",
             "messages": [
                 {"role": "system", 
-                 "content": ("You are a DIY customer service agent. Decide if the user's "
-                            "description is coherent enough to proceed. "
-                            "Respond with only 'True' or 'False'.")},
+                 "content": valid_description_prompt_text
+                 },
                 {"role": "user", "content": message}
             ],
             "max_completion_tokens": 20,
@@ -296,7 +299,7 @@ class ImageAnalysisAgent:
         payload = {
             "model": "gpt-5-mini",
             "messages": [
-                {"role": "system", "content": "You are a classifier that only responds with either 'True' or 'False'. No explanations. Detemine if the user wants to skip the image upload or dont have any photo e.g I dont have any photo, I want to skip th photo "},
+                {"role": "system", "content": skip_image_prompt_text},
                 {"role": "user", "content": message + " Respond with either 'True' or 'False'"}
             ],
             "max_completion_tokens": 100,
@@ -486,10 +489,11 @@ class SummaryAgent:
         }
 
     def affirmative_negative_response(self, message):
+        system_prompt = summary_answer_prompt_text
         payload = {
             "model": "gpt-5-nano",
             "messages": [
-                {"role": "system", "content": "You are a affirmative/negative detector, your task is to determine if the user answer is affirmative to proceed with next steps or negative to not continue answer only '1' for affirmative '2' for negative and '0' if you cannot determine with the message"},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": message}
             ],
             "max_completion_tokens": 100,
@@ -594,36 +598,11 @@ class QuestionClarificationAgent:
             target_question_index: Optional[int] - Which question to go back to (None if unclear)
             clarification_message: str - Message to send to user
         """
+        previous_questions=""
+        previous_questions+= "".join(f"\n {i+1}. {q}" for i, q in enumerate(question_history))
+        question_number=len(question_history) + 1
         
-        system_prompt = f"""You are a revision detection agent. The user is currently answering question {len(question_history) + 1}.
-
-Current question: "{current_question}"
-
-Previous questions:
-{chr(10).join(f"{i+1}. {q}" for i, q in enumerate(question_history))}
-
-User message: "{user_message}"
-
-Determine if the user wants to:
-1. Go back to a specific previous question (using natural language reference)
-2. Just clarify their current answer
-3. Continue normally
-
-Return JSON with:
-- "is_revision_request": true/false
-- "target_question_index": number (1-based) or null
-- "message": explanation for user
-- "action": "go_back", "clarify_current", or "continue"
-- "confidence": 0.0-1.0 (how confident you are in the match)
-
-Examples:
-- "I want to change my answer about the wall type" → go_back, target=wall question index
-- "I made a mistake in the previous question about dimensions" → go_back, target=dimension question index
-- "Actually, let me re-answer the question about materials" → go_back, target=materials question index
-- "I meant to say..." → clarify_current
-- "The answer is..." → continue
-
-Use semantic matching to find the best question match."""
+        system_prompt=revision_request_prompt_text.replace("{current_question}", current_question).replace("{previous_questions}", previous_questions).replace("{user_message}", user_message).replace("{question_number}", question_number)
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -772,8 +751,7 @@ Description: \"\"\"{description}\"\"\"
 
 class AgenticChatbot:
     """Main chatbot that coordinates between agents."""
-
-    print("accessing prompt: "+qa_prompt_text)
+    
     def __init__(self):
         self.problem_agent         = ProblemRecognitionAgent()
         self.image_agent           = ImageAnalysisAgent()
