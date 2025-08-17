@@ -128,13 +128,13 @@ async def status(project):
         estimation= "Not started"
     
     if cursor["generation_status"]=="complete":
-        return {"message": "genertion completed",
+        return {"message": "generation completed",
                 "tools":tools,
                 "steps": steps,
                 "estimation":estimation}
     
     if cursor["generation_status"]=="in-progress":
-        return {"message": "genertion in progress",
+        return {"message": "generation in progress",
                 "tools":tools,
                 "steps": steps,
                 "estimation":estimation}
