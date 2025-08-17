@@ -19,6 +19,7 @@ export const submitOnboardingAnswers = async (answers) => {
 	
 	// Check if this is a new signup with onboarding data
 	const tempUserData = localStorage.getItem("tempUserData");
+	const authToken = localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
 	
 	if (tempUserData) {
 		// This is a new signup - use combined signup approach
@@ -39,29 +40,78 @@ export const submitOnboardingAnswers = async (answers) => {
 			console.error("Error in combined signup:", error);
 			throw error;
 		}
-	} else {
-		// This is an existing user updating their onboarding data
-		const userId = localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
-		console.log("Updating existing user with onboarding data for userID:", userId);
-		
-		if (!userId) {
-			console.error("No user ID found for onboarding submission");
-			return;
-		}
-
+	} else if (authToken) {
+		// This could be a Google user or existing user updating their onboarding data
 		try {
-			// Transform answers to match user schema using the shared function from auth.js
-			const userUpdateData = transformOnboardingAnswers(answers);
-			console.log("Transformed user data:", userUpdateData);
+			// First, check if user exists in backend
+			const userResponse = await fetch(`${BASE_URL}/users/${authToken}`);
 			
-			// Use the shared updateUser function
-			const result = await updateUser(userId, userUpdateData);
-			console.log("User updated successfully:", result);
-			
-			return result;
+			if (userResponse.ok) {
+				// User exists, update with onboarding data
+				console.log("Updating existing user with onboarding data for userID:", authToken);
+				
+				// Transform answers to match user schema using the shared function from auth.js
+				const userUpdateData = transformOnboardingAnswers(answers);
+				console.log("Transformed user data:", userUpdateData);
+				
+				// Use the shared updateUser function
+				const result = await updateUser(authToken, userUpdateData);
+				console.log("User updated successfully:", result);
+				
+				return result;
+			} else {
+				// User doesn't exist in backend, create new user with Google data
+				console.log("Google user not found in backend, creating new user with onboarding data");
+				
+				// Get user info from localStorage/sessionStorage
+				const displayName = localStorage.getItem("displayName") || sessionStorage.getItem("displayName") || "User";
+				const email = localStorage.getItem("email") || sessionStorage.getItem("email") || "";
+				
+				// Create user data for Google user
+				const googleUserData = {
+					firstname: displayName.split(" ")[0] || displayName,
+					lastname: displayName.split(" ").slice(1).join(" ") || "",
+					email: email,
+					googleId: authToken // Use Firebase UID as Google ID
+				};
+				
+				// Transform onboarding answers
+				const transformedOnboardingData = transformOnboardingAnswers(answers);
+				
+				// Combine user data with onboarding data
+				const completeUserData = {
+					...googleUserData,
+					...transformedOnboardingData
+				};
+				
+				console.log("Complete Google user data for creation:", completeUserData);
+				
+				// Create user in backend
+				const createResponse = await fetch(`${BASE_URL}/users`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify(completeUserData),
+				});
+				
+				if (!createResponse.ok) {
+					const error = await createResponse.json();
+					throw new Error(error.detail || "Failed to create Google user");
+				}
+				
+				const result = await createResponse.json();
+				console.log("Google user created successfully:", result);
+				
+				return result;
+			}
 		} catch (error) {
-			console.error("Error updating user with onboarding data:", error);
+			console.error("Error handling Google user onboarding:", error);
 			throw error;
 		}
+	} else {
+		// No user data or auth token found
+		console.error("No user data or auth token found for onboarding submission");
+		throw new Error("No user data found for onboarding submission");
 	}
 };

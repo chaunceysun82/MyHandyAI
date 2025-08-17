@@ -15,11 +15,19 @@ const Login = () => {
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [rememberMe, setRememberMe] = useState(false);
-	// const [error, setError] = useState("");
+	const [toast, setToast] = useState({ show: false, message: "", type: "" });
 	const navigate = useNavigate();
 
 	const auth = getAuth(app);
 	const googleProvider = new GoogleAuthProvider();
+
+	// Toast function
+	const showToast = (message, type = "info") => {
+		setToast({ show: true, message, type });
+		setTimeout(() => {
+			setToast({ show: false, message: "", type: "" });
+		}, 3000);
+	};
 
 
 	// const signInValidation = () => {
@@ -36,14 +44,61 @@ const Login = () => {
 		setPassword("");
 	}, [location.pathname]);
 
-	const signUpWithGoogle = () => {
-		signInWithPopup(auth, googleProvider).then((result) => {
+	const signUpWithGoogle = async () => {
+		try {
+			const result = await signInWithPopup(auth, googleProvider);
 			const user = result.user;
-			console.log("Google login successful");
-			if(rememberMe)
-			{
-				localStorage.setItem("authToken", user.uid);
+			console.log("Google login attempt for:", user.email);
+			
+			// Check if user exists in our backend
+			try {
+				const response = await fetch(`${process.env.REACT_APP_BASE_URL}/users/email/${user.email}`);
+				
+				if (response.ok) {
+					// User exists in backend, proceed with login
+					console.log("Existing user found, proceeding with login");
+					const store = rememberMe ? localStorage : sessionStorage;
+					store.setItem("authToken", user.uid);
+					const name = user.displayName || (user.email?.split("@")[0]) || "User";
+					store.setItem("displayName", name);
+					store.setItem("email", user.email || "");
+					navigate("/home");
+				} else {
+					// User doesn't exist in backend, redirect to signup
+					console.log("User not found in database, redirecting to signup");
+					
+					// Store Google user data temporarily for signup
+					localStorage.setItem("tempGoogleUser", JSON.stringify({
+						uid: user.uid,
+						email: user.email,
+						displayName: user.displayName || user.email?.split("@")[0] || "User"
+					}));
+					
+					// Show toast message and redirect to signup
+					showToast("User account not found. Please sign up first.", "error");
+					setTimeout(() => {
+						navigate("/signup");
+					}, 2000); // Wait 2 seconds for toast to be visible
+				}
+			} catch (error) {
+				console.error("Error checking user existence:", error);
+				// If we can't check, assume user doesn't exist and redirect to signup
+				console.log("Couldn't verify user, redirecting to signup");
+				
+				// Store Google user data temporarily for signup
+				localStorage.setItem("tempGoogleUser", JSON.stringify({
+					uid: user.uid,
+					email: user.email,
+					displayName: user.displayName || user.email?.split("@")[0] || "User"
+				}));
+				
+				// Show toast message and redirect to signup
+				showToast("Unable to verify user account. Please sign up first.", "error");
+				setTimeout(() => {
+					navigate("/signup");
+				}, 2000);
 			}
+<<<<<<< Updated upstream
 			else
 			{
 				sessionStorage.setItem("authToken", user.uid);
@@ -52,6 +107,12 @@ const Login = () => {
 		}).catch((error) => {
 			console.log("An Error occured while google sign in.");
 		});
+=======
+		} catch (error) {
+			console.error("An error occurred during Google login:", error);
+			showToast("Google authentication failed. Please try again.", "error");
+		}
+>>>>>>> Stashed changes
 	};
 
 	const handleSubmit = async (e) => {
@@ -216,6 +277,27 @@ const Login = () => {
 				</a>
 				.
 			</p> */}
+
+			{/* Toast Notification */}
+			{toast.show && (
+				<div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm ${
+					toast.type === "error" 
+						? "bg-red-500 text-white" 
+						: toast.type === "success" 
+						? "bg-green-500 text-white" 
+						: "bg-blue-500 text-white"
+				}`}>
+					<div className="flex items-center justify-between">
+						<span className="text-sm font-medium">{toast.message}</span>
+						<button 
+							onClick={() => setToast({ show: false, message: "", type: "" })}
+							className="ml-4 text-white hover:text-gray-200"
+						>
+							×
+						</button>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 };

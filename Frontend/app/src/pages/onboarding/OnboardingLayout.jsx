@@ -16,7 +16,7 @@ const OnboardingLayout = ({
 
 	return (
 		<div className="p-4 max-w-md mx-auto min-h-screen flex flex-col">
-			<div className="flex items-center justify-between mb-4">
+			<div className="flex items-center justify-between mb-2">
 				{showBack ? (
 					<button
 						onClick={onBack}
@@ -38,7 +38,8 @@ const OnboardingLayout = ({
 				/>
 			</div>
 
-			<div className="flex-1">{children}</div>
+			{/* Main content area with proper height distribution */}
+			<div className="flex-1 min-h-0">{children}</div>
 
 			<div className="w-full max-w-sm mx-auto fixed bottom-8 left-0 right-0 px-6">
 				{showSkip && (
