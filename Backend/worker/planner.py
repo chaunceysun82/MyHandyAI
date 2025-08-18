@@ -334,50 +334,71 @@ class StepsAgentJSON:
             "Content-Type": "application/json",
         }
 
-    def _parse_list_items(text: str) -> List[str]:
+    def _parse_list_items(self, text: str) -> List[str]:
         """
-        Parse text into a list of items, handling inline numbered lists (e.g. '1) ... 2) ...')
-        and standard bullet/numbered lists with newlines.
+        Parse text into a list of items, handling:
+        - Standard newline lists with bullets/numbers
+        - Inline lists like: '1) foo. 2) bar. 3) baz.'
         """
         if not text or not text.strip():
             return []
 
         try:
-            # Normalize quotes/whitespace
-            t = text.strip().replace("“", '"').replace("”", '"')
-            t = re.sub(r'\s+', ' ', t)
+            t = text.strip()
 
-            # Insert newlines BEFORE common list markers so inline lists get split into lines
-            # Examples matched: "1) ", "2. ", "a) ", "B) ", "- ", "* ", "• "
-            t = re.sub(r'\s*(?=(?:\d+|[A-Za-z])[.)]\s)', '\n', t)   # before 1), 2., a), B.
-            t = re.sub(r'\s*(?=(?:[-*•])\s)', '\n', t)              # before -, *, •
+            # 1) If it's already multi-line, process those lines
+            lines = [ln.strip() for ln in t.split('\n') if ln.strip()]
+            is_multiline = len(lines) > 1
 
-            # Split into lines and clean
-            lines = [ln.strip() for ln in t.splitlines() if ln.strip()]
+            if is_multiline:
+                candidates = lines
+            else:
+                # 2) It's a single line: try to split inline list markers.
+                # We find all positions where a list marker appears and slice between them.
+                # Marker forms: 1)  1.  a)  A)  -  *  •
+                marker_re = re.compile(r'(?:^|\s)((?:\d+|[A-Za-z])[.)]|[-*•])\s+')
+                parts = []
+                last_end = 0
+                matches = list(marker_re.finditer(t))
+
+                if matches:
+                    for i, m in enumerate(matches):
+                        # start of actual content follows the marker
+                        content_start = m.end()
+                        # end at next marker or end of string
+                        content_end = matches[i + 1].start() if i + 1 < len(matches) else len(t)
+                        parts.append(t[content_start:content_end].strip())
+                    candidates = [p for p in parts if p]
+                else:
+                    # No inline markers found — keep as one candidate
+                    candidates = [t]
 
             cleaned_items = []
-            for ln in lines:
-                # Remove leading list markers: 1. / 1) / a) / A) / - / * / •
-                ln = re.sub(r'^(?:[-*•]|(?:\d+|[A-Za-z])[.)])\s*', '', ln)
-                ln = re.sub(r'\s+', ' ', ln).strip()
-                if len(ln) > 1:
-                    cleaned_items.append(ln)
+            for line in candidates:
+                if not line:
+                    continue
+                # Remove a leading marker if present at the beginning of this candidate
+                line = re.sub(r'^(?:[-*•]|(?:\d+|[A-Za-z])[.)])\s*', '', line)
+                # Collapse extra whitespace
+                line = re.sub(r'\s+', ' ', line).strip()
+                if len(line) > 1:
+                    cleaned_items.append(line)
 
-            # Fallbacks if nothing parsed
-            if not cleaned_items:
-                # Try splitting by semicolons or double-spaces (soft separators)
-                for part in re.split(r';|\s{2,}', t):
-                    part = part.strip()
-                    if part and len(part) > 1:
-                        # Also drop markers if any
-                        part = re.sub(r'^(?:[-*•]|(?:\d+|[A-Za-z])[.)])\s*', '', part).strip()
-                        cleaned_items.append(part)
+            # 3) If still nothing parsed, try gentle fallback splitting on semicolons
+            #    (avoid splitting on commas; they appear inside sentences/measurements)
+            if not cleaned_items and t:
+                for item in re.split(r'\s*;\s*', t):
+                    item = item.strip()
+                    if item:
+                        item = re.sub(r'^(?:[-*•]|(?:\d+|[A-Za-z])[.)])\s*', '', item).strip()
+                        if len(item) > 1:
+                            cleaned_items.append(item)
 
             return cleaned_items
 
         except Exception as e:
             print(f"Warning: Error parsing list items: {e}")
-            return [text.strip()] if text.strip() else []
+            return [text.strip()] if text and text.strip() else []
 
     def _parse_time_to_minutes(self, text: str) -> int:
         """
