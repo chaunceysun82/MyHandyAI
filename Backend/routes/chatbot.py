@@ -255,7 +255,7 @@ async def chat_with_bot(chat_message: ChatMessage):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chatbot error: {str(e)}")
 
-@router.get("/start", response_model=ChatSession)
+@router.post("/start", response_model=ChatSession)
 async def start_new_session(payload: StartChat):
     """
     Starts a new chat session and returns the session_id and intro messages.
