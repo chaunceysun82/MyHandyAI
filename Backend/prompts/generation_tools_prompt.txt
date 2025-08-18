@@ -20,10 +20,10 @@ Guidelines:
 Example format:
 [
   {
-    "name": "LED flashlight / inspection light",
-    "description": "Bright handheld flashlight to inspect under the sink, around the fauce…",
-    "price": 12,
-    "risk_factors": "Using a flashlight while working in cramped spaces can distract from s…"
-    "safety_measures":"Keep the light secure and out of standing water; use a headlamp to kee…"
+    'name' : 'LED flashlight / inspection light',
+    'description': "Bright handheld flashlight to inspect under the sink, around the fauce…',
+    'price': 12,
+    'risk_factors': 'Using a flashlight while working in cramped spaces can distract from s…'
+    'safety_measures':'Keep the light secure and out of standing water; use a headlamp to kee…'
   }
 ] 
