@@ -13,7 +13,6 @@ from .project import update_project
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
 from bson import ObjectId
-import datetime
 from openai import OpenAI
 from qdrant_client.http.exceptions import UnexpectedResponse
 from dotenv import load_dotenv

@@ -1,56 +1,60 @@
 name: Deploy FastAPI Backend to AWS Lambda Endpoints
 
 on:
-  push:
-    branches: [main]
+    push:
+        branches: [main]
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
+    deploy:
+        runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v3
 
-      - name: Prepare lambda build folder
-        run: |
-          mkdir -p lambda_package
-          cp Backend/*.py lambda_package/
-          cp -r Backend/routes lambda_package/
-          cp -r Backend/chatbot lambda_package/
-          cp -r Backend/content_generation lambda_package/
-          cp -r Backend/prompts lambda_package/
-          cp Backend/requirements.txt lambda_package/
+            - name: Prepare lambda build folder
+              run: |
+                  mkdir -p lambda_package
+                  cp Backend/*.py lambda_package/
+                  cp -r Backend/routes lambda_package/
+                  cp -r Backend/chatbot lambda_package/
+                  cp -r Backend/content_generation lambda_package/
+                  cp -r Backend/prompts lambda_package/
+                  cp Backend/requirements.txt lambda_package/
 
-      - name: Build dependencies inside Amazon Linux 2023 (compatible with Lambda)
-        run: |
-          docker run --rm -v "$PWD/lambda_package":/app public.ecr.aws/amazonlinux/amazonlinux:2023 /bin/bash -c '
-            dnf install -y python3.11 python3.11-pip zip &&
-            alternatives --install /usr/bin/python python /usr/bin/python3.11 1 &&
-            alternatives --install /usr/bin/pip pip /usr/bin/pip3.11 1 &&
-            cd /app &&
-            pip install -r requirements.txt -t . &&
-            zip -r9 /app/function.zip .
-          '
+            - name: Build dependencies inside Lambda Python 3.11 image
+              run: |
+                  docker run --rm -v "$PWD/lambda_package":/app public.ecr.aws/lambda/python:3.11 bash -lc '
+                    set -euo pipefail
+                    cd /app
+                    python -m pip install --upgrade pip wheel setuptools
+                    # Strongly prefer prebuilt wheels
+                    PIP_PREFER_BINARY=1 python -m pip install --prefer-binary -r requirements.txt -t .
+                    # If a plain numpy/ directory slipped in, remove it (you don't depend on numpy)
+                    [ -d numpy ] && rm -rf numpy
+                    # Zip and exclude any numpy/ source folder just in case
+                    zip -r9 /app/function.zip . \
+                      -x "*/__pycache__/*" "*/tests/*" "*/.pytest_cache/*" "*/dist/*" "*/build/*" "*/*.egg-info/*" "*/numpy/*"
+                  '
 
-      - name: Move ZIP from Docker volume to root
-        run: |
-          mv lambda_package/function.zip .
+          - name: Move ZIP from Docker volume to root
+            run: |
+              mv lambda_package/function.zip .
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWSKEYID }}
-          aws-secret-access-key: ${{ secrets.AWSACCESSKEY }}
-          aws-region: us-east-2
+          - name: Configure AWS credentials
+            uses: aws-actions/configure-aws-credentials@v2
+            with:
+              aws-access-key-id: ${{ secrets.AWSKEYID }}
+              aws-secret-access-key: ${{ secrets.AWSACCESSKEY }}
+              aws-region: us-east-2
 
-      - name: Upload ZIP to S3
-        run: |
-          aws s3 cp function.zip s3://my-handy-ai-bucket-deploy/function.zip
+          - name: Upload ZIP to S3
+            run: |
+              aws s3 cp function.zip s3://my-handy-ai-bucket-deploy/function.zip
 
-      - name: Deploy from S3
-        run: |
-          aws lambda update-function-code \
-          --function-name MyHandyEndpoints \
-          --s3-bucket my-handy-ai-bucket-deploy \
-          --s3-key function.zip
+          - name: Deploy from S3
+            run: |
+              aws lambda update-function-code \
+              --function-name MyHandyEndpoints \
+              --s3-bucket my-handy-ai-bucket-deploy \
+              --s3-key function.zip
