@@ -22,23 +22,16 @@ jobs:
           cp -r Backend/prompts lambda_package/
           cp Backend/requirements.txt lambda_package/
 
-      - name: Build dependencies inside Lambda Python 3.11 image
+      - name: Build dependencies inside Amazon Linux 2023 (compatible with Lambda)
         run: |
-          docker run --rm -v "$PWD/lambda_package":/app public.ecr.aws/lambda/python:3.11 bash -lc "
-            set -euo pipefail
-            cd /app
-            python -m pip install --upgrade pip wheel setuptools
-            PIP_PREFER_BINARY=1 python -m pip install --prefer-binary -r requirements.txt -t .
-            [ -d numpy ] && rm -rf numpy
-            zip -r9 /app/function.zip . \
-              -x '*/__pycache__/*' \
-                '*/tests/*' \
-                '*/.pytest_cache/*' \
-                '*/dist/*' \
-                '*/build/*' \
-                '*/*.egg-info/*' \
-                '*/numpy/*'
-          "
+          docker run --rm -v "$PWD/lambda_package":/app public.ecr.aws/amazonlinux/amazonlinux:2023 /bin/bash -c '
+            dnf install -y python3.11 python3.11-pip zip &&
+            alternatives --install /usr/bin/python python /usr/bin/python3.11 1 &&
+            alternatives --install /usr/bin/pip pip /usr/bin/pip3.11 1 &&
+            cd /app &&
+            pip install -r requirements.txt -t . &&
+            zip -r9 /app/function.zip .
+          '
 
       - name: Move ZIP from Docker volume to root
         run: |
