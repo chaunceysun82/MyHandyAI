@@ -48,9 +48,9 @@ def minutes_to_human(minutes: int) -> str:
         return f"{hrs} hr"
     return f"{mins} min"
 
-tools_prompt_text = load_prompt("tools_prompt.txt")
-steps_prompt_text = load_prompt("steps_prompt.txt")
-fallback_tools_text = load_prompt("fallback_tools_prompt.txt")
+tools_prompt_text = load_prompt("generation_tools_prompt.txt")
+steps_prompt_text = load_prompt("generation_steps_prompt.txt")
+fallback_tools_text = load_prompt("generation_fallback_tools_prompt.txt")
 
 
 class Step(BaseModel):
@@ -93,15 +93,7 @@ class ToolsAgent:
     explicitly. You can pass serpapi_api_key or google_api_key to the constructor to override.
     """
 
-    PROMPT_TEXT = """You are an expert Tools & Materials recommender.
-
-Given the project summary below, return ONLY a JSON object that matches the schema exactly.
-Rules:
-- `tools` is an array of recommended tools/materials (LLM decides length).
-- Each tool must include: name, description (1–2 sentences), price (numeric USD), risk_factors, safety_measures.
-- Keep descriptions concise and practical. Do NOT include image links (those are added later).
-- Limit to procurable, realistic items.
-
+    PROMPT_TEXT = tools_prompt_text + """
 Project summary:
 {summary}
 """
