@@ -21,6 +21,8 @@ export default function ChatWindow({
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(false);
 
+  const [status2, setStatus2] = useState(false);
+
 
   const [drag, setDrag] = useState({ active: false, startY: 0, dy: 0 });
   const THRESHOLD = 120;
@@ -98,25 +100,74 @@ export default function ChatWindow({
   }, [render, onClose]);
 
 
-
   useEffect(() => {
-    if(status === true)
-    {
-      const timer = setTimeout(() => 
-      {
-        navigate(`/projects/${projectId}/overview`);
-        setStatus(false);
-      }, 3000);
+      const getStatus = async () => {
+        if(status === true)
+        {
+          // Goal is to call the generation api endpoint every 5 seconds until
+          // the message doesn't say "genertion completed". Once that is done,
+          // navigate to the project overview page/screen.
+            try 
+            {
+              const response = await axios.post(`${URL}/generation/all/${projectId}`);
 
-      return () => clearTimeout(timer);
-    }
+              if(response)
+              {
+                setStatus2(true);
+              }
+            } catch (err)
+            {
+              console.log("Err: ", err);
+            }
+          
+        }
+      }
+      getStatus();
   }, [status, navigate]);
 
 
+
+  useEffect(() => {
+        if(status2 === true)
+        {
+          // Goal is to call the generation api endpoint every 5 seconds until
+          // the message doesn't say "genertion completed". Once that is done,
+          // navigate to the project overview page/screen.
+            const interval = setInterval(async () => {
+              try 
+              {
+                const response = await axios.get(`${URL}/generation/status/${projectId}`);
+
+                if(response)
+                {
+                  const message = response.data.message;
+
+                  console.log("Message:", message);
+                  if(message === "generation completed")
+                  {
+                    clearInterval(interval);
+                    navigate(`/projects/${projectId}/overview`);
+                  }
+                }
+              } 
+              catch (err)
+              {
+                console.log("Err: ", err);
+              }
+            }, 5000);
+
+            return () => clearInterval(interval);
+        }
+  }, [status2, navigate]);
+
+
+
+  
   // Persist messages locally
   useEffect(() => {
     localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messages));
   }, [messages, STORAGE_MESSAGES_KEY]);
+
 
 
   // Load or start session
