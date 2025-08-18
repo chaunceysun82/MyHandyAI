@@ -11,7 +11,7 @@ const StepRenderer = ({ step, value, onChange }) => {
 
 	if (!step) return null;
 
-	const { Category, Options, Question, Comment, Type } = step;
+	const { Category, Options, Question, Comment, Type, _id } = step;
 
 	const originalOptions = Array.isArray(Options)
 		? Options.map((opt) => (typeof opt === "string" ? opt : opt.title))
@@ -85,7 +85,8 @@ const StepRenderer = ({ step, value, onChange }) => {
 			{Category === "multiple-selection" && (
 				<>
 					<TagSelector
-						items={allOptions}
+						questionId={_id || `question_${_id || 'unknown'}`}
+						items={originalOptions}
 						selectedItems={value || []}
 						onToggle={handleMultiToggle}
 						onClearAll={handleClearAll}
@@ -105,7 +106,7 @@ const StepRenderer = ({ step, value, onChange }) => {
 								value={customInputValue}
 								onChange={(e) => setCustomInputValue(e.target.value)}
 								placeholder="Enter tool name"
-								className="flex-1 px-4 py-2 rounded-xl border border-gray-300"
+								className="flex-1 px-4 py-2 border border-gray-300"
 							/>
 							<button
 								onClick={handleAddCustomItem}

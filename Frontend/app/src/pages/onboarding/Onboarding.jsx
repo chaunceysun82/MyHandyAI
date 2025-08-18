@@ -5,7 +5,10 @@ import {
 	submitOnboardingAnswers,
 	fetchOnboardingQuestions,
 } from "../../services/onboarding";
-import StepRenderer from "../../components/onboarding/StepRender";
+import TagSelector from "../../components/onboarding/TagSelector";
+import SingleSelectorCard from "../../components/onboarding/SingleSelectorCard";
+import DIYConfidenceSelector from "../../components/onboarding/DIYConfindecs";
+import LocationSelector from "../../components/onboarding/LocationSelector";
 import OnboardingLayout from "./OnboardingLayout";
 
 const Onboarding = () => {
@@ -18,6 +21,61 @@ const Onboarding = () => {
 	const stepIndex = Number(step) - 1;
 
 	const location = useLocation();
+
+	// Utility function to collect all custom items from localStorage
+	const collectCustomItemsFromStorage = useCallback(() => {
+		const customItemsData = {};
+		
+		// Iterate through localStorage to find all onboarding custom items
+		for (let i = 0; i < localStorage.length; i++) {
+			const key = localStorage.key(i);
+			if (key && key.startsWith('onboarding_custom_')) {
+				try {
+					const questionId = key.replace('onboarding_custom_', '');
+					const customItems = JSON.parse(localStorage.getItem(key));
+					
+					if (Array.isArray(customItems) && customItems.length > 0) {
+						customItemsData[questionId] = customItems;
+						console.log(`Collected custom items for ${questionId}:`, customItems);
+					}
+				} catch (error) {
+					console.error(`Error parsing custom items from ${key}:`, error);
+				}
+			}
+		}
+		
+		return customItemsData;
+	}, []);
+
+	// Function to merge custom items with regular answers
+	const mergeCustomItemsWithAnswers = useCallback((regularAnswers, customItemsData) => {
+		const mergedAnswers = { ...regularAnswers };
+		
+		// For each question that has custom items, merge them with the regular answers
+		Object.entries(customItemsData).forEach(([questionId, customItems]) => {
+			if (mergedAnswers[questionId]) {
+				// If question already has answers, merge custom items
+				const existingAnswers = Array.isArray(mergedAnswers[questionId]) 
+					? mergedAnswers[questionId] 
+					: [mergedAnswers[questionId]];
+				
+				// Add custom items that aren't already in the answers
+				customItems.forEach(customItem => {
+					if (!existingAnswers.includes(customItem)) {
+						existingAnswers.push(customItem);
+					}
+				});
+				
+				mergedAnswers[questionId] = existingAnswers;
+			} else {
+				// If question has no answers, just use custom items
+				mergedAnswers[questionId] = customItems;
+			}
+		});
+		
+		console.log('Merged answers with custom items:', mergedAnswers);
+		return mergedAnswers;
+	}, []);
 
 	useEffect(() => {
 		const fetchData = async () => {
@@ -53,7 +111,18 @@ const Onboarding = () => {
 		} else {
 			// Submit onboarding answers (this will handle both new signup and existing user updates)
 			try {
-				await submitOnboardingAnswers(answers);
+				console.log('Original answers before merging:', answers);
+				
+				// Collect all custom items from localStorage
+				const customItemsData = collectCustomItemsFromStorage();
+				console.log('Custom items collected from localStorage:', customItemsData);
+				
+				// Merge custom items with regular answers
+				const completeAnswers = mergeCustomItemsWithAnswers(answers, customItemsData);
+				console.log('Complete answers ready for submission:', completeAnswers);
+				
+				// Submit the complete answers including custom items
+				await submitOnboardingAnswers(completeAnswers);
 				navigate("/onboarding/complete");
 			} catch (error) {
 				console.error("Error submitting onboarding answers:", error);
@@ -74,6 +143,83 @@ const Onboarding = () => {
 		handleNext();
 	};
 
+	// Render question based on its type
+	const renderQuestion = (questionData) => {
+		const { Category, Options, Question, Comment, Type, _id } = questionData;
+		const currentAnswer = answers[_id];
+
+		switch (Category) {
+			case "single-selection":
+				if (Type === "DIY confidence") {
+					return (
+						<div className="space-y-4">
+							{Options.map((option, idx) => (
+								<DIYConfidenceSelector
+									key={idx}
+									title={option.title}
+									description={option.description}
+									value={option.title}
+									selected={currentAnswer}
+									onClick={(val) => handleAnswer(_id, val)}
+								/>
+							))}
+						</div>
+					);
+				} else {
+					return (
+						<div className="space-y-4">
+							{Options.map((option, idx) => (
+								<SingleSelectorCard
+									key={idx}
+									title={option.title}
+									description={option.description}
+									value={option.title}
+									selected={currentAnswer}
+									onClick={(val) => handleAnswer(_id, val)}
+								/>
+							))}
+						</div>
+					);
+				}
+
+			case "multiple-selection":
+				return (
+					<TagSelector
+						questionId={_id || `question_${_id || 'unknown'}`}
+						items={Array.isArray(Options) ? Options.map((opt) => (typeof opt === "string" ? opt : opt.title)) : []}
+						selectedItems={currentAnswer || []}
+						onToggle={(item) => {
+							const isSelected = currentAnswer?.includes(item);
+							const updated = isSelected
+								? currentAnswer.filter((v) => v !== item)
+								: [...(currentAnswer || []), item];
+							handleAnswer(_id, updated);
+						}}
+						onClearAll={() => handleAnswer(_id, [])}
+						onAddCustomItem={(custom) => {
+							const updated = [...(currentAnswer || []), custom];
+							handleAnswer(_id, updated);
+						}}
+						showClearButton={true}
+					/>
+				);
+
+			case "combo-box":
+				if (Type === "Location") {
+					return (
+						<LocationSelector
+							value={currentAnswer || { country: "", state: "" }}
+							onChange={(val) => handleAnswer(_id, val)}
+						/>
+					);
+				}
+				break;
+
+			default:
+				return <div>Unsupported question type: {Category}</div>;
+		}
+	};
+
 	if (loading || !questions.length) {
 		return (
 			<MobileWrapper>
@@ -87,7 +233,7 @@ const Onboarding = () => {
 							/>
 						))}
 					</div>
-				</div>{" "}
+				</div>
 			</MobileWrapper>
 		);
 	}
@@ -105,11 +251,13 @@ const Onboarding = () => {
 			primaryLabel="Continue"
 			disableNext={!stepData.Optional && !currentAnswer}
 			showSkip={stepData.Optional}>
-			<StepRenderer
-				step={stepData}
-				value={currentAnswer || null}
-				onChange={(val) => handleAnswer(stepData._id, val)}
-			/>
+			<div className="space-y-2">
+				<h2 className="text-lg text-center font-semibold">{stepData.Question}</h2>
+				{stepData.Comment && (
+					<p className="text-sm text-center pb-12 text-gray-500">{stepData.Comment}</p>
+				)}
+				{renderQuestion(stepData)}
+			</div>
 		</OnboardingLayout>
 	);
 };

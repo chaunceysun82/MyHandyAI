@@ -22,11 +22,11 @@ export default function DIYConfidenceSelector({
 			className={`cursor-pointer border rounded-xl px-4 py-2 flex items-center justify-between ${
 				isSelected ? "bg-gray-200" : "hover:bg-gray-50"
 			}`}>
-			<div className="flex items-center gap-2">
-				<span className="text-3xl">{emojiMap[title]}</span>
+			<div className="flex items-center gap-1">
+				<span className="text-2xl">{emojiMap[title]}</span>
 				<div>
-					<h4 className="font-semibold">{title}</h4>
-					<p className="text-sm text-gray-500">{description}</p>
+					<p className="font-bold text-lg">{title}</p>
+					<p className="text-[10px] text-gray-500">{description}</p>
 				</div>
 			</div>
 		</div>

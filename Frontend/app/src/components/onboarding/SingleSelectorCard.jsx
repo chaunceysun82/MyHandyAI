@@ -16,7 +16,7 @@ const SingleSelectorCard = ({
 			<div className="text-center">
 				<div className="text-lg font-bold text-gray-900">{title}</div>
 				{description && (
-					<div className="text-sm text-gray-500 mt-1">{description}</div>
+					<div className="text-[10px] text-gray-500 mt-1">{description}</div>
 				)}
 			</div>
 		</div>
