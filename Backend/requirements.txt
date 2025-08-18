@@ -9,11 +9,6 @@ email-validator==2.1.0.post1
 python-dateutil==2.9.0.post0
 numpy==1.26.4
 qdrant_client==1.11.3
-langchain
-langchain-core
-langchain-community
-langchain_openai 
-langgraph
 requests==2.31.0
 pillow==10.0.0
 python-multipart
