@@ -14,7 +14,7 @@ import { fetchSteps } from "../services/overview";
 import { 
 	extractSpecificStep, 
 	transformStepData 
-} from "../components/steps/StepUtils";
+} from "../utilities/StepUtils";
 import LoadingPlaceholder from "../components/LoadingPlaceholder";
 
 export default function StepPage() {
@@ -213,7 +213,7 @@ export default function StepPage() {
 				{/* Main Content - Scrollable */}
 				<main className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 					{/* Time Estimate */}
-					<StepTimeEstimate time={step.time} />
+					<StepTimeEstimate time={step.time} completed={step.completed} />
 
 					{/* Video Guide Section */}
 					<StepVideoGuide />
@@ -234,6 +234,7 @@ export default function StepPage() {
 					<StepCompletionConfirmation 
 						projectId={projectId} 
 						stepNumber={step.number} 
+						stepCompleted={step.completed}
 					/>
 				</main>
 

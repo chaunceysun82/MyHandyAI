@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import amazon from "../../assets/amazon.svg";
 import defaultToolImage from "../../assets/default_tool.png";
-import RatingStars from "./RatingStar";
+import { truncateWords } from "../../utilities/text"; 
 
 export default function ToolCard({ tool }) {
 	const [showDetails, setShowDetails] = useState(false);
@@ -75,7 +75,7 @@ export default function ToolCard({ tool }) {
 
 					{/* Title */}
 					<h3 className="mt-2 text-sm font-semibold text-gray-900 text-center line-clamp-2 leading-tight min-h-[2.5rem] flex items-center justify-center">
-						{toolName}
+						{truncateWords(toolName, 4)}
 					</h3>
 
 					{/* Description */}

@@ -1,5 +1,5 @@
 // StepCard.jsx
-import { truncateWords, truncateUntilWord } from "../utilities/text.js";
+import { truncateWords, truncateUntilChar } from "../utilities/text.js";
 
 export default function StepCard({
 	index,
@@ -9,29 +9,20 @@ export default function StepCard({
 	time,
 	onClick,
 	imageUrl,
-	status, // new prop for project status
+	completed, 
+	status,
 }) {
 	const short = truncateWords(subtitle, 7);
 	const isToolsStep = title === "Tools Required";
 
-	// Status color + icon mapping
-	const statusStyles = {
-		"Not Started": {
-			classes: "bg-gray-300 text-gray-700",
-			icon: "⏳", // hourglass not started
-		},
-		pending: {
-			classes: "bg-yellow-200 text-yellow-800",
-			icon: "🔄", // progress arrows
-		},
-		Complete: {
-			classes: "bg-green-200 text-green-800",
-			icon: "✅", // check mark
-		},
-	};
+	// Debug logging
+	console.log("StepCard:", { title, completed, isToolsStep });
 
-	const { classes, icon: statusIcon } =
-		statusStyles[status] || statusStyles["Not Started"];
+	// Status color + icon mapping for completed state
+	const completedStatus = {
+		classes: "bg-green-200 text-green-800",
+		icon: "✅", // check mark
+	};
 
 	return (
 		<button
@@ -52,14 +43,15 @@ export default function StepCard({
 				<div className="flex gap-2 mb-1 flex-wrap">
 					{time && (
 						<div className="inline-flex items-center text-[10px] text-gray-600 bg-[#F6F0E0] px-2 py-0.5 rounded-md">
-							⏱ {truncateUntilWord(time, "minutes")}
+							⏱ {truncateUntilChar(time, " ")} min
 						</div>
 					)}
 
-					{!isToolsStep && status && (
+					{/* Show completed status only when completed is true */}
+					{!isToolsStep && completed && (
 						<div
-							className={`inline-flex items-center text-[10px] px-2 py-0.5 rounded-md ${classes}`}>
-							<span className="mr-1">{statusIcon}</span> {status}
+							className={`inline-flex items-center text-[10px] px-2 py-0.5 rounded-md ${completedStatus.classes}`}>
+							<span className="mr-1">{completedStatus.icon}</span> Complete
 						</div>
 					)}
 
