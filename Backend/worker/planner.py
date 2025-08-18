@@ -48,9 +48,9 @@ def minutes_to_human(minutes: int) -> str:
         return f"{hrs} hr"
     return f"{mins} min"
 
-tools_prompt_text = load_prompt("tools_prompt.txt")
-steps_prompt_text = load_prompt("steps_prompt.txt")
-fallback_tools_text = load_prompt("fallback_tools_prompt.txt")
+tools_prompt_text = load_prompt("generation_tools_prompt.txt")
+steps_prompt_text = load_prompt("generation_steps_prompt.txt")
+fallback_tools_text = load_prompt("generation_fallback_tools_prompt.txt")
 
 
 class Step(BaseModel):
@@ -93,15 +93,7 @@ class ToolsAgent:
     explicitly. You can pass serpapi_api_key or google_api_key to the constructor to override.
     """
 
-    PROMPT_TEXT = """You are an expert Tools & Materials recommender.
-
-Given the project summary below, return ONLY a JSON object that matches the schema exactly.
-Rules:
-- `tools` is an array of recommended tools/materials (LLM decides length).
-- Each tool must include: name, description (1–2 sentences), price (numeric USD), risk_factors, safety_measures.
-- Keep descriptions concise and practical. Do NOT include image links (those are added later).
-- Limit to procurable, realistic items.
-
+    PROMPT_TEXT = tools_prompt_text + """
 Project summary:
 {summary}
 """
@@ -330,7 +322,7 @@ Project summary:
         if include_json:
             out["json"] = json.dumps(tools_list, indent=4)
 
-        return out
+        return {"tools":out["tools"]}
 
 
 class StepsAgentJSON:
@@ -344,51 +336,69 @@ class StepsAgentJSON:
 
     def _parse_list_items(self, text: str) -> List[str]:
         """
-        Parse text into a list of items, handling numbered lists and bullet points.
-        More robust parsing with better error handling.
+        Parse text into a list of items, handling:
+        - Standard newline lists with bullets/numbers
+        - Inline lists like: '1) foo. 2) bar. 3) baz.'
         """
         if not text or not text.strip():
             return []
-        
+
         try:
-            # Split by newlines and clean up
-            lines = [line.strip() for line in text.split('\n') if line.strip()]
-            
-            # Remove common list markers and clean up
+            t = text.strip()
+
+            # 1) If it's already multi-line, process those lines
+            lines = [ln.strip() for ln in t.split('\n') if ln.strip()]
+            is_multiline = len(lines) > 1
+
+            if is_multiline:
+                candidates = lines
+            else:
+                # 2) It's a single line: try to split inline list markers.
+                # We find all positions where a list marker appears and slice between them.
+                # Marker forms: 1)  1.  a)  A)  -  *  •
+                marker_re = re.compile(r'(?:^|\s)((?:\d+|[A-Za-z])[.)]|[-*•])\s+')
+                parts = []
+                last_end = 0
+                matches = list(marker_re.finditer(t))
+
+                if matches:
+                    for i, m in enumerate(matches):
+                        # start of actual content follows the marker
+                        content_start = m.end()
+                        # end at next marker or end of string
+                        content_end = matches[i + 1].start() if i + 1 < len(matches) else len(t)
+                        parts.append(t[content_start:content_end].strip())
+                    candidates = [p for p in parts if p]
+                else:
+                    # No inline markers found — keep as one candidate
+                    candidates = [t]
+
             cleaned_items = []
-            for line in lines:
+            for line in candidates:
                 if not line:
                     continue
-                    
-                # Remove numbered list markers (1., 2., etc.)
-                line = re.sub(r'^\d+\.\s*', '', line)
-                # Remove bullet points
-                line = re.sub(r'^[-•*]\s*', '', line)
-                # Remove other common markers
-                line = re.sub(r'^[a-z]\)\s*', '', line, flags=re.IGNORECASE)
-                # Remove extra whitespace
+                # Remove a leading marker if present at the beginning of this candidate
+                line = re.sub(r'^(?:[-*•]|(?:\d+|[A-Za-z])[.)])\s*', '', line)
+                # Collapse extra whitespace
                 line = re.sub(r'\s+', ' ', line).strip()
-                
-                if line and len(line) > 1:  # Ensure meaningful content
+                if len(line) > 1:
                     cleaned_items.append(line)
-            
-            # If no items were parsed, try alternative parsing
-            if not cleaned_items and text.strip():
-                # Try splitting by common separators
-                alt_items = re.split(r'[;,]|\band\b', text, flags=re.IGNORECASE)
-                for item in alt_items:
+
+            # 3) If still nothing parsed, try gentle fallback splitting on semicolons
+            #    (avoid splitting on commas; they appear inside sentences/measurements)
+            if not cleaned_items and t:
+                for item in re.split(r'\s*;\s*', t):
                     item = item.strip()
-                    if item and len(item) > 1:
-                        cleaned_items.append(item)
-            
+                    if item:
+                        item = re.sub(r'^(?:[-*•]|(?:\d+|[A-Za-z])[.)])\s*', '', item).strip()
+                        if len(item) > 1:
+                            cleaned_items.append(item)
+
             return cleaned_items
-            
+
         except Exception as e:
-            print(f"Warning: Error parsing list items: {str(e)}")
-            # Fallback: return the original text as a single item if it's not empty
-            if text.strip():
-                return [text.strip()]
-            return []
+            print(f"Warning: Error parsing list items: {e}")
+            return [text.strip()] if text and text.strip() else []
 
     def _parse_time_to_minutes(self, text: str) -> int:
         """
@@ -581,7 +591,6 @@ class StepsAgentJSON:
             for tool in tools["tools"]:
                 tools_context += tool["name"]+"\n"
                 tools_context += tool["description"]+"\n"
-                tools_context += tool["image_link"]+"\n"
                 tools_context += tool["risk_factors"]+"\n"
                 tools_context += tool["safety_measures"]+"\n"
             tools_context +="\n"
@@ -671,7 +680,8 @@ class StepsAgentJSON:
                 "status": "pending",
                 "tools_needed": step.tools_needed,
                 "safety_warnings": step.safety_warnings,
-                "tips": step.tips
+                "tips": step.tips,
+                "completed":False
             })
         
         # Generate project summary card
@@ -711,7 +721,12 @@ class EstimationAgent:
         Generate comprehensive estimation including cost and time breakdown.
         Returns JSON with cost estimates, time estimates, and step-by-step breakdown.
         """
-        total_cost = tools_data.get("total_cost", 0.0)
+        
+        if "tools" in tools_data:
+            total_cost = sum(tool["price"] for tool in tools_data["tools"])
+        else:
+            total_cost = 0
+            
         total_time = steps_data.get("total_est_time_min", 0)
         
         # Generate step-by-step time breakdown
@@ -728,13 +743,11 @@ class EstimationAgent:
             "total_estimated_cost": {
                 "amount": total_cost,
                 "currency": "USD",
-                "available": tools_data.get("cost_available", False)
             },
             "total_estimated_time": {
                 "minutes": total_time,
                 "human_readable": minutes_to_human(total_time)
             },
-            "step_breakdown": step_breakdown,
             "summary": {
                 "total_steps": steps_data.get("total_steps", 0),
                 "tools_required": len(tools_data.get("tools", [])),

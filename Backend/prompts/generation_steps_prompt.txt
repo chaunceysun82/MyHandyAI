@@ -13,9 +13,9 @@ Step No. : <Step No.>
 Step Title : <step title>
 Time : <Total time needed>
 Instructions : <List of specific numbered instructions for this step>
-Tools Needed : <List of tools required for this specific step>
-Safety Warnings : <List of safety considerations for this step>
-Tips : <List of helpful tips and tricks for this step>
+Tools Needed : <List of tools required numbered for this specific step>
+Safety Warnings : <List of safety considerations numbered for this step>
+Tips : <List of helpful tips and tricks numbered for this step>
 
 Guidelines for steps:
 - Use clear, simple language
@@ -29,8 +29,8 @@ Guidelines for steps:
 
 Guidelines for additional fields:
 - Instructions: Provide 2-4 numbered, actionable steps
-- Tools Needed: List only the tools specific to this step
-- Safety Warnings: Include relevant safety concerns and precautions
-- Tips: Offer practical advice that makes the step easier or more effective
+- Tools Needed: List only the tools specific to this step numbered
+- Safety Warnings: Include relevant safety concerns and precautions numbered
+- Tips: Offer practical advice that makes the step easier or more effective numbered
 
 Format with clear sections and use the exact labels specified above for easy parsing. 

@@ -5,6 +5,7 @@ import MessageList from "./MessageList";
 import ChatInput from "./ChatInput";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { RotatingLines } from 'react-loader-spinner';
 
 export default function ChatWindow({
   isOpen,
@@ -18,6 +19,9 @@ export default function ChatWindow({
   const [closing, setClosing] = useState(false);
   const [opening, setOpening] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState(false);
+
+  const [status2, setStatus2] = useState(false);
 
 
   const [drag, setDrag] = useState({ active: false, startY: 0, dy: 0 });
@@ -95,10 +99,75 @@ export default function ChatWindow({
     };
   }, [render, onClose]);
 
+
+  useEffect(() => {
+      const getStatus = async () => {
+        if(status === true)
+        {
+          // Goal is to call the generation api endpoint every 5 seconds until
+          // the message doesn't say "genertion completed". Once that is done,
+          // navigate to the project overview page/screen.
+            try 
+            {
+              const response = await axios.post(`${URL}/generation/all/${projectId}`);
+
+              if(response)
+              {
+                setStatus2(true);
+              }
+            } catch (err)
+            {
+              console.log("Err: ", err);
+            }
+          
+        }
+      }
+      getStatus();
+  }, [status, navigate]);
+
+
+
+  useEffect(() => {
+        if(status2 === true)
+        {
+          // Goal is to call the generation api endpoint every 5 seconds until
+          // the message doesn't say "genertion completed". Once that is done,
+          // navigate to the project overview page/screen.
+            const interval = setInterval(async () => {
+              try 
+              {
+                const response = await axios.get(`${URL}/generation/status/${projectId}`);
+
+                if(response)
+                {
+                  const message = response.data.message;
+
+                  console.log("Message:", message);
+                  if(message === "generation completed")
+                  {
+                    clearInterval(interval);
+                    navigate(`/projects/${projectId}/overview`);
+                  }
+                }
+              } 
+              catch (err)
+              {
+                console.log("Err: ", err);
+              }
+            }, 5000);
+
+            return () => clearInterval(interval);
+        }
+  }, [status2, navigate]);
+
+
+
+  
   // Persist messages locally
   useEffect(() => {
     localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messages));
   }, [messages, STORAGE_MESSAGES_KEY]);
+
 
 
   // Load or start session
@@ -174,90 +243,105 @@ const handleSend = async (text, files = []) => {
 
     let messageContent = text.trim();
     
-    if (files.length > 0) 
-    {
-      const fileNames = files.map(f => f.name).join('\n');
-      if (messageContent) {
-        messageContent = `${messageContent}\nFiles:\n${fileNames}`;
-      } 
-      else 
-      {
-        messageContent = `Files: ${fileNames}`;
-      }
-    }
-
-
-    const userMsg = { 
-      sender: "user", 
-      content: messageContent 
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
-
-    const currInput = text;
-    const currFile = files[0];
-
-    // setInput("");
-    // setSelectedFiles([]);
-    // resetTranscript();
-
     try 
     {
 
-      const formData = new FormData();
-
-      formData.append('message', currInput);
-      formData.append('user', userId);
-      formData.append('project', projectId);
-      formData.append('session_id', sessionId);
-      
-      
-      if(currFile) 
+      if (files.length > 0) 
       {
-        const base64 = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result.split(",")[1]);
-          reader.onerror = reject;
-          reader.readAsDataURL(currFile);
-        });
+        const fileNames = files.map(f => f.name).join('\n');
+        if (messageContent) {
+          messageContent = `${messageContent}\nFiles:\n${fileNames}`;
+        } 
+        else 
+        {
+          messageContent = `Files: ${fileNames}`;
+        }
+      }
 
-        formData.append("uploaded_image", base64);
-	    }
+
+      const userMsg = { 
+        sender: "user", 
+        content: messageContent 
+      };
+
+      setMessages((prev) => [...prev, userMsg]);
+
+      const currInput = text;
+      let uploadedimage = null;
+
+      const currFile = files[0];
+
+      if(currFile)
+      {
+        uploadedimage = await toBase64(currFile);
+      }
+
+
+      const payload = 
+      {
+        message: currInput,
+        user: userId,            // Replace with actual user ID
+        project: projectName,    // Replace with actual project name
+        session_id: sessionId,   // If you have one
+        uploaded_image: uploadedimage // base64 string or null
+      };
+      
 
       setLoading(true);
 
-      try   
+      const res = await axios.post(
+        `${URL}/chatbot/chat`,
+        // {
+        //   message: input,
+        //   user: "test",
+        //   project: "test",
+        //   session_id: sessionId,
+        // },
+        payload,
+        { 
+          headers: 
+            { "Content-Type": "application/json" } 
+        }
+      );
+
+
+      const botMsg = { sender: "bot", content: res.data.response };
+
+      setLoading(false);
+
+      setMessages((prev) => [...prev, botMsg]);
+
+      // check for the current_state of the response:
+      console.log("Current State:", res.data.current_state);
+
+      if(res.data.current_state === 'complete')
       {
-        const res = await axios.post(
-          `${URL}/chatbot/chat`,
-          // {
-          //   message: input,
-          //   user: "test",
-          //   project: "test",
-          //   session_id: sessionId,
-          // },
-          formData,
-          { 
-            headers: 
-              { "Content-Type": "application/json" } 
-          }
-        );
-        const botMsg = { sender: "bot", content: res.data.response };
-        setMessages((prev) => [...prev, botMsg]);
-      } catch (err) {
-        console.log(err);
-      } finally {
-        setLoading(false);
+        // Wait a bit for the user to read the final message, then show loading
+        setTimeout(() => {
+          setStatus(true);
+        }, 1500);
       }
 
     } catch (err) {
+      setLoading(false);
       console.error("Chat error", err);
+
       setMessages((prev) => [
         ...prev,
         { sender: "bot", content: "Oops! Something went wrong." },
       ]);
     }
   };
+
+
+
+  const toBase64 = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = (error) => reject(error);
+  });
 
 
 
@@ -302,7 +386,8 @@ const handleSend = async (text, files = []) => {
           <div className="mx-auto max-w-[380px] rounded-t-3xl bg-white shadow-md flex flex-col h-full overflow-hidden">
             <ChatHeader onClose={onClose} dragHandleProps={{ onPointerDown: startDrag }} />
 
-          <div 
+          {status === false ? (
+            <div 
             ref={messagesEndRef}
             className="flex-1 overflow-y-auto px-5 pt-1 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <MessageList messages={messages} />
@@ -322,6 +407,19 @@ const handleSend = async (text, files = []) => {
               </div>
             )}
           </div>
+          ) : (
+                <div className="items center justify-center flex flex-1 ">
+                  <RotatingLines
+                    strokeColor="blue"
+                    strokeWidth="2"
+                    animationDuration="0.1"
+                    width="45"
+                    visible={true}
+                  />
+                </div>
+              )
+          }
+          
 
           <div className="flex-shrink-0 flex flex-col px-4 py-3 gap-2">
             <hr className="border-t border-gray-200/70" />
