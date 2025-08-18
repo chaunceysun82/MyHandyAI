@@ -99,25 +99,10 @@ const Login = () => {
 					navigate("/signup");
 				}, 2000);
 			}
-<<<<<<< Updated upstream
-			else
-			{
-				sessionStorage.setItem("authToken", user.uid);
-			}
-			const store = rememberMe ? localStorage : sessionStorage;
-     		store.setItem("authToken", user.uid);               // your app uses this as userId
-     		const name = user.displayName || (user.email?.split("@")[0]) || "User";
-		     store.setItem("displayName", name);
-			navigate("/home");
-		}).catch((error) => {
-			console.log("An Error occured while google sign in.");
-		});
-=======
 		} catch (error) {
 			console.error("An error occurred during Google login:", error);
 			showToast("Google authentication failed. Please try again.", "error");
 		}
->>>>>>> Stashed changes
 	};
 
 	const handleSubmit = async (e) => {
