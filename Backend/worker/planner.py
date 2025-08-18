@@ -591,7 +591,6 @@ class StepsAgentJSON:
             for tool in tools["tools"]:
                 tools_context += tool["name"]+"\n"
                 tools_context += tool["description"]+"\n"
-                tools_context += tool["image_link"]+"\n"
                 tools_context += tool["risk_factors"]+"\n"
                 tools_context += tool["safety_measures"]+"\n"
             tools_context +="\n"
