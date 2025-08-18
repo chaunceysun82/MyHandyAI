@@ -191,19 +191,28 @@ export default function ProjectOverview() {
 				{/* Scrollable Steps list */}
 				<div className="flex-1 overflow-y-auto px-4 mt-3">
 					<div className="space-y-3 pb-4">
-						{displayedSteps.map((s, i) => (
-							<StepCard
-								key={s.key || i}
-								index={i + 1}
-								icon={s.icon}
-								title={s.title}
-								subtitle={s.subtitle}
-								time={s.time}
-								status={s.status}
-								imageUrl={s.imageUrl}
-								onClick={() => goToStep(i)}
-							/>
-						))}
+						{displayedSteps.map((s, i) => {
+							console.log("ProjectOverview: Rendering step:", { 
+								title: s.title, 
+								completed: s.completed, 
+								status: s.status,
+								index: i 
+							});
+							return (
+								<StepCard
+									key={s.key || i}
+									index={i + 1}
+									icon={s.icon}
+									title={s.title}
+									subtitle={s.subtitle}
+									time={s.time}
+									status={s.status}
+									imageUrl={s.imageUrl}
+									completed={s.completed}
+									onClick={() => goToStep(i)}
+								/>
+							);
+						})}
 					</div>
 				</div>
 
@@ -247,6 +256,7 @@ const defaultSteps = [
 		subtitle: "Find wall studs for secure mounting",
 		time: "10–15 min",
 		status: "Complete",
+		completed: true,
 	},
 	{
 		icon: "✏️",
@@ -254,6 +264,7 @@ const defaultSteps = [
 		subtitle: "Measure and mark bracket positions",
 		time: "10–15 min",
 		status: "In Progress",
+		completed: false,
 	},
 	{
 		icon: "🔩",
@@ -261,6 +272,7 @@ const defaultSteps = [
 		subtitle: "Drill holes and mount wall brackets",
 		time: "15–20 min",
 		status: "Not Started",
+		completed: false,
 	},
 	{
 		icon: "🪞",
@@ -268,6 +280,7 @@ const defaultSteps = [
 		subtitle: "Hang mirror securely on brackets",
 		time: "5–10 min",
 		status: "Not Started",
+		completed: false,
 	},
 ];
 
@@ -332,6 +345,7 @@ function normSteps(raw) {
 			subtitle: s.subtitle || "Tap to see details",
 			time: s.time || "",
 			icon: s.icon || pickIcon(i + 1),
+			completed: s.completed || false, // Add completed field
 		}));
 		return withTools(normalized);
 	}
@@ -346,6 +360,7 @@ function normSteps(raw) {
 		subtitle: s.summary || s.description || "Tap to see details",
 		time: s.time_text || (s.est_time_min ? `${s.est_time_min} min` : ""),
 		icon: pickIcon(i + 1),
+		completed: s.completed || false, // Add completed field
 	}));
 
 	return withTools(normalized);
@@ -359,6 +374,7 @@ function withTools(steps) {
 			title: "Tools Required",
 			subtitle: "List of tools needed for this project",
 			time: "",
+			completed: false, // Tools step is never completed
 		},
 		...steps,
 	];

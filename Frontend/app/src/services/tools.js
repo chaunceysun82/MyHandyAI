@@ -19,20 +19,20 @@ function errMsg(res, body) {
 export async function fetchProjectTools(projectId) {
 	try {
 		// First try to get tools from the project steps endpoint
-		const url = `${API}/projects/steps/${encodeURIComponent(projectId)}`;
-		const res = await fetch(url);
-		const body = await safeJson(res);
+		// const url = `${API}/projects/steps/${encodeURIComponent(projectId)}`;
+		// const res = await fetch(url);
+		// const body = await safeJson(res);
 
-		log("fetchProjectTools:response", { url, status: res.status });
-		log("fetchProjectTools:payload", body);
+		// log("fetchProjectTools:response", { url, status: res.status });
+		// log("fetchProjectTools:payload", body);
 
-		if (res.ok && body) {
-			// Extract tools from the project data if available
-			const tools = extractToolsFromProject(body);
-			if (tools && tools.length > 0) {
-				return tools;
-			}
-		}
+		// if (res.ok && body) {
+		// 	// Extract tools from the project data if available
+		// 	const tools = extractToolsFromProject(body);
+		// 	if (tools && tools.length > 0) {
+		// 		return tools;
+		// 	}
+		// }
 
 		// Fallback: try to get tools from generation endpoint
 		const genUrl = `${API}/generation/tools/${encodeURIComponent(projectId)}`;

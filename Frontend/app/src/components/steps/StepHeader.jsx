@@ -12,11 +12,11 @@ export default function StepHeader({
 		// bg-transparent so it matches the page; no border
 		<header className={`relative bg-transparent ${className}`}>
 			<div className="h-16 flex items-center px-4">
-				{/* Back button */}
+				{/* Left: Back button */}
 				<button
 					onClick={onBack}
 					aria-label="Go back"
-					className="relative z-10 -ml-1 inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-black/5 active:bg-black/10">
+					className="relative z-10 inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-black/5 active:bg-black/10">
 					<svg
 						viewBox="0 0 24 24"
 						className="h-6 w-6 text-gray-900"
@@ -32,19 +32,25 @@ export default function StepHeader({
 					</svg>
 				</button>
 
-				{/* Centered title stack */}
-				<div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-					<h2 className="text-[22px] leading-6 font-extrabold text-gray-900">
+				{/* Center: Step number */}
+				<div className="flex-1 flex justify-center">
+					<span className="text-lg font-semibold text-gray-900">
 						Step {stepNumber}/{totalSteps}
-					</h2>
-					{title && (
-						<p className="mt-1 text-[14px] leading-4 text-gray-500">{title}</p>
-					)}
+					</span>
 				</div>
 
-				{/* Right spacer for symmetry */}
+				{/* Right: Spacer for symmetry */}
 				<div className="w-9 h-9" />
 			</div>
+
+			{/* Title in separate row below */}
+			{title && (
+				<div className="px-4 pb-2">
+					<div className="text-center">
+						<p className="text-[16px] leading-5 font-medium text-gray-700">{title}</p>
+					</div>
+				</div>
+			)}
 		</header>
 	);
 }

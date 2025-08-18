@@ -58,11 +58,12 @@ export const transformStepData = (stepData, stepNumber, allStepsData) => {
 		safety: formatSafetyWarnings(stepData.safety_warnings || stepData.safety || stepData.safety_warning || []),
 		tips: formatTips(stepData.tips || stepData.tip || []),
 		imageUrl: stepData.imageUrl || stepData.image_url || null,
-		videoUrl: stepData.videoUrl || stepData.video_url || null
+		videoUrl: stepData.videoUrl || stepData.video_url || null,
+		completed: stepData.completed || false // Add the completed field from API data
 	};
 	
 	console.log("StepUtils: Transformed result:", result);
-	console.log("StepUtils: Final step object:", { number: result.number, total: result.total });
+	console.log("StepUtils: Final step object:", { number: result.number, total: result.total, completed: result.completed });
 	return result;
 };
 
