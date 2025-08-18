@@ -49,7 +49,6 @@ def list_projects(user_id: str):
         # Convert all ObjectIds (including nested ones) to strings
         return jsonable_encoder(payload, custom_encoder={ObjectId: str})
 
-        return {"message":"Projects found", "projects":results}
     except:
         print(f"❌ There was an error fetching projects for {user_id}")
         raise HTTPException(status_code=400, detail="Projects Error")
