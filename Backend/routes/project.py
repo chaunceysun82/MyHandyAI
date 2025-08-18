@@ -86,7 +86,7 @@ def delete_project(project_id: str):
         raise HTTPException(status_code=404, detail="Project not found")
 
     # Delete related conversations
-    conversations_collection.delete_many({"projectId": project_obj_id})
+    conversations_collection.delete_many({"project": project_id})
 
     return {"message": "Project and associated conversations deleted"}
 
