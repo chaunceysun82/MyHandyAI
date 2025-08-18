@@ -281,7 +281,7 @@ const handleSend = async (text, files = []) => {
       {
         message: currInput,
         user: userId,            // Replace with actual user ID
-        project: projectName,    // Replace with actual project name
+        project: projectId,    // Replace with actual project name
         session_id: sessionId,   // If you have one
         uploaded_image: uploadedimage // base64 string or null
       };
