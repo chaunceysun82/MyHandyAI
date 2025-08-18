@@ -287,6 +287,7 @@ export default function Home() {
                       : "bg-blue-600 text-white"
                     : "bg-blue-200 text-blue-600 cursor-not-allowed")
                 }
+                onClick={startProject}
                 onKeyDown={handleKeyDown}
                 disabled={!projectName.trim() || creating}
               >
