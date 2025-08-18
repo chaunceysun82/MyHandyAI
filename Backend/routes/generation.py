@@ -1,7 +1,6 @@
 from content_generation.planner import ToolsAgent, StepsAgentJSON, EstimationAgent
 from chatbot.agents import load_prompt, clean_and_parse_json, AgenticChatbot
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from .chatbot import get_session, get_latest_chatbot
 from pydantic import BaseModel
 from bson import ObjectId
 from .project import update_project
