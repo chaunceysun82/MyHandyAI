@@ -334,53 +334,50 @@ class StepsAgentJSON:
             "Content-Type": "application/json",
         }
 
-    def _parse_list_items(self, text: str) -> List[str]:
+    def _parse_list_items(text: str) -> List[str]:
         """
-        Parse text into a list of items, handling numbered lists and bullet points.
-        More robust parsing with better error handling.
+        Parse text into a list of items, handling inline numbered lists (e.g. '1) ... 2) ...')
+        and standard bullet/numbered lists with newlines.
         """
         if not text or not text.strip():
             return []
-        
+
         try:
-            # Split by newlines and clean up
-            lines = [line.strip() for line in text.split('\n') if line.strip()]
-            
-            # Remove common list markers and clean up
+            # Normalize quotes/whitespace
+            t = text.strip().replace("“", '"').replace("”", '"')
+            t = re.sub(r'\s+', ' ', t)
+
+            # Insert newlines BEFORE common list markers so inline lists get split into lines
+            # Examples matched: "1) ", "2. ", "a) ", "B) ", "- ", "* ", "• "
+            t = re.sub(r'\s*(?=(?:\d+|[A-Za-z])[.)]\s)', '\n', t)   # before 1), 2., a), B.
+            t = re.sub(r'\s*(?=(?:[-*•])\s)', '\n', t)              # before -, *, •
+
+            # Split into lines and clean
+            lines = [ln.strip() for ln in t.splitlines() if ln.strip()]
+
             cleaned_items = []
-            for line in lines:
-                if not line:
-                    continue
-                    
-                # Remove numbered list markers (1., 2., etc.)
-                line = re.sub(r'^\d+\.\s*', '', line)
-                # Remove bullet points
-                line = re.sub(r'^[-•*]\s*', '', line)
-                # Remove other common markers
-                line = re.sub(r'^[a-z]\)\s*', '', line, flags=re.IGNORECASE)
-                # Remove extra whitespace
-                line = re.sub(r'\s+', ' ', line).strip()
-                
-                if line and len(line) > 1:  # Ensure meaningful content
-                    cleaned_items.append(line)
-            
-            # If no items were parsed, try alternative parsing
-            if not cleaned_items and text.strip():
-                # Try splitting by common separators
-                alt_items = re.split(r'[;,]|\band\b', text, flags=re.IGNORECASE)
-                for item in alt_items:
-                    item = item.strip()
-                    if item and len(item) > 1:
-                        cleaned_items.append(item)
-            
+            for ln in lines:
+                # Remove leading list markers: 1. / 1) / a) / A) / - / * / •
+                ln = re.sub(r'^(?:[-*•]|(?:\d+|[A-Za-z])[.)])\s*', '', ln)
+                ln = re.sub(r'\s+', ' ', ln).strip()
+                if len(ln) > 1:
+                    cleaned_items.append(ln)
+
+            # Fallbacks if nothing parsed
+            if not cleaned_items:
+                # Try splitting by semicolons or double-spaces (soft separators)
+                for part in re.split(r';|\s{2,}', t):
+                    part = part.strip()
+                    if part and len(part) > 1:
+                        # Also drop markers if any
+                        part = re.sub(r'^(?:[-*•]|(?:\d+|[A-Za-z])[.)])\s*', '', part).strip()
+                        cleaned_items.append(part)
+
             return cleaned_items
-            
+
         except Exception as e:
-            print(f"Warning: Error parsing list items: {str(e)}")
-            # Fallback: return the original text as a single item if it's not empty
-            if text.strip():
-                return [text.strip()]
-            return []
+            print(f"Warning: Error parsing list items: {e}")
+            return [text.strip()] if text.strip() else []
 
     def _parse_time_to_minutes(self, text: str) -> int:
         """
