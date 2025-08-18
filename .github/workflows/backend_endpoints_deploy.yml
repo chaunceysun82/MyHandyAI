@@ -24,18 +24,21 @@ jobs:
 
       - name: Build dependencies inside Lambda Python 3.11 image
         run: |
-          docker run --rm -v "$PWD/lambda_package":/app public.ecr.aws/lambda/python:3.11 bash -lc '
+          docker run --rm -v "$PWD/lambda_package":/app public.ecr.aws/lambda/python:3.11 bash -lc "
             set -euo pipefail
             cd /app
             python -m pip install --upgrade pip wheel setuptools
-            # Strongly prefer prebuilt wheels
             PIP_PREFER_BINARY=1 python -m pip install --prefer-binary -r requirements.txt -t .
-            # If a plain numpy/ directory slipped in, remove it (you don't depend on numpy)
             [ -d numpy ] && rm -rf numpy
-            # Zip and exclude any numpy/ source folder just in case
             zip -r9 /app/function.zip . \
-              -x "*/__pycache__/*" "*/tests/*" "*/.pytest_cache/*" "*/dist/*" "*/build/*" "*/*.egg-info/*" "*/numpy/*"
-          '
+              -x '*/__pycache__/*' \
+                '*/tests/*' \
+                '*/.pytest_cache/*' \
+                '*/dist/*' \
+                '*/build/*' \
+                '*/*.egg-info/*' \
+                '*/numpy/*'
+          "
 
       - name: Move ZIP from Docker volume to root
         run: |
