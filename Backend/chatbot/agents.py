@@ -932,7 +932,6 @@ class AgenticChatbot:
                 # The chatbot's job is complete - hand off to the next webapp page
                 reply = (
                     f"Perfect! I've analyzed your {self.problem_type.replace('_', ' ')} project and gathered all the information needed.\n\n"
-                    f"**Summary:** {final_summary}\n\n"
                     "Your project plan is ready! The next page will show you:\n"
                     "• Tools and materials required\n"
                     "• Step-by-step instructions\n"
