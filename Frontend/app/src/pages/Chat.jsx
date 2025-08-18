@@ -25,37 +25,31 @@ const Chat = () => {
         // Goal is to call the generation api endpoint every 5 seconds until
         // the message doesn't say "genertion completed". Once that is done,
         // navigate to the project overview page/screen.
-        const interval = setInterval(async () => {
-          try 
+        try {
+          setLoading(true);
+
+          const response = axios.get(`${URL}/generation/status/${projectId}`);
+
+          if(response)
           {
+            const message = response.data.message;
 
-            setLoading(true);
+            console.log("Message:", message);
 
-            const response = await axios.get(`${URL}/generation/status/${projectId}`);
+            setLoading(false);
 
-            if(response)
+            if(message === "generation completed")
             {
-              const message = response.data.message;
-
-              console.log("Message:", message);
-
-              setLoading(false);
-
-              if(message === "generation completed")
-              {
-                clearInterval(interval);
-                navigate(`/projects/${projectId}/overview`);
-              }
+              clearInterval(interval);
+              navigate(`/projects/${projectId}/overview`);
             }
-          } 
-          catch (err)
-          {
-            console.log("Err: ", err);
           }
-        }, 5000);
-
-        return () => clearInterval(interval);
-  }, []);
+        } 
+        catch (err)
+        {
+          console.log("Err: ", err);
+        }
+        });
 
 
 
