@@ -1,5 +1,4 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import sys
@@ -8,17 +7,24 @@ import base64
 import uuid
 from pymongo import DESCENDING
 import pickle
-from db import conversations_collection
+from db import conversations_collection, project_collection
 from datetime import datetime
 from .project import update_project
+from qdrant_client import QdrantClient
+from qdrant_client.models import PointStruct, VectorParams, Distance
+from bson import ObjectId
+import datetime
+from openai import OpenAI
+from qdrant_client.http.exceptions import UnexpectedResponse
+from dotenv import load_dotenv
+load_dotenv()
 
-
-# Add the chatbot directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'chatbot'))
 
 from chatbot.agents import AgenticChatbot
 
 router = APIRouter(prefix="/chatbot", tags=["chatbot"])
+client=OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class ChatMessage(BaseModel):
     message: str
@@ -51,7 +57,6 @@ class SessionInfo(BaseModel):
     problem_type: Optional[str] = None
     questions_remaining: Optional[int] = None
 
-# ==== Utility Functions ====
 
 def log_message(session_id, role, message, chatbot, user, project, message_type="project_intro"):
     doc = {
@@ -98,8 +103,119 @@ def reset_session(session_id, user, project):
 def delete_session_docs(session_id):
     conversations_collection.delete_many({"session_id": session_id})
 
-# Store chatbot instances by session
+
 chatbot_instances = {}
+
+def chunk_text(text: str, max_chars: int = 1000) -> List[str]:
+    """
+    Simple character-based chunker. Produces chunks of <= max_chars.
+    (You can replace with token-based chunking if desired.)
+    """
+    if not text:
+        return []
+    text = text.strip()
+    if len(text) <= max_chars:
+        return [text]
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + max_chars
+        
+        if end < len(text):
+            last_space = text.rfind(" ", start, end)
+            if last_space > start:
+                end = last_space
+        chunk = text[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+        start = end
+    return chunks
+
+def create_embeddings_for_texts(texts, model: str = "text-embedding-3-small"):
+    """
+    Creates embeddings via OpenAI for a list of strings (batched).
+    Returns list of embedding vectors in same order as texts.
+    """
+    if not texts:
+        return []
+    
+    resp = client.embeddings.create(model=model, input=texts)
+    
+    return [item.embedding for item in resp.data]
+
+def upsert_embeddings_to_qdrant(
+        mongo_hex_id: str,
+        embeddings: List[List[float]],
+        texts: List[str],
+        extra_payload: Optional[dict] = None,
+        collection_name: Optional[str] = None
+    ) -> dict:
+
+    qdrant_url = os.getenv("QDRANT_URL")
+    qdrant_api_key = os.getenv("QDRANT_API_KEY")
+    collection_name = collection_name or "projects"
+
+    if not qdrant_url or not qdrant_api_key:
+        raise RuntimeError("QDRANT_URL and QDRANT_API_KEY must be set in env")
+
+    qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
+
+    if not embeddings:
+        return {"status": "no_embeddings"}
+
+    vector_size = len(embeddings[0])
+
+    
+    try:
+        qclient.get_collection(collection_name=collection_name)
+    except UnexpectedResponse as ex:
+        if ex.status_code == 404:
+            
+            qclient.create_collection(
+                collection_name=collection_name,
+                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
+            )
+        else:
+            raise
+
+    
+    points = []
+    for idx, (vec, txt) in enumerate(zip(embeddings, texts)):
+        unique_str = f"{mongo_hex_id}-{idx}"
+        point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, unique_str))
+
+        payload = {
+            "mongo_id": mongo_hex_id,
+            "chunk_index": idx,
+            "text_preview": txt,
+        }
+        print(payload)
+        if extra_payload:
+            payload.update(extra_payload)
+
+        points.append(PointStruct(id=point_id, vector=vec, payload=payload))
+
+    qclient.upsert(collection_name=collection_name, points=points)
+    return {"status": "ok", "num_points": len(points), "collection": collection_name}
+
+def create_and_store_summary_embeddings_for_project(summary: str, mongo_project_id, extra_payload: Optional[dict] = None):
+    """
+    Orchestrator: chunk summary, create embeddings, upsert to Qdrant using mongo id(s).
+    mongo_project_id: ObjectId or hex string
+    """
+    if not summary:
+        return {"status": "no_summary"}
+
+    if isinstance(mongo_project_id, ObjectId):
+        mongo_hex = str(mongo_project_id)
+    else:
+        mongo_hex = str(mongo_project_id)
+
+  
+    chunks = chunk_text(summary, max_chars=len(summary))
+    embeddings = create_embeddings_for_texts(chunks, model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
+    qresult = upsert_embeddings_to_qdrant(mongo_hex, embeddings, chunks, extra_payload=extra_payload)
+    return qresult
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_bot(chat_message: ChatMessage):
@@ -130,16 +246,17 @@ async def chat_with_bot(chat_message: ChatMessage):
 
         if getattr(chatbot, "current_state", None) == "complete":
             await save_information(session_id=session_id)
+            await qdrant_function(project_id=chat_message.project)
 
-        return JSONResponse(content={
-            "response":response,
-            "session_id":session_id,
-            "current_state":getattr(chatbot, "current_state", None)
-        })
+        return ChatResponse(
+            response=response,
+            session_id=session_id,
+            current_state=getattr(chatbot, "current_state", None)
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chatbot error: {str(e)}")
 
-@router.post("/start", response_model=ChatSession)
+@router.get("/start", response_model=ChatSession)
 async def start_new_session(payload: StartChat):
     """
     Starts a new chat session and returns the session_id and intro messages.
@@ -224,6 +341,47 @@ async def save_information(session_id: str):
                                          "image_analysis":bot.image_analysis,
                                          "questions":bot.questions,
                                          "answers":answers})
+        
+        
         return {"message":"Data saved Successfully"}
     else:
         return {"messaage":"chat not complete"}
+    
+@router.post("/save/embeddings/{project_id}")
+async def qdrant_function(project_id: str):
+
+    try:
+        obj_id = ObjectId(project_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid project_id format")
+
+    project = project_collection.find_one({"_id": obj_id})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    summary = project.get("summary")
+    if not summary:
+        raise HTTPException(status_code=400, detail="No summary to embed")
+    
+    qresult = create_and_store_summary_embeddings_for_project(
+        summary=summary,
+        mongo_project_id=str(project["_id"]),
+        extra_payload={"project": str(project["_id"])}
+    )
+
+    return {
+        "message": "Embeddings upserted successfully",
+        "project_id": str(project["_id"]),
+        "result": qresult
+    }
+
+@router.get("/debug/projects")
+async def debug_projects():
+    docs = project_collection.find().limit(3)
+    output = []
+    for p in docs:
+        output.append({
+            "id": str(p["_id"]),
+            "type": str(type(p["_id"]))
+        })
+    return output
