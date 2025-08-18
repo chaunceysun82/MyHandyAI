@@ -31,19 +31,19 @@ export async function fetchEstimations(projectId) {
 
 // ---------- Steps ----------
 export async function fetchSteps(projectId) {
-	let url = `${API}/projects/steps/${encodeURIComponent(projectId)}`;
+	// let url = `${API}/projects/steps/${encodeURIComponent(projectId)}`;
+	// let res = await fetch(url);
+	// let body = await safeJson(res);
+
+	// log("fetchSteps:response(saved)", { url, status: res.status });
+	// if (res.ok && body) {
+	// 	log("fetchSteps:payload(saved)", body);
+	// 	return body;
+	// }
+
+	let url = `${API}/generation/steps/${encodeURIComponent(projectId)}`;
 	let res = await fetch(url);
 	let body = await safeJson(res);
-
-	log("fetchSteps:response(saved)", { url, status: res.status });
-	if (res.ok && body) {
-		log("fetchSteps:payload(saved)", body);
-		return body;
-	}
-
-	url = `${API}/generation/steps/${encodeURIComponent(projectId)}`;
-	res = await fetch(url);
-	body = await safeJson(res);
 
 	log("fetchSteps:response(generated)", { url, status: res.status });
 	log("fetchSteps:generated", body);
