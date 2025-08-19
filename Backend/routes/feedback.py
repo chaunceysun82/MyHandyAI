@@ -7,8 +7,11 @@ from datetime import datetime
 import os
 
 from db import project_collection  
+
+
 router = APIRouter(tags=["feedback"])
 
+# ---- helpers ----
 
 def to_obj_id(id_str: str) -> ObjectId:
     try:
@@ -22,7 +25,7 @@ def find_project_or_404(project_id: str):
         raise HTTPException(status_code=404, detail="Project not found")
     return doc
 
-
+# ---- models ----
 class FeedbackIn(BaseModel):
     rating: int = Field(ge=1, le=5)
     comments: Optional[str] = ""
@@ -35,7 +38,7 @@ class FeedbackOut(BaseModel):
 class CompletionMsg(BaseModel):
     message: str
 
-
+# Generate completion message (LLM w/ fallback) ----
 @router.get("/projects/{project_id}/completion-message", response_model=CompletionMsg)
 def completion_message(project_id: str):
     doc = find_project_or_404(project_id)
@@ -71,12 +74,12 @@ def completion_message(project_id: str):
             
             pass
 
-    
+    # Fallback message
     return {
         "message": f"All done! '{title}' is completed and looking great as of {nice_date}."
     }
 
-
+# Store feedback & mark project complete ----
 @router.post("/projects/{project_id}/feedback", response_model=FeedbackOut)
 def add_feedback(project_id: str, fb: FeedbackIn):
     doc = find_project_or_404(project_id)
@@ -87,7 +90,7 @@ def add_feedback(project_id: str, fb: FeedbackIn):
         "createdAt": datetime.utcnow(),
     }
 
-    
+    # Push feedback, mark completed status/timestamp/lastActivity
     project_collection.update_one(
         {"_id": to_obj_id(project_id)},
         {
@@ -100,7 +103,8 @@ def add_feedback(project_id: str, fb: FeedbackIn):
         },
     )
 
-    
+    # Compute average and count for convenience
+
     fresh = project_collection.find_one({"_id": to_obj_id(project_id)}, {"feedback": 1})
     fb_list: List[dict] = fresh.get("feedback", []) if fresh else []
     total = len(fb_list)

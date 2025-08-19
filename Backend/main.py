@@ -27,6 +27,7 @@ app.include_router(chatbot.router)
 app.include_router(generation.router)
 app.include_router(feedback.router)
 #app.include_router(langbot.router)
+app.include_router(feedback.router)
 
 #handler for aws
 handler = Mangum(app)
