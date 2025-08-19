@@ -8,9 +8,11 @@ import os
 
 from db import project_collection  
 
+
 router = APIRouter(tags=["feedback"])
 
 # ---- helpers ----
+
 def to_obj_id(id_str: str) -> ObjectId:
     try:
         return ObjectId(id_str)
@@ -102,6 +104,7 @@ def add_feedback(project_id: str, fb: FeedbackIn):
     )
 
     # Compute average and count for convenience
+
     fresh = project_collection.find_one({"_id": to_obj_id(project_id)}, {"feedback": 1})
     fb_list: List[dict] = fresh.get("feedback", []) if fresh else []
     total = len(fb_list)
