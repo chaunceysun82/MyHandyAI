@@ -1,7 +1,7 @@
 # Main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import user, project, steps, chatbot ,generation
+from routes import user, project, steps, chatbot ,generation, feedback
 from mangum import Mangum
 
 app = FastAPI()
@@ -26,6 +26,7 @@ app.include_router(steps.router)
 app.include_router(chatbot.router)
 app.include_router(generation.router)
 #app.include_router(langbot.router)
+app.include_router(feedback.router)
 
 #handler for aws
 handler = Mangum(app)
