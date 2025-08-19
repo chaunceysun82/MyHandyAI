@@ -1,12 +1,18 @@
 import { useState, useEffect, useRef } from "react";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
+import { detectTools } from "../../services/toolDetection"; // <= make sure this file exists
 
-export default function ChatInput({ onSend }) {
+export default function ChatInput({ onSend, onDetected }) {
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const fileInputRef = useRef(null);
 
-  const { transcript, listening, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
+  // NEW: lightweight UI state for detection
+  const [detecting, setDetecting] = useState(false);
+  const [detectErr, setDetectErr] = useState("");
+
+  const { transcript, listening, resetTranscript, browserSupportsSpeechRecognition } =
+    useSpeechRecognition();
 
   useEffect(() => {
     if (transcript) setInput(transcript);
@@ -39,16 +45,32 @@ export default function ChatInput({ onSend }) {
     fileInputRef.current?.click();
   };
 
-  const handleFiles = (event) => {
-    const files = Array.from(event.target.files);
+  // CHANGED: async + calls /api/tools/detect for image files
+  const handleFiles = async (event) => {
+    const files = Array.from(event.target.files || []);
     setSelectedFiles((prev) => [...prev, ...files]);
     event.target.value = "";
+
+    const imageFiles = files.filter((f) => f.type?.startsWith("image/"));
+    if (!imageFiles.length) return;
+
+    setDetecting(true);
+    setDetectErr("");
+    try {
+      const results = await Promise.all(imageFiles.map((f) => detectTools(f)));
+      const allTools = results.flatMap((r) => r?.tools || []);
+      onDetected?.(allTools || []); // safe: optional
+    } catch (err) {
+      console.error(err);
+      setDetectErr(err?.message || "Tool detection failed");
+    } finally {
+      setDetecting(false);
+    }
   };
 
   const removeFile = (index) => {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
-
 
   return (
     <div className="flex flex-col gap-1">
@@ -102,6 +124,9 @@ export default function ChatInput({ onSend }) {
           </svg>
         </button>
       </div>
+
+      {detecting && <div className="text-xs text-gray-600 mt-1">Analyzing image…</div>}
+      {!!detectErr && <div className="text-xs text-red-500 mt-1">{detectErr}</div>}
     </div>
   );
 }

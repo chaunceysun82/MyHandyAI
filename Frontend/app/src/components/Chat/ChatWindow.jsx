@@ -30,6 +30,7 @@ export default function ChatWindow({
 
   const STORAGE_SESSION_KEY = `sessionId_${userId}_${projectId}`;
   const STORAGE_MESSAGES_KEY = `messages_${userId}_${projectId}`;
+  const STORAGE_TOOLS_KEY   = `owned_tools_${userId}_${projectId}`;
 
   const navigate = useNavigate();
   
@@ -41,6 +42,16 @@ export default function ChatWindow({
   const [sessionId, setSessionId] = useState(
     localStorage.getItem(STORAGE_SESSION_KEY) || ""
   );
+
+  // NEW: remember detected tools for this chat (and persist)
+  const [ownedTools, setOwnedTools] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_TOOLS_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
 
   useEffect(() => {
 	if (messagesEndRef.current) 
@@ -168,6 +179,13 @@ export default function ChatWindow({
     localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messages));
   }, [messages, STORAGE_MESSAGES_KEY]);
 
+  // Persist owned tools locally
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_TOOLS_KEY, JSON.stringify(ownedTools));
+    } catch (e) {}
+  }, [ownedTools, STORAGE_TOOLS_KEY]);
+
 
 
   // Load or start session
@@ -283,7 +301,8 @@ const handleSend = async (text, files = []) => {
         user: userId,            // Replace with actual user ID
         project: projectId,    // Replace with actual project name
         session_id: sessionId,   // If you have one
-        uploaded_image: uploadedimage // base64 string or null
+        uploaded_image: uploadedimage, // base64 string or null
+        owned_tools: ownedTools        // <- optional: lets backend filter recs
       };
       
 
@@ -342,6 +361,21 @@ const handleSend = async (text, files = []) => {
       reader.onload = () => resolve(reader.result);
       reader.onerror = (error) => reject(error);
   });
+
+  // NEW: when ChatInput detects tools, save them and let bot "acknowledge"
+  function handleDetectedTools(tools) {
+    if (!Array.isArray(tools) || tools.length === 0) return;
+    setOwnedTools(prev => {
+      const map = new Map(prev.map(t => [String(t.name||"").toLowerCase(), t]));
+      tools.forEach(t => map.set(String(t.name||"").toLowerCase(), t));
+      return Array.from(map.values());
+    });
+    // Add a visible bot message so users (and the LLM context) see the result
+    const summary = tools
+      .map(t => `${t.name}${t.confidence ? ` (${Math.round(t.confidence*100)}%)` : ""}`)
+      .join(", ");
+    setMessages(prev => [...prev, { sender: "bot", content: `Detected tools: ${summary}` }]);
+  }
 
 
 
@@ -423,7 +457,7 @@ const handleSend = async (text, files = []) => {
 
           <div className="flex-shrink-0 flex flex-col px-4 py-3 gap-2">
             <hr className="border-t border-gray-200/70" />
-            <ChatInput onSend={handleSend} />
+            <ChatInput onSend={handleSend} onDetected={handleDetectedTools} />
           </div>
 
           <div className="mt-auto grid grid-cols-2 gap-4 px-4 pb-4">
