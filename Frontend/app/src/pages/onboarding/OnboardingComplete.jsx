@@ -13,6 +13,20 @@ const OnboardingComplete = () => {
 			localStorage.removeItem("tempUserData");
 			console.log("Cleaned up temp user data");
 		}
+
+		// Clean up all onboarding custom items from localStorage
+		const keysToRemove = [];
+		for (let i = 0; i < localStorage.length; i++) {
+			const key = localStorage.key(i);
+			if (key && key.startsWith('onboarding_custom_')) {
+				keysToRemove.push(key);
+			}
+		}
+		
+		keysToRemove.forEach(key => {
+			localStorage.removeItem(key);
+			console.log(`Cleaned up onboarding custom items: ${key}`);
+		});
 	}, []);
 
 	const TickAnimation = (

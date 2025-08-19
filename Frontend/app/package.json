@@ -22,6 +22,7 @@
     "react-chat-widget": "^3.1.4",
     "react-chatbot-kit": "^2.2.2",
     "react-dom": "^19.1.0",
+    "react-loader-spinner": "^6.1.6",
     "react-router-dom": "^7.7.1",
     "react-scripts": "5.0.1",
     "react-speech-recognition": "^4.0.1",

@@ -55,8 +55,8 @@ function App() {
 				<Route path="/signup" element={<Signup key={location.pathname} />} />
 				<Route path="/chat" element={<Chat />} />
 				<Route path="/onboarding/" element={<OnboardingWelcome />} />
-				<Route path="/onboarding/:step" element={<Onboarding />} />
 				<Route path="/onboarding/complete" element={<OnboardingComplete />} />
+				<Route path="/onboarding/:step" element={<Onboarding />} />
 				<Route path="/projects/:projectId/overview" element={<ProjectOverview />} />
 				<Route
 					path="/projects/:projectId/steps/:stepIndex"

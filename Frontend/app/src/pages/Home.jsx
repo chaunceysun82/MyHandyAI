@@ -106,6 +106,12 @@ export default function Home() {
   //   }
   // }
 
+  const handleKeyDown = (e) => {
+    if(e.key === 'Enter'){
+      startProject();
+    }
+  };
+
   async function startProject() 
   {
     const name = projectName.trim();
@@ -205,7 +211,7 @@ export default function Home() {
               projectTitle={p.projectTitle}
               lastActivity={p.lastActivity}
               percentComplete={p.percentComplete}
-              onStartChat={() => navigate("/chat")}
+              onStartChat={() => navigate("/chat", {state: {projectId: p._id, projectName: p.projectTitle, userId: token}})}
               onRemove={handleRemoveProject}
             />
             // <div
@@ -261,6 +267,7 @@ export default function Home() {
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
               disabled={creating}
+              onKeyDown={handleKeyDown}
             />
 
             <div className="flex justify-end space-x-3">
@@ -281,6 +288,7 @@ export default function Home() {
                     : "bg-blue-200 text-blue-600 cursor-not-allowed")
                 }
                 onClick={startProject}
+                onKeyDown={handleKeyDown}
                 disabled={!projectName.trim() || creating}
               >
                 {creating ? "Starting…" : "Start"}

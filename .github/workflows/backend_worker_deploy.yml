@@ -1,0 +1,53 @@
+name: Deploy Backend to AWS Lambda Worker
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Prepare lambda build folder
+        run: |
+          mkdir -p lambda_package
+          cp Backend/worker/*.py lambda_package/
+          cp -r Backend/prompts lambda_package/
+          cp Backend/requirements.txt lambda_package/
+
+      - name: Build dependencies inside Amazon Linux 2023 (compatible with Lambda)
+        run: |
+          docker run --rm -v "$PWD/lambda_package":/app public.ecr.aws/amazonlinux/amazonlinux:2023 /bin/bash -c '
+            dnf install -y python3.11 python3.11-pip zip &&
+            alternatives --install /usr/bin/python python /usr/bin/python3.11 1 &&
+            alternatives --install /usr/bin/pip pip /usr/bin/pip3.11 1 &&
+            cd /app &&
+            pip install -r requirements.txt -t . &&
+            zip -r9 /app/function_worker.zip .
+          '
+
+      - name: Move ZIP from Docker volume to root
+        run: |
+          mv lambda_package/function_worker.zip .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWSKEYID }}
+          aws-secret-access-key: ${{ secrets.AWSACCESSKEY }}
+          aws-region: us-east-2
+
+      - name: Upload ZIP to S3
+        run: |
+          aws s3 cp function_worker.zip s3://my-handy-ai-bucket-deploy/function_worker.zip
+
+      - name: Deploy from S3
+        run: |
+          aws lambda update-function-code \
+          --function-name MyHandyWorker \
+          --s3-bucket my-handy-ai-bucket-deploy \
+          --s3-key function_worker.zip
