@@ -48,9 +48,7 @@ export default function ChatWindow({
     try {
       const saved = localStorage.getItem(STORAGE_TOOLS_KEY);
       return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
+    } catch { return []; }
   });
 
   useEffect(() => {
@@ -183,7 +181,7 @@ export default function ChatWindow({
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_TOOLS_KEY, JSON.stringify(ownedTools));
-    } catch (e) {}
+    } catch {}
   }, [ownedTools, STORAGE_TOOLS_KEY]);
 
 
@@ -258,12 +256,10 @@ export default function ChatWindow({
 const handleSend = async (text, files = []) => {
     if (!text.trim() && files.length === 0) return;
 
-
     let messageContent = text.trim();
     
     try 
     {
-
       if (files.length > 0) 
       {
         const fileNames = files.map(f => f.name).join('\n');
@@ -276,7 +272,6 @@ const handleSend = async (text, files = []) => {
         }
       }
 
-
       const userMsg = { 
         sender: "user", 
         content: messageContent 
@@ -284,7 +279,13 @@ const handleSend = async (text, files = []) => {
 
       setMessages((prev) => [...prev, userMsg]);
 
-      const currInput = text;
+      
+      // include detected tools to help the model, especially if backend ignores uploaded_image
+      const detSummary = (files.length > 0 && ownedTools.length > 0)
+        ? `\n\n[Detected tools in attached image: ${ownedTools.map(t => t.name).join(", ")}]`
+        : "";
+      const currInput = `${text || ""}${detSummary}`;
+      
       let uploadedimage = null;
 
       const currFile = files[0];
@@ -294,28 +295,20 @@ const handleSend = async (text, files = []) => {
         uploadedimage = await toBase64(currFile);
       }
 
-
       const payload = 
       {
         message: currInput,
         user: userId,            // Replace with actual user ID
-        project: projectId,    // Replace with actual project name
+        project: projectId,      // Replace with actual project name
         session_id: sessionId,   // If you have one
         uploaded_image: uploadedimage, // base64 string or null
         owned_tools: ownedTools        // <- optional: lets backend filter recs
       };
       
-
       setLoading(true);
 
       const res = await axios.post(
         `${URL}/chatbot/chat`,
-        // {
-        //   message: input,
-        //   user: "test",
-        //   project: "test",
-        //   session_id: sessionId,
-        // },
         payload,
         { 
           headers: 
@@ -323,19 +316,16 @@ const handleSend = async (text, files = []) => {
         }
       );
 
-
       const botMsg = { sender: "bot", content: res.data.response };
 
       setLoading(false);
 
       setMessages((prev) => [...prev, botMsg]);
 
-      // check for the current_state of the response:
       console.log("Current State:", res.data.current_state);
 
       if(res.data.current_state === 'complete')
       {
-        // Wait a bit for the user to read the final message, then show loading
         setTimeout(() => {
           setStatus(true);
         }, 1500);
