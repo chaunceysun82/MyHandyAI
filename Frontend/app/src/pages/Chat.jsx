@@ -3,13 +3,15 @@ import { useLocation, useNavigate } from "react-router-dom";
 import ChatWindow from "../components/Chat/ChatWindow";
 import axios from "axios";
 import { RotatingLines } from 'react-loader-spinner';
+import MobileWrapper from "../components/MobileWrapper";
 
 const Chat = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const URL = process.env.REACT_APP_BASE_URL;
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [statusCheck, setStatusCheck] = useState(false);
 
   const { projectId, projectName, userId } = location.state || {};
 
@@ -24,27 +26,33 @@ const Chat = () => {
   useEffect(() => {
   const fetchStatus = async () => {
     try {
-      setLoading(true);
-
       const response = await axios.get(`${URL}/generation/status/${projectId}`);
 
       if (response) {
         const message = response.data.message;
         console.log("Message:", message);
-        setLoading(false);
+
 
         if (message === "generation completed") {
           navigate(`/projects/${projectId}/overview`);
         }
+        else
+        {
+          setStatusCheck(true);
+        }
       }
     } catch (err) {
       console.log("Err: ", err);
-      setLoading(false);
+      setStatusCheck(true);
+      
+    } finally 
+    {
+      setTimeout(() => setLoading(false), 800);
     }
   };
 
   fetchStatus();
-}, [projectId, navigate]);
+}, [projectId, navigate, URL]);
 
 
 
@@ -61,14 +69,14 @@ const Chat = () => {
 
   return (
 
-    <div>
+    <MobileWrapper>
 
-      {loading ? (
-        <div className="items center justify-center flex flex-1 ">
+      {(loading || !statusCheck) ? (
+        <div className="flex items-center justify-center h-screen">
             <RotatingLines
               strokeColor="blue"
               strokeWidth="2"
-              animationDuration="0.1"
+              animationDuration="0.8"
               width="45"
               visible={true}
             />
@@ -84,7 +92,7 @@ const Chat = () => {
         />
       )}
 
-    </div>
+    </MobileWrapper>
     
   );
 };
