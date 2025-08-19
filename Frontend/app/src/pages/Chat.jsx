@@ -11,7 +11,9 @@ const Chat = () => {
   const URL = process.env.REACT_APP_BASE_URL;
 
   const [loading, setLoading] = useState(true);
-  const [statusCheck, setStatusCheck] = useState(false);
+  
+  
+  // const [statusCheck, setStatusCheck] = useState(false);
 
   const { projectId, projectName, userId } = location.state || {};
 
@@ -25,6 +27,8 @@ const Chat = () => {
 
   useEffect(() => {
   const fetchStatus = async () => {
+    let statusCheck = false;
+
     try {
       const response = await axios.get(`${URL}/generation/status/${projectId}`);
 
@@ -32,27 +36,26 @@ const Chat = () => {
         const message = response.data.message;
         console.log("Message:", message);
 
-
         if (message === "generation completed") {
-          navigate(`/projects/${projectId}/overview`);
-        }
-        else
-        {
-          setStatusCheck(true);
+          statusCheck = true;
         }
       }
     } catch (err) {
       console.log("Err: ", err);
-      setStatusCheck(true);
-      
     } finally 
     {
-      setTimeout(() => setLoading(false), 800);
+      setTimeout(() => {
+        setLoading(false);
+        if(statusCheck)
+        {
+          navigate(`/projects/${projectId}/overview`);
+        }
+      }, 800);
     }
   };
 
   fetchStatus();
-}, [projectId, navigate, URL]);
+}, [projectId, navigate]);
 
 
 
@@ -71,7 +74,7 @@ const Chat = () => {
 
     <MobileWrapper>
 
-      {(loading || !statusCheck) ? (
+      {(loading) ? (
         <div className="flex items-center justify-center h-screen">
             <RotatingLines
               strokeColor="blue"
