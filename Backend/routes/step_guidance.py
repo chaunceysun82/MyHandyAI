@@ -15,7 +15,7 @@ load_dotenv()
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'chatbot'))
 from chatbot.step_guidance_chatbot import StepGuidanceChatbot
 
-from db import conversations_collection, project_collection  # noqa: F401
+from db import conversations_collection, project_collection, steps_collection  # noqa: F401
 
 router = APIRouter(prefix="/step-guidance", tags=["step-guidance"])
 
@@ -24,11 +24,6 @@ router = APIRouter(prefix="/step-guidance", tags=["step-guidance"])
 class StartTaskRequest(BaseModel):
     user: str
     project: str
-    task_name: str = Field(..., example="Locate Studs")
-    total_steps: int = Field(..., ge=1, le=50, example=4)
-    steps_data: Optional[Dict[int, Dict[str, Any]]] = None  # or a list; we normalize
-    tools_data: Optional[Dict[str, Dict[str, Any]]] = None
-    problem_summary: Optional[str] = ""
 
 class ChatMessage(BaseModel):
     message: str
@@ -125,6 +120,92 @@ def _get_user_project(session_id: str, fallback_user="unknown", fallback_project
     return (doc.get("user", fallback_user) if doc else fallback_user,
             doc.get("project", fallback_project) if doc else fallback_project)
 
+def _update_step_completion_in_db(project_id: str, step_number: int, completed: bool = True):
+    """Update step completion status in the database"""
+    try:
+        if isinstance(project_id, str):
+            project_id = ObjectId(project_id)
+        
+        # Update the step completion status
+        result = steps_collection.update_one(
+            {"projectId": project_id, "stepNumber": step_number},
+            {"$set": {"completed": completed}}
+        )
+        
+        if result.matched_count == 0:
+            print(f"Warning: No step found with projectId {project_id} and stepNumber {step_number}")
+        
+        return result.modified_count > 0
+    except Exception as e:
+        print(f"Error updating step completion: {e}")
+        return False
+
+def _fetch_project_data(project_id: str) -> Dict[str, Any]:
+    """Fetch project and its steps/tools from DB; map to chatbot schema."""
+    try:
+        pid = ObjectId(project_id) if isinstance(project_id, str) else project_id
+        project = project_collection.find_one({"_id": pid})
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # 1) Load steps from ProjectSteps, sorted by stepNumber
+        steps_cursor = steps_collection.find({"projectId": pid}).sort("stepNumber", 1)
+        steps_data: Dict[int, Dict[str, Any]] = {}
+        for doc in steps_cursor:
+            i = int(doc.get("stepNumber", 0)) or (len(steps_data) + 1)
+            steps_data[i] = {
+                "title": doc.get("title", f"Step {i}"),
+                # DB has "description" -> chatbot expects "instructions"
+                "instructions": doc.get("description", ""),
+                "estimated_time": doc.get("estimated_time", ""),  # if you store it; else keep ""
+                "tools_needed": doc.get("tools", []),
+                "materials_needed": doc.get("materials", []),
+                "safety_warnings": doc.get("safety_warnings", []),
+                "tips": doc.get("tips", []),
+                # Optional extras the UI might want:
+                "images": doc.get("images", []),
+                "video": doc.get("videoTutorialLink", ""),
+                "reference_links": doc.get("referenceLinks", []),
+                "completed": bool(doc.get("completed", False)),
+            }
+
+        total_steps = len(steps_data)
+
+        # 2) Tools: if you keep a tools dictionary on Project, pass it through
+        tools_data = project.get("tools", {}) or project.get("tool_generation", {}) or {}
+
+        # 3) Map project fields to chatbot expectations
+        task_name = project.get("projectTitle") or project.get("title") or "Untitled Task"
+        problem_summary = project.get("summary") or project.get("user_description") or ""
+
+        # Fallback: if no steps were found, create a single placeholder step
+        if total_steps == 0:
+            steps_data = {
+                1: {
+                    "title": "Describe your task",
+                    "instructions": "No steps found yet. Tell the assistant what you want to do.",
+                    "estimated_time": "",
+                    "tools_needed": [],
+                    "materials_needed": [],
+                    "safety_warnings": [],
+                    "tips": [],
+                }
+            }
+            total_steps = 1
+
+        return {
+            "task_name": task_name,
+            "total_steps": total_steps,
+            "steps_data": steps_data,
+            "tools_data": tools_data,
+            "problem_summary": problem_summary,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch project data: {str(e)}")
+
 def _get_or_restore(session_id: str) -> StepGuidanceChatbot:
     bot = step_guidance_instances.get(session_id)
     if bot:
@@ -142,16 +223,20 @@ def start_step_guidance_task(payload: StartTaskRequest):
     session_id = uuid.uuid4().hex
     bot = StepGuidanceChatbot()
 
-    steps_data = _normalize_steps_data(payload.steps_data)
-    tools_data = payload.tools_data or {}
-    total_steps = len(steps_data) if steps_data else payload.total_steps
+    # Fetch project data from database
+    project_data = _fetch_project_data(payload.project)
+    
+    # Normalize steps data if it exists
+    steps_data = _normalize_steps_data(project_data.get("steps_data"))
+    tools_data = project_data.get("tools_data", {})
+    total_steps = project_data.get("total_steps", 1)
 
     welcome = bot.start_new_task(
-        task_name=payload.task_name,
+        task_name=project_data["task_name"],
         total_steps=total_steps,
         steps_data=steps_data,
         tools_data=tools_data,
-        problem_summary=payload.problem_summary or ""
+        problem_summary=project_data.get("problem_summary", "")
     )
 
     _log(session_id, "assistant", welcome, bot, payload.user, payload.project)
@@ -222,18 +307,44 @@ def complete_current_step(session_id: str, payload: StepCompletionRequest):
     bot = _get_or_restore(session_id)
     user, project = _get_user_project(session_id, payload.user or "unknown", payload.project or "unknown")
 
-    # Reuse agent progression logic via chat message
-    user_msg = "I'm done with this step" if not payload.completion_notes else f"I'm done with this step: {payload.completion_notes}"
-    _log(session_id, "user", user_msg, bot, user, project)
-    reply = bot.chat(user_msg)
-    _log(session_id, "assistant", reply, bot, user, project)
-
+    # Get current context
     ctx = bot.execution_agent.context_agent.get_current_context()
-    return {
-        "message": reply,
-        "current_step": ctx.get("current_step"),
-        "total_steps": ctx.get("total_steps"),
-    }
+    current_step = ctx.get("current_step", 1)
+    total_steps = ctx.get("total_steps", 1)
+    
+    # Mark current step as complete
+    bot.execution_agent.context_agent.mark_step_complete(current_step, payload.completion_notes or "")
+    
+    # Update step completion in database
+    _update_step_completion_in_db(project, current_step, True)
+    
+    # Check if we can move to next step
+    if current_step < total_steps:
+        next_step = current_step + 1
+        bot.execution_agent.context_agent.move_to_step(next_step)
+        
+        # Get next step data
+        next_step_data = bot.execution_agent.context_agent.get_step_instructions(next_step)
+        
+        # Log the step completion
+        _log(session_id, "assistant", f"Step {current_step} completed. Moving to step {next_step}.", bot, user, project)
+        
+        return {
+            "message": f"Step {current_step} completed successfully!",
+            "next_step": next_step,
+            "next_step_data": next_step_data,
+            "progress": f"{current_step}/{total_steps} steps completed",
+            "task_completed": False
+        }
+    else:
+        # Task completed
+        _log(session_id, "assistant", "All steps completed! Task finished successfully.", bot, user, project)
+        
+        return {
+            "message": "Congratulations! All steps completed successfully!",
+            "task_completed": True,
+            "progress": f"{current_step}/{total_steps} steps completed"
+        }
 
 @router.post("/session/{session_id}/tool-guidance")
 def get_tool_guidance(session_id: str, payload: ToolGuidanceRequest):
@@ -324,3 +435,42 @@ def health_check():
 @router.get("/debug/sessions")
 def debug_sessions():
     return {"active_sessions": len(step_guidance_instances), "session_ids": list(step_guidance_instances.keys())}
+
+@router.get("/project/{project_id}/steps")
+def get_project_steps(project_id: str):
+    """Get all steps for a specific project directly from the database"""
+    try:
+        if isinstance(project_id, str):
+            project_id = ObjectId(project_id)
+        
+        # Fetch project info
+        project = project_collection.find_one({"_id": project_id})
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Fetch all steps
+        steps_cursor = steps_collection.find({"projectId": project_id}).sort("stepNumber", 1)
+        steps = []
+        
+        for step_doc in steps_cursor:
+            steps.append({
+                "step_number": step_doc.get("stepNumber"),
+                "title": step_doc.get("title"),
+                "description": step_doc.get("description"),
+                "tools": step_doc.get("tools", []),
+                "materials": step_doc.get("materials", []),
+                "video_tutorial": step_doc.get("videoTutorialLink"),
+                "reference_links": step_doc.get("referenceLinks", []),
+                "images": step_doc.get("images", []),
+                "completed": step_doc.get("completed", False)
+            })
+        
+        return {
+            "project_id": str(project_id),
+            "project_title": project.get("projectTitle", "Untitled"),
+            "total_steps": len(steps),
+            "steps": steps
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch project steps: {str(e)}")
