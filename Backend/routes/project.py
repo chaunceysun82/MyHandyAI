@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from typing import List
 from fastapi.encoders import jsonable_encoder
 from bson import ObjectId
-from db import project_collection, conversations_collection
+from db import project_collection, conversations_collection, steps_collection
 from datetime import datetime
 
 router = APIRouter()
@@ -90,12 +90,12 @@ def delete_project(project_id: str):
 
     return {"message": "Project and associated conversations deleted"}
 
-@router.put("/complete-step/{project_id}/{step}")
-def complete_step(project_id: str, step: int):
-    result = project_collection.update_one(
-        {"_id": ObjectId(project_id), "step_generation.steps.order": step},
-        {"$set": {"step_generation.steps.$.completed": True}}
+@router.put("/complete-step/{project_id}/{step_number}")
+def complete_step(project_id: str, step_number: int):
+    result = steps_collection.update_one(
+        {"projectId": ObjectId(project_id), "stepNumber": step_number},
+        {"$set": {"completed": True}}
     )
     if result.matched_count == 0:
-        print("Project not found")
+        raise HTTPException(status_code=404, detail="Step not found")
     return {"message": "Step updated", "modified": bool(result.modified_count)}
