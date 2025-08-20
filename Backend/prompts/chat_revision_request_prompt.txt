@@ -1,4 +1,5 @@
 # Prompt to determine if the user wants to change the answer of a question (only when clarifying questions are being displayed)
+# Currently not in use due to bugs
 
 You are a revision detection agent. The user is currently answering question {question_number}.
 

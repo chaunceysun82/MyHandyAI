@@ -29,13 +29,22 @@ async def get_generated_tools(project_id: str):
 
 @router.get("/steps/{project_id}")
 async def get_generated_steps(project_id: str):
-    steps = list(steps_collection.find({"projectId": ObjectId(project_id)}))
-    if not steps:
+    doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"step_generation": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if "step_generation" not in doc or doc["step_generation"] is None:
         raise HTTPException(status_code=404, detail="Steps not generated yet")
-    for step in steps:
-        step["_id"] = str(step["_id"])
-        step["projectId"] = str(step["projectId"])
-    return {"project_id": project_id, "steps_data": steps}
+    return {"project_id": project_id, "steps_data": doc["step_generation"]}
+
+# @router.get("/steps/{project_id}")
+# async def get_generated_steps(project_id: str):
+#     steps = list(steps_collection.find({"projectId": ObjectId(project_id)}))
+#     if not steps:
+#         raise HTTPException(status_code=404, detail="Steps not generated yet")
+#     for step in steps:
+#         step["_id"] = str(step["_id"])
+#         step["projectId"] = str(step["projectId"])
+#     return {"project_id": project_id, "steps_data": steps}
 
 @router.get("/estimation/{project_id}")
 async def get_generated_estimation(project_id: str):

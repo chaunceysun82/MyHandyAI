@@ -90,12 +90,23 @@ def delete_project(project_id: str):
 
     return {"message": "Project and associated conversations deleted"}
 
-@router.put("/complete-step/{project_id}/{step_number}")
-def complete_step(project_id: str, step_number: int):
-    result = steps_collection.update_one(
-        {"projectId": ObjectId(project_id), "stepNumber": step_number},
-        {"$set": {"completed": True}}
+# @router.put("/complete-step/{project_id}/{step_number}")
+# def complete_step(project_id: str, step_number: int):
+#     result = steps_collection.update_one(
+#         {"projectId": ObjectId(project_id), "stepNumber": step_number},
+#         {"$set": {"completed": True}}
+#     )
+#     if result.matched_count == 0:
+#         raise HTTPException(status_code=404, detail="Step not found")
+#     return {"message": "Step updated", "modified": bool(result.modified_count)}
+
+@router.put("/complete-step/{project_id}/{step}")
+def complete_step(project_id: str, step: int):
+    result = project_collection.update_one(
+        {"_id": ObjectId(project_id), "step_generation.steps.order": step},
+        {"$set": {"step_generation.steps.$.completed": True}}
     )
     if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Step not found")
+        print("Project not found")
+    
     return {"message": "Step updated", "modified": bool(result.modified_count)}

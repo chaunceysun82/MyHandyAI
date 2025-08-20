@@ -192,6 +192,13 @@ def _fetch_project_data(project_id: str) -> Dict[str, Any]:
                 }
             }
             total_steps = 1
+            
+        print("task_name ", task_name)
+        print("total_steps ", total_steps)
+        print("steps_data ", steps_data)
+        print("tools_data ", tools_data)
+        print("problem_summary ", problem_summary)
+        
 
         return {
             "task_name": task_name,
