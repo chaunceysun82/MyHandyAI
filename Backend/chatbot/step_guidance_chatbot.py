@@ -290,7 +290,7 @@ class StepGuidanceChatbot:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             return ""
-
+        print ("api_key: ", api_key)
         # Try Responses API
         try:
             from openai import OpenAI
@@ -301,6 +301,7 @@ class StepGuidanceChatbot:
                 reasoning={ "effort": "low" },
                 text={ "verbosity": "low" }
             )
+            print ("resp: ", resp)
             text = self._extract_output_text(resp)
             if text:
                 return text
@@ -328,6 +329,7 @@ class StepGuidanceChatbot:
         Be defensive across SDK variants.
         """
         try:
+            print("parsing problem")
             parts = getattr(resp, "output", None) or []
             if parts:
                 content = getattr(parts[0], "content", None) or []
