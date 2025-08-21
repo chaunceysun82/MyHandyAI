@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {getAuth, GoogleAuthProvider, signInWithPopup} from "firebase/auth";
 import { app } from "../../firebase";
@@ -16,7 +16,42 @@ const Signup = () => {
 		password: "",
 	});
 	const [error, setError] = useState("");
+	const [toast, setToast] = useState({ show: false, message: "", type: "" });
+	const [isGoogleRedirect, setIsGoogleRedirect] = useState(false);
 	
+	const navigate = useNavigate();
+
+	const auth = getAuth(app);
+	const googleProvider = new GoogleAuthProvider();
+
+	// Toast function
+	const showToast = (message, type = "info") => {
+		setToast({ show: true, message, type });
+		setTimeout(() => {
+			setToast({ show: false, message: "", type: "" });
+		}, 3000);
+	};
+
+	// Check if user was redirected from login with Google data
+	useEffect(() => {
+		const tempGoogleUser = localStorage.getItem("tempGoogleUser");
+		if (tempGoogleUser) {
+			try {
+				const googleUser = JSON.parse(tempGoogleUser);
+				setFormData(prev => ({
+					...prev,
+					email: googleUser.email,
+					firstname: googleUser.displayName.split(" ")[0] || googleUser.displayName,
+					lastname: googleUser.displayName.split(" ").slice(1).join(" ") || ""
+				}));
+				setIsGoogleRedirect(true);
+				showToast("Please complete your signup information", "info");
+			} catch (error) {
+				console.error("Error parsing Google user data:", error);
+			}
+		}
+	}, []);
+
 	const [passwordStrength, setPasswordStrength] = useState({
 		lengthRequirement: false,
 		uppercaseRequirement: false,
@@ -25,11 +60,6 @@ const Signup = () => {
 		specialCharRequirement: false,
 		isStrong: false,
 	});
-
-	const navigate = useNavigate();
-
-	const auth = getAuth(app);
-	const googleProvider = new GoogleAuthProvider();
 
 
 	const checkPasswordStrength = (password) => {
@@ -61,15 +91,25 @@ const Signup = () => {
 		if (name === "password") checkPasswordStrength(value);
 	};
 
-	const signUpWithGoogle = () => {
-		signInWithPopup(auth, googleProvider).then((result) => {
+	const signUpWithGoogle = async () => {
+		try {
+			const result = await signInWithPopup(auth, googleProvider);
 			const user = result.user;
-			console.log("User:", user.id)
-			console.log("Google login successful");
-			navigate("/");
-		}).catch((error) => {
-			console.log("An Error occured while google sign in.");
-		});
+			console.log("Google signup successful for:", user.email);
+			
+			// Clear any temporary Google user data from login redirect
+			localStorage.removeItem("tempGoogleUser");
+			
+			// For signup, always redirect to onboarding since this is a new user
+			console.log("New user signing up, redirecting to onboarding");
+			localStorage.setItem("authToken", user.uid);
+			localStorage.setItem("displayName", user.displayName || user.email?.split("@")[0] || "User");
+			localStorage.setItem("email", user.email || "");
+			navigate("/onboarding/1");
+		} catch (error) {
+			console.error("An error occurred during Google signup:", error);
+			showToast("Google authentication failed. Please try again.", "error");
+		}
 	};
 
 	const handleSubmit = async (e) => {
@@ -132,6 +172,16 @@ const Signup = () => {
 			</div>
 
 			<form className="w-full max-w-sm" onSubmit={handleSubmit}>
+				{/* Google Redirect Notice */}
+				{isGoogleRedirect && (
+					<div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+						<p className="text-sm text-blue-800 text-center">
+							📧 <strong>Google Account Detected</strong><br/>
+							Please complete your signup information below
+						</p>
+					</div>
+				)}
+
 				{/* First Name */}
 				<label className="block mb-2 text-sm font-medium text-gray-700">
 					First Name <span className="text-red-500">*</span>
@@ -283,6 +333,27 @@ const Signup = () => {
 				<p className="text-[12px] text-[#595959] font-light">Already have an account?</p>
 				<a href = "/login" className="text-[12px] text-[#55D468] hover:underline font-semibold">Sign in</a>
 			</div>
+
+			{/* Toast Notification */}
+			{toast.show && (
+				<div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm ${
+					toast.type === "error" 
+						? "bg-red-500 text-white" 
+						: toast.type === "success" 
+						? "bg-green-500 text-white" 
+						: "bg-blue-500 text-white"
+				}`}>
+					<div className="flex items-center justify-between">
+						<span className="text-sm font-medium">{toast.message}</span>
+						<button 
+							onClick={() => setToast({ show: false, message: "", type: "" })}
+							className="ml-4 text-white hover:text-gray-200"
+						>
+							×
+						</button>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 };

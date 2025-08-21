@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from typing import List
 from fastapi.encoders import jsonable_encoder
 from bson import ObjectId
-from db import project_collection, conversations_collection
+from db import project_collection, conversations_collection, steps_collection
 from datetime import datetime
 
 router = APIRouter()
@@ -49,7 +49,6 @@ def list_projects(user_id: str):
         # Convert all ObjectIds (including nested ones) to strings
         return jsonable_encoder(payload, custom_encoder={ObjectId: str})
 
-        return {"message":"Projects found", "projects":results}
     except:
         print(f"❌ There was an error fetching projects for {user_id}")
         raise HTTPException(status_code=400, detail="Projects Error")
@@ -87,6 +86,27 @@ def delete_project(project_id: str):
         raise HTTPException(status_code=404, detail="Project not found")
 
     # Delete related conversations
-    conversations_collection.delete_many({"projectId": project_obj_id})
+    conversations_collection.delete_many({"project": project_id})
 
     return {"message": "Project and associated conversations deleted"}
+
+# @router.put("/complete-step/{project_id}/{step_number}")
+# def complete_step(project_id: str, step_number: int):
+#     result = steps_collection.update_one(
+#         {"projectId": ObjectId(project_id), "stepNumber": step_number},
+#         {"$set": {"completed": True}}
+#     )
+#     if result.matched_count == 0:
+#         raise HTTPException(status_code=404, detail="Step not found")
+#     return {"message": "Step updated", "modified": bool(result.modified_count)}
+
+@router.put("/complete-step/{project_id}/{step}")
+def complete_step(project_id: str, step: int):
+    result = project_collection.update_one(
+        {"_id": ObjectId(project_id), "step_generation.steps.order": step},
+        {"$set": {"step_generation.steps.$.completed": True}}
+    )
+    if result.matched_count == 0:
+        print("Project not found")
+    
+    return {"message": "Step updated", "modified": bool(result.modified_count)}
