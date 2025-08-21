@@ -76,6 +76,8 @@ class StepGuidanceChatbot:
         system = self._build_system_prompt()
         guide_context = self._build_guide_context_block()
         step_context = self._build_step_context_block(self.current_step)
+        
+        print("step_context: ", step_context)
 
         messages = [
             {"role": "system", "content": system},
@@ -85,6 +87,8 @@ class StepGuidanceChatbot:
         for turn in self.history[-MAX_TURNS_IN_CONTEXT:]:
             messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": user_message})
+        
+        print("messages: ", messages)
 
         reply = self._call_llm(messages, model=DEFAULT_MODEL)
         if not reply:
@@ -281,6 +285,8 @@ class StepGuidanceChatbot:
         """
         Responses API preferred; fallback to Chat Completions. No client stored on self.
         """
+        
+        print ("reach call_llm")
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             return ""

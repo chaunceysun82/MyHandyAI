@@ -222,6 +222,8 @@ def start_step_guidance_task(payload: StartTaskRequest):
 def chat_with_step_guidance(payload: ChatMessage):
     session_id = payload.session_id or uuid.uuid4().hex
     bot = get_latest_chatbot(session_id)
+    
+    print (payload)
 
     _log(session_id, "user", payload.message, bot, payload.user, payload.project)
     
