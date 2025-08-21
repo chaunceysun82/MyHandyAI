@@ -339,6 +339,7 @@ class StepGuidanceChatbot:
         """
         # 1) Newer Responses API shape
         try:
+            resp = resp.model_dump()
             output = resp.get("output")
             if isinstance(output, list):
                 for part in output:
