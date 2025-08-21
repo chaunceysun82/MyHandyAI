@@ -17,7 +17,7 @@ load_dotenv()
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'chatbot'))
 from chatbot.step_guidance_chatbot import StepGuidanceChatbot
 
-from db import conversations_step_collection, project_collection, steps_collection  # noqa: F401
+from db import conversations_collection, project_collection, steps_collection  # noqa: F401
 
 router = APIRouter(prefix="/step-guidance", tags=["step-guidance"])
 
@@ -26,6 +26,7 @@ router = APIRouter(prefix="/step-guidance", tags=["step-guidance"])
 class StartTaskRequest(BaseModel):
     user: str
     project: str
+    session_id:str
 
 class ChatMessage(BaseModel):
     message: str
@@ -116,10 +117,10 @@ def _log(session_id: str, role: str, message: str, bot: StepGuidanceChatbot,
         "timestamp": datetime.utcnow(),
         "chatbot_state": pickle.dumps(bot),
     }
-    conversations_step_collection.insert_one(doc)
+    conversations_collection.insert_one(doc)
 
 def get_latest_chatbot(session_id):
-    doc = conversations_step_collection.find_one(
+    doc = conversations_collection.find_one(
         {"session_id": session_id},
         sort=[("timestamp", DESCENDING)]
     )
@@ -129,7 +130,7 @@ def get_latest_chatbot(session_id):
         return StepGuidanceChatbot()
     
 def get_conversation_history(session_id):
-    cursor = conversations_step_collection.find({"session_id": session_id}).sort("timestamp", 1)
+    cursor = conversations_collection.find({"session_id": session_id}).sort("timestamp", 1)
     return [{"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]} for doc in cursor]
 
 def _fetch_project_data(project_id: str) -> Dict[str, Any]:
@@ -192,14 +193,14 @@ def _fetch_project_data(project_id: str) -> Dict[str, Any]:
 
 @router.get("/session/{project}")
 def get_session(project):
-    cursor = conversations_step_collection.find_one({"project":project,"chat_type":CHAT_TYPE})
+    cursor = conversations_collection.find_one({"project":project,"chat_type":CHAT_TYPE})
     if not cursor:
         return {"session": None}
     return {"session": cursor["session_id"]}
 
 @router.post("/start", response_model=ChatResponse)
 def start_step_guidance_task(payload: StartTaskRequest):
-    session_id = uuid.uuid4().hex
+    session_id = payload.session_id
     bot = StepGuidanceChatbot()
 
     # Fetch project data from database
@@ -228,7 +229,7 @@ def start_step_guidance_task(payload: StartTaskRequest):
 
 @router.post("/chat", response_model=ChatResponse)
 def chat_with_step_guidance(payload: ChatMessage):
-    session_id = payload.session_id or uuid.uuid4().hex
+    session_id = payload.session_id
     bot = get_latest_chatbot(session_id)
     
     print (payload)
@@ -247,8 +248,8 @@ def chat_with_step_guidance(payload: ChatMessage):
 
 @router.get("/session/{session_id}/history")
 def get_step_guidance_history(session_id: str):
-    cursor = conversations_step_collection.find(
-        {"session_id": session_id, "chat_type": CHAT_TYPE}
+    cursor = conversations_collection.find(
+        {"session_id": session_id}
     ).sort("timestamp", 1)
     history = [
         {"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]}
@@ -264,7 +265,7 @@ def reset_step_guidance_session(session_id: str, project: str, user: str):
 
 @router.delete("/session/{session_id}")
 def delete_step_guidance_session(session_id: str):
-    conversations_step_collection.delete_many({"session_id": session_id, "chat_type": CHAT_TYPE})
+    conversations_collection.delete_many({"session_id": session_id, "chat_type": CHAT_TYPE})
     return {"message": f"Step guidance session {session_id} deleted successfully"}
 
 @router.get("/health")
