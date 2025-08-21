@@ -31,6 +31,7 @@ class ChatMessage(BaseModel):
     message: str
     user: str
     project: str
+    step: int
     session_id: Optional[str] = None
     uploaded_image: Optional[str] = None  # placeholder; not used by this bot
 
@@ -227,7 +228,7 @@ def chat_with_step_guidance(payload: ChatMessage):
 
     _log(session_id, "user", payload.message, bot, payload.user, payload.project)
     
-    reply = bot.chat(payload.message)
+    reply = bot.chat(payload.message, payload.step)
     _log(session_id, "assistant", reply, bot, payload.user, payload.project)
 
     return ChatResponse(
