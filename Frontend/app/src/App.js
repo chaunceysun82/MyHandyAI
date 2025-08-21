@@ -14,6 +14,7 @@ import ProjectOverview from "./pages/ProjectOverview.jsx";
 import StepPage from "./pages/StepPage.jsx";
 import ToolsPage from "./pages/ToolsPage.jsx";
 import ProjectCompleted from "./pages/ProjectCompleted.jsx";
+import Feedback from "./pages/Feedback.jsx";
 
 function App() {
 	const navigate = useNavigate();
@@ -69,7 +70,12 @@ function App() {
 					path="/projects/:projectId/completed"
 					element={<ProjectCompleted />}
 				/>
+				<Route
+					path="/projects/:projectId/feedback"
+					element={<Feedback />}
+				/>
 			</Routes>
+			
 		</MobileWrapper>
 	);
 }

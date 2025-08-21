@@ -1,7 +1,6 @@
 from content_generation.planner import ToolsAgent, StepsAgentJSON, EstimationAgent
 from chatbot.agents import load_prompt, clean_and_parse_json, AgenticChatbot
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from .chatbot import get_session, get_latest_chatbot
 from pydantic import BaseModel
 from bson import ObjectId
 from .project import update_project
@@ -36,6 +35,16 @@ async def get_generated_steps(project_id: str):
     if "step_generation" not in doc or doc["step_generation"] is None:
         raise HTTPException(status_code=404, detail="Steps not generated yet")
     return {"project_id": project_id, "steps_data": doc["step_generation"]}
+
+# @router.get("/steps/{project_id}")
+# async def get_generated_steps(project_id: str):
+#     steps = list(steps_collection.find({"projectId": ObjectId(project_id)}))
+#     if not steps:
+#         raise HTTPException(status_code=404, detail="Steps not generated yet")
+#     for step in steps:
+#         step["_id"] = str(step["_id"])
+#         step["projectId"] = str(step["projectId"])
+#     return {"project_id": project_id, "steps_data": steps}
 
 @router.get("/estimation/{project_id}")
 async def get_generated_estimation(project_id: str):
