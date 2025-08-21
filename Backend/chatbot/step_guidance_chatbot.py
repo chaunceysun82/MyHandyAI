@@ -306,7 +306,7 @@ class StepGuidanceChatbot:
             if text:
                 return text
         except Exception:
-            pass
+            print("Exception:", Exception)
 
         # Fallback: Chat Completions
         try:
