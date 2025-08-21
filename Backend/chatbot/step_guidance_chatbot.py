@@ -301,12 +301,16 @@ class StepGuidanceChatbot:
                 reasoning={ "effort": "low" },
                 text={ "verbosity": "low" }
             )
-            print ("resp: ", resp)
+            try:
+                print("🔎 Raw response:", json.dumps(resp.model_dump(), indent=2))
+            except Exception:
+                # fallback if resp isn't pydantic-serializable
+                print("🔎 Raw response (fallback str):", str(resp))
             text = self._extract_output_text(resp)
             if text:
                 return text
-        except Exception:
-            print("Exception:", Exception)
+        except Exception as e:
+            print("❌ Exception in _call_llm:", type(e).__name__, str(e))
 
         # Fallback: Chat Completions
         try:
