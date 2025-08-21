@@ -190,6 +190,13 @@ def _fetch_project_data(project_id: str) -> Dict[str, Any]:
 
 # -------------------- Endpoints --------------------
 
+@router.get("/session/{project}")
+def get_session(project):
+    cursor = conversations_step_collection.find_one({"project":project,"chat_type":CHAT_TYPE})
+    if not cursor:
+        return {"session": None}
+    return {"session": cursor["session_id"]}
+
 @router.post("/start", response_model=ChatResponse)
 def start_step_guidance_task(payload: StartTaskRequest):
     session_id = uuid.uuid4().hex
