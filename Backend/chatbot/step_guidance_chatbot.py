@@ -327,28 +327,33 @@ class StepGuidanceChatbot:
             return ""
 
     @staticmethod
-    def _extract_output_text(resp) -> str:
+    def _extract_output_text(resp: Dict[str, Any]) -> str:
         """
-        The Responses API usually returns: resp.output[0].content[0].text
-        Be defensive across SDK variants.
+        Robustly extract text from an OpenAI Responses API payload.
+
+        Priority:
+        1) Responses API: scan `output` for the first completed "message"
+        2) Legacy chat-style: `choices[0].message.content` (string or list of text parts)
+        3) Top-level "text"
+        4) Deep fallback: search any nested "text" fields
         """
+        # 1) Newer Responses API shape
         try:
-            print("parsing problem")
-            parts = getattr(resp, "output", None) or []
-            if parts:
-                content = getattr(parts[0], "content", None) or []
-                texts = []
-                for c in content:
-                    if getattr(c, "type", "") in ("output_text", "text") and getattr(c, "text", None):
-                        texts.append(c.text)
-                    elif hasattr(c, "text"):
-                        texts.append(c.text)
-                if texts:
-                    return "".join(texts).strip()
+            output = resp.get("output")
+            if isinstance(output, list):
+                for part in output:
+                    if part.get("type") == "message" and part.get("status") in (None, "completed"):
+                        content = part.get("content") or []
+                        texts = []
+                        for c in content:
+                            if not isinstance(c, dict):
+                                continue
+                            # Preferred keys/types
+                            if c.get("type") in ("output_text", "text") and isinstance(c.get("text"), str):
+                                texts.append(c["text"])
+                            elif isinstance(c.get("text"), str):
+                                texts.append(c["text"])
+                        if texts:
+                            return "".join(texts).strip()
         except Exception:
             pass
-        try:
-            import json as _json
-            return _json.dumps(resp)
-        except Exception:
-            return ""
