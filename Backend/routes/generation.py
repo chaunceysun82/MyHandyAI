@@ -32,9 +32,10 @@ async def get_generated_steps(project_id: str):
     doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"step_generation": 1})
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found")
-    if "step_generation" not in doc or doc["step_generation"] is None:
+    steps_payload = doc.get("step_generation")
+    if not steps_payload:
         raise HTTPException(status_code=404, detail="Steps not generated yet")
-    return {"project_id": project_id, "steps_data": doc["step_generation"]}
+    return {"project_id": project_id, "steps_data": steps_payload}
 
 # @router.get("/steps/{project_id}")
 # async def get_generated_steps(project_id: str):
@@ -179,19 +180,26 @@ async def generate_steps(project):
 
         update_project(str(cursor["_id"]), {"step_generation":steps_result})
         
-        for idx, step in enumerate(steps_result["steps"], start=1):
+        for step in steps_result["steps"]:
             step_doc = {
                 "projectId": ObjectId(project),
+
                 "stepNumber": step["order"],
+
+                "order": step["order"],
                 "title": step["title"],
-                "description": " ".join(step.get("instructions", [])),
-                "tools": [], #update
-                "materials": [],
-                "images": [],
-                "videoTutorialLink": None,
-                "referenceLinks": [],
+                "est_time_min": step.get("est_time_min", 0),
+                "time_text": step.get("time_text", ""),
+                "instructions": step.get("instructions", []),
+
+                "status": (step.get("status") or "pending").capitalize(),
+                "tools_needed": step.get("tools_needed", []),
+                "safety_warnings": step.get("safety_warnings", []),
+                "tips": step.get("tips", []),
+
                 "completed": False,
-                "createdAt": datetime.utcnow()
+                "createdAt": datetime.utcnow(),
+                "updatedAt": datetime.utcnow(),
             }
             steps_collection.insert_one(step_doc)
 
