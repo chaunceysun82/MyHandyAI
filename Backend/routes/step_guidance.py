@@ -149,15 +149,15 @@ def _fetch_project_data(project_id: str) -> Dict[str, Any]:
             raise HTTPException(status_code=404, detail="Project not found")
 
         # 1) Load steps from ProjectSteps, sorted by stepNumber
-        steps_cursor = steps_collection.find({"projectId": pid}).sort("stepNumber", 1)
+        steps_cursor = project["step_genertion"]["steps"].sort("order", 1)
         steps_data: Dict[int, Dict[str, Any]] = {}
         for doc in steps_cursor:
-            i = int(doc.get("stepNumber", 0)) or (len(steps_data) + 1)
+            i = int(doc.get("order", 0)) or (len(steps_data) + 1)
             steps_data[i] = {
                 "title": doc.get("title", f"Step {i}"),
                 # DB has "description" -> chatbot expects "instructions"
                 "instructions": doc.get("description", ""),
-                "estimated_time": doc.get("estimated_time", ""),  # if you store it; else keep ""
+                "time_text": doc.get("estimated_time", ""),  # if you store it; else keep ""
                 "tools_needed": doc.get("tools", []),
                 "materials_needed": doc.get("materials", []),
                 "safety_warnings": doc.get("safety_warnings", []),
@@ -168,6 +168,8 @@ def _fetch_project_data(project_id: str) -> Dict[str, Any]:
                 "reference_links": doc.get("referenceLinks", []),
                 "completed": bool(doc.get("completed", False)),
             }
+            
+        print ("steps_data: ", steps_data)
 
         total_steps = len(steps_data)
 

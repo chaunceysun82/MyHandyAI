@@ -503,8 +503,11 @@ What would you like to know about getting started? You can ask me about:
         # Get current context
         context = self.context_agent.get_current_context()
         
+        print ("current context", context)
+        
         # Analyze user message and provide response
         response = self._generate_guidance_response(user_message, context)
+        print ("response", response)
         
         # Add response to history and cap length
         self.conversation_history.append({"role": "assistant", "content": response})
@@ -886,6 +889,7 @@ class StepGuidanceChatbot:
     def start_new_task(self, task_name: str, total_steps: int, steps_data: Optional[Dict[int, Dict[str, Any]]] = None, tools_data: Optional[Dict[str, Dict[str, Any]]] = None, problem_summary: str = "") -> str:
         """Start a new task with real data from planner and agents"""
         self.current_task = task_name
+        print("task_name ", task_name)
         return self.execution_agent.start_task(task_name, total_steps, steps_data, tools_data, problem_summary)
         
     def chat(self, user_message: str) -> str:
