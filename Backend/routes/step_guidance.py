@@ -149,7 +149,7 @@ def _fetch_project_data(project_id: str) -> Dict[str, Any]:
             raise HTTPException(status_code=404, detail="Project not found")
 
         # 1) Load steps from ProjectSteps, sorted by stepNumber
-        steps_cursor = project["step_generation"]["steps"].sort("order", 1)
+        steps_cursor = project["step_generation"]["steps"].sort("order")
         steps_data: Dict[int, Dict[str, Any]] = {}
         for doc in steps_cursor:
             i = int(doc.get("order", 0)) or (len(steps_data) + 1)
