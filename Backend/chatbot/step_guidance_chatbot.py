@@ -75,6 +75,9 @@ class StepContextAgent:
         self.tools_data = tools_data or {}
         self.problem_summary = problem_summary
         
+        print ("set_task_context steps data: ",steps_data)
+        print ("set_task_context tools_data: ",tools_data)
+        print ("problem_summary: ", problem_summary)
         # Extract tools from steps data
         if self.steps_data:
             all_tools = set()
