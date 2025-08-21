@@ -51,11 +51,13 @@ class StepGuidanceChatbot:
             return
         self.current_step = max(1, min(self.total_steps, idx))
 
-    def chat(self, user_message: str) -> str:
+    def chat(self, user_message: str, step: int) -> str:
         """
         Free-form chat with the LLM using the guide + current step context.
         Before answering, verify relevance; if off-topic, nudge the user.
         """
+        
+        self.current_step=step
         user_message = (user_message or "").strip()
         self._remember("user", user_message)
 
@@ -115,21 +117,21 @@ class StepGuidanceChatbot:
 
     def _build_guide_context_block(self) -> str:
         # tools brief
-        tools_brief = ""
-        try:
-            tools = (self.tools_data or {}).get("tools") or []
-            if isinstance(tools, list) and tools:
-                names = [t.get("name") for t in tools if isinstance(t, dict) and t.get("name")]
-                if names:
-                    tools_brief = f"Tools in guide: {', '.join(names[:20])}"
-        except Exception:
-            pass
+        # tools_brief = ""
+        # try:
+        #     tools = (self.tools_data or {}).get("tools") or []
+        #     if isinstance(tools, list) and tools:
+        #         names = [t.get("name") for t in tools if isinstance(t, dict) and t.get("name")]
+        #         if names:
+        #             tools_brief = f"Tools in guide: {', '.join(names[:20])}"
+        # except Exception:
+        #     pass
 
         parts = []
         if self.problem_summary:
             parts.append(f"Problem summary: {self.problem_summary}")
-        if tools_brief:
-            parts.append(tools_brief)
+        # if tools_brief:
+        #     parts.append(tools_brief)
         parts.append(f"Total steps: {self.total_steps}")
 
         return "GUIDE OVERVIEW\n" + "\n".join(parts)
@@ -139,8 +141,8 @@ class StepGuidanceChatbot:
         title = step.get("title", f"Step {step_idx}")
         instr = step.get("instructions") or []
         time_text = step.get("time_text") or ""
-        tips = step.get("tips") or []
-        warns = step.get("safety_warnings") or []
+        # tips = step.get("tips") or []
+        # warns = step.get("safety_warnings") or []
         tools = step.get("tools_needed") or []
 
         lines = [f"CURRENT STEP = {step_idx}", f"Step title: {title}"]
@@ -148,16 +150,16 @@ class StepGuidanceChatbot:
             lines.append(f"Estimated time: {time_text}")
         if tools:
             lines.append("Tools needed: " + ", ".join([str(t) for t in tools][:15]))
-        if warns:
-            lines.append("Safety warnings: " + "; ".join([str(w) for w in warns][:10]))
+        # if warns:
+        #     lines.append("Safety warnings: " + "; ".join([str(w) for w in warns][:10]))
         if instr:
             lines.append("Instructions:")
             for i, line in enumerate(instr, 1):
                 lines.append(f"  {i}. {line}")
-        if tips:
-            lines.append("Tips:")
-            for i, line in enumerate(tips, 1):
-                lines.append(f"  - {line}")
+        # if tips:
+        #     lines.append("Tips:")
+        #     for i, line in enumerate(tips, 1):
+        #         lines.append(f"  - {line}")
 
         return "STEP CONTEXT\n" + "\n".join(lines)
 
@@ -276,8 +278,8 @@ class StepGuidanceChatbot:
 
     def _remember(self, role: str, content: str) -> None:
         self.history.append({"role": "assistant" if role == "assistant" else "user", "content": content})
-        if len(self.history) > 100:
-            self.history = self.history[-100:]
+        if len(self.history) > 4:
+            self.history = self.history[-4:]
 
     # ---------- LLM Calls ----------
 
