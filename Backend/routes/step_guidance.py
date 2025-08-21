@@ -156,10 +156,9 @@ def _fetch_project_data(project_id: str) -> Dict[str, Any]:
             steps_data[i] = {
                 "title": doc.get("title", f"Step {i}"),
                 # DB has "description" -> chatbot expects "instructions"
-                "instructions": doc.get("description", ""),
-                "time_text": doc.get("estimated_time", ""),  # if you store it; else keep ""
-                "tools_needed": doc.get("tools", []),
-                "materials_needed": doc.get("materials", []),
+                "instructions": doc.get("instructions", []),
+                "time_text": doc.get("time_text", ""),  # if you store it; else keep ""
+                "tools_needed": doc.get("tools_needed", []),
                 "safety_warnings": doc.get("safety_warnings", []),
                 "tips": doc.get("tips", []),
                 # Optional extras the UI might want:
@@ -185,7 +184,7 @@ def _fetch_project_data(project_id: str) -> Dict[str, Any]:
             steps_data = {
                 1: {
                     "title": "Describe your task",
-                    "instructions": "No steps found yet. Tell the assistant what you want to do.",
+                    "instructions": [],
                     "estimated_time": "",
                     "tools_needed": [],
                     "materials_needed": [],
