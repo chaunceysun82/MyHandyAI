@@ -908,6 +908,7 @@ class StepGuidanceChatbot:
             return {"status": "No task active"}
             
         context = self.execution_agent.context_agent.get_current_context()
+        print ("see context:", context)
         return {
             "status": "Task active",
             "task": self.current_task,

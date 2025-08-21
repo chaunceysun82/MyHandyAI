@@ -263,7 +263,7 @@ def start_step_guidance_task(payload: StartTaskRequest):
 def chat_with_step_guidance(payload: ChatMessage):
     session_id = payload.session_id or uuid.uuid4().hex
     bot = step_guidance_instances.get(session_id) or _restore_bot(session_id)
-    print("chat_data: ",bot.execution_agent.context_agent.steps_data)
+    print("chat_data: ", bot.get_current_status())
 
     # If chat is called before start, bootstrap a minimal task so it doesn't 404.
     if not bot:
