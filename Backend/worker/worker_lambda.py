@@ -1,11 +1,13 @@
 import os
 import json
+import re
 import traceback
 from datetime import datetime
 from bson.objectid import ObjectId
 from db import project_collection, steps_collection
 from datetime import datetime
 from planner import ToolsAgent, StepsAgentJSON, EstimationAgent
+import requests
 
 def lambda_handler(event, context):
     for record in event.get("Records", []):
@@ -56,6 +58,9 @@ def lambda_handler(event, context):
             if steps_result is None:
                 print("LLM Generation steps failed")
                 return {"message": "LLM Generation steps failed"}
+            
+            for step in steps_result['steps']:
+                step["youtube"]= get_youtube_link(step)
             
             steps_result["status"]="complete"
 
@@ -113,3 +118,83 @@ def update_project(project_id: str, update_data: dict):
     if result.matched_count == 0:
         print("Project not found")
     return {"message": "Project updated", "modified": bool(result.modified_count)}
+
+def clean_and_parse_json(raw_str: str):
+    """
+    Cleans code fences (```json ... ```) from a string and parses it as JSON.
+    """
+    if raw_str is None:
+        raise ValueError("No input string")
+    s = raw_str.strip()
+    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)           # strip fences
+    m = re.search(r"\{.*\}\s*$", s, flags=re.S)               # grab last JSON object
+    if m: s = m.group(0)
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON format: {e}")
+
+def get_youtube_link(step):
+    YOUTUBE_KEY = os.getenv("YOUTUBE_API_KEY")
+    OPENAI_KEY   = os.getenv("OPENAI_API_KEY")
+    url = "https://www.googleapis.com/youtube/v3/search"
+    params = {
+        "key": YOUTUBE_KEY,
+        "part": "snippet",
+        "q": step["title"],
+        "type": "video",
+        "maxResults": 8,
+        "videoEmbeddable": "true",
+        "safeSearch": "strict",
+        "relevanceLanguage": "en",
+        "order": "relevance",
+    }
+    r = requests.get(url, params=params, timeout=15)
+    r.raise_for_status()
+    items = r.json().get("items", [])
+    videos=[{
+        "videoId": it["id"]["videoId"],
+        "title": it["snippet"]["title"],
+        "description": it["snippet"].get("description", ""),
+        "channelTitle": it["snippet"].get("channelTitle", ""),
+    } for it in items]
+    
+    step_text=step["title"]
+    for i in step["instruction"]:
+        step_text+= "\n" + i
+    
+    payload = {
+        "model": "gpt-5-mini",  # or the model you prefer
+        "messages": [
+            {"role": "system", "content": (
+                "You are a strict evaluator for DIY/repair steps. "
+                "Pick ONE video that best teaches the given step. "
+                "Prefer safety, clarity, step-by-step, and recency. "
+                "Return pure JSON with keys: best_videoId, reason."
+            )},
+            {"role": "user", "content": json.dumps({
+                "step": step_text,
+                "candidates": [
+                    {k: c[k] for k in ["videoId", "title", "description", "channelTitle"]}
+                    for c in videos
+                ]
+            })}
+        ],
+        "max_completion_tokens": 2500,
+        "reasoning_effort": "low",
+    }
+    r = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {OPENAI_KEY}"},
+        json=payload, timeout=30
+    )
+    r.raise_for_status()
+    data = r.json()
+    content = data["choices"][0]["message"]["content"]
+    verdict=clean_and_parse_json(content)
+    best_id = verdict.get("best_videoId")
+    best = next((c for c in videos if c["videoId"] == best_id), None)
+    if not best:
+        # fallback to top candidate
+        best = videos[0]
+    return f"https://www.youtube.com/embed/{best['videoId']}"
