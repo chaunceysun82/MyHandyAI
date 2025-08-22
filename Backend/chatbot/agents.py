@@ -852,7 +852,7 @@ class AgenticChatbot:
                 if not isinstance(result, dict) or "analysis" not in result or "questions" not in result:
                     return "Sorry, I had trouble processing your request. Please try again."
                 
-                self.image_analysis = str(result.get("analysis") or "No image analysis available")
+                self.image_analysis = str(result.get("analysis") or "")
                 return self._prepare_questions_from_result(result)
             
             # No image uploaded and no skip command
@@ -1025,7 +1025,7 @@ class AgenticChatbot:
                 if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
                     intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
                 else:
-                    intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
+                    intro_message = f"Okay! Based on your description:\n\n{self.image_analysis}\n\n"
                 
                 return (
                     f"{intro_message}"
