@@ -124,8 +124,18 @@ export default function ProjectOverview() {
 		// Always navigate to Step 1 (Tools Required) when Next Step is clicked
 		if (displayedSteps.length > 0) {
 			console.log("ProjectOverview: Navigating to Step 1 (Tools Required)");
+			console.log("ProjectOverview: Video URL for tools page:", projectVideoUrl);
+			console.log("ProjectOverview: Navigation state being passed:", {
+				projectId,
+				stepIndex: 0,
+				projectVideoUrl: projectVideoUrl
+			});
 			navigate(`/projects/${projectId}/tools`, {
-				state: { projectId, stepIndex: 0 }
+				state: { 
+					projectId, 
+					stepIndex: 0,
+					projectVideoUrl: projectVideoUrl // Add this line to pass video URL
+				}
 			});
 		}
 	};

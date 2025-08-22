@@ -48,7 +48,12 @@ const Chat = () => {
         setLoading(false);
         if(statusCheck)
         {
-          navigate(`/projects/${projectId}/overview`);
+          navigate(`/projects/${projectId}/overview`, {
+            state: {
+              projectId,
+              projectName: projectName || "Project"
+            }
+          });
         }
       }, 800);
     }

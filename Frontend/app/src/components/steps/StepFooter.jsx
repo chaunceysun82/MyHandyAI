@@ -7,6 +7,7 @@ export default function StepFooter({
 	stepNumber, 
 	stepTitle, 
 	totalSteps,
+	projectVideoUrl, // Add this prop
 	onPrev, 
 	onNext,
 	isPrevDisabled = false,
@@ -22,9 +23,20 @@ export default function StepFooter({
 				projectName: projectName || "Project",
 				from: "step",
 				stepNumber: stepNumber,
-				stepTitle: stepTitle
+				stepTitle: stepTitle,
+				projectVideoUrl: projectVideoUrl
 			}
 		});
+	};
+
+	const handlePrevClick = () => {
+		// Call the onPrev function passed from parent
+		onPrev();
+	};
+
+	const handleNextClick = () => {
+		// Call the onNext function passed from parent
+		onNext();
 	};
 
 	return (
@@ -42,7 +54,7 @@ export default function StepFooter({
 			{/* Bottom Navigation */}
 			<div className="grid grid-cols-2 gap-3">
 				<button
-					onClick={onPrev}
+					onClick={handlePrevClick}
 					disabled={isPrevDisabled}
 					className={`py-2 rounded-lg font-medium ${
 						isPrevDisabled
@@ -52,7 +64,7 @@ export default function StepFooter({
 					Previous
 				</button>
 				<button
-					onClick={onNext}
+					onClick={handleNextClick}
 					disabled={isNextDisabled}
 					className={`py-2 rounded-lg font-medium ${
 						isNextDisabled
