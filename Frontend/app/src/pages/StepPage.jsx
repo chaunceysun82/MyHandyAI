@@ -25,6 +25,13 @@ export default function StepPage() {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
 	const [allSteps, setAllSteps] = useState([]);
+	
+	// Get the project video URL from navigation state
+	const projectVideoUrl = state?.projectVideoUrl;
+	
+	// Debug: Log what we received from navigation
+	console.log("StepPage: Received navigation state:", state);
+	console.log("StepPage: Project video URL:", projectVideoUrl);
 
 	// Function to refresh step data after completion updates
 	const refreshStepData = async () => {
@@ -136,11 +143,23 @@ export default function StepPage() {
 		// If we're on step 1, go to tools page
 		// If we're on any other step, go to previous step
 		if (currentStepFromURL === 1) {
-			navigate(`/projects/${projectId}/tools`);
+			navigate(`/projects/${projectId}/tools`, {
+				state: {
+					projectId,
+					projectName: state?.projectName || "Project",
+					projectVideoUrl: projectVideoUrl
+				}
+			});
 		} else {
 			// Navigate to previous step
 			const prevStepNumber = currentStepFromURL - 1;
-			navigate(`/projects/${projectId}/steps/${prevStepNumber}`);
+			navigate(`/projects/${projectId}/steps/${prevStepNumber}`, {
+				state: {
+					projectId,
+					projectName: state?.projectName || "Project",
+					projectVideoUrl: projectVideoUrl
+				}
+			});
 		}
 	};
 
@@ -161,16 +180,23 @@ export default function StepPage() {
 			// This is the last step, go to Project Completed page
 			console.log("StepPage: Navigating to Project Completed page");
 			navigate(`/projects/${projectId}/completed`, {
-				state: { 
+				state: {
 					projectId,
-					projectName: state?.projectName || "Project"
+					projectName: state?.projectName || "Project",
+					projectVideoUrl: projectVideoUrl
 				}
 			});
 		} else {
 			// Navigate to next step
 			const nextStepNumber = currentStepNumber + 1;
 			console.log("StepPage: Navigating to next step:", nextStepNumber);
-			navigate(`/projects/${projectId}/steps/${nextStepNumber}`);
+			navigate(`/projects/${projectId}/steps/${nextStepNumber}`, {
+				state: {
+					projectId,
+					projectName: state?.projectName || "Project",
+					projectVideoUrl: projectVideoUrl
+				}
+			});
 		}
 	};
 
@@ -242,7 +268,14 @@ export default function StepPage() {
 					<StepTimeEstimate time={step.time} completed={step.completed} />
 
 					{/* Video Guide Section */}
-					<StepVideoGuide />
+					<StepVideoGuide videoUrl={projectVideoUrl} title="Video Guide" />
+					{/* Debug: Log step data */}
+					{console.log("StepPage: Step data for video:", { 
+						videoUrl: step.videoUrl, 
+						projectVideoUrl: projectVideoUrl,
+						stepTitle: step.title,
+						fullStep: step 
+					})}
 
 					{/* Instructions */}
 					<StepInstructions instructions={step.instructions} />

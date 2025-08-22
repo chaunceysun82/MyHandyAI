@@ -15,6 +15,7 @@ export default function ProjectOverview() {
 	const [steps, setSteps] = useState([]);
 	const [estimations, setEstimations] = useState(null);
 	const [error, setError] = useState("");
+	const [projectVideoUrl, setProjectVideoUrl] = useState(null); // Store the project-level YouTube URL
 
 	useEffect(() => {
 		let cancelled = false;
@@ -45,6 +46,11 @@ export default function ProjectOverview() {
 
 				console.log("ProjectOverview: Raw steps data:", rawSteps);
 				console.log("ProjectOverview: Raw estimations data:", rawEst);
+				
+				// Extract YouTube URL from raw API response
+				const videoUrl = extractProjectVideoUrl(rawSteps);
+				console.log("ProjectOverview: Extracted YouTube URL:", videoUrl);
+				setProjectVideoUrl(videoUrl);
 				
 				const normalizedSteps = normSteps(rawSteps);
 				const normalizedEstimations = normEstimations(rawEst);
@@ -128,8 +134,13 @@ export default function ProjectOverview() {
 		// Check if this is the tools step (first step with tools icon)
 		if (stepIndex === 0 && displayedSteps[0]?.key === "tools-step") {
 			console.log("ProjectOverview: Navigating to tools page");
-			navigate(`/projects/${projectId}/tools`, {
-				state: { projectId, stepIndex: 0 }
+			console.log("ProjectOverview: Video URL for tools page:", projectVideoUrl);
+			navigate(`/projects/${projectId}/tools`, { 
+				state: { 
+					projectId, 
+					stepIndex: 0,
+					projectVideoUrl: projectVideoUrl // Pass video URL
+				}
 			});
 		} else {
 			// Navigate to step page - StepPage will fetch data from backend
@@ -141,10 +152,18 @@ export default function ProjectOverview() {
 			console.log("ProjectOverview: Navigating to step", stepNumber);
 			console.log("ProjectOverview: Project ID:", projectId);
 			
+			console.log("ProjectOverview: Video URL for step page:", projectVideoUrl);
+			console.log("ProjectOverview: Navigation state:", { 
+				projectId,
+				projectName: state?.projectName || "Project",
+				projectVideoUrl: projectVideoUrl
+			});
+			
 			navigate(`/projects/${projectId}/steps/${stepNumber}`, {
 				state: { 
 					projectId,
-					projectName: state?.projectName || "Project"
+					projectName: state?.projectName || "Project",
+					projectVideoUrl: projectVideoUrl // Pass video URL
 				}
 			});
 		}
@@ -392,4 +411,39 @@ function extractMinutes(text) {
 
 function pickIcon(i) {
 	return ["🧰", "📏", "✏️", "🔩", "🪞"][i % 5];
+}
+
+// Helper function to extract YouTube URL from steps data
+function extractProjectVideoUrl(steps) {
+	console.log("ProjectOverview: extractProjectVideoUrl called with:", steps);
+	
+	if (!steps) {
+		console.log("ProjectOverview: No steps data provided");
+		return null;
+	}
+
+	// Check if steps has a steps_data object with youtube field
+	if (steps.steps_data && steps.steps_data.youtube) {
+		console.log("ProjectOverview: Found YouTube URL in steps_data:", steps.steps_data.youtube);
+		return steps.steps_data.youtube;
+	}
+
+	// Check if steps has a direct youtube field
+	if (steps.youtube) {
+		console.log("ProjectOverview: Found YouTube URL directly:", steps.youtube);
+		return steps.youtube;
+	}
+
+	// Look for any step that has a video URL
+	if (Array.isArray(steps)) {
+		for (const step of steps) {
+			if (step.videoUrl || step.video_url || step.youtube) {
+				console.log("ProjectOverview: Found YouTube URL in step:", step.videoUrl || step.video_url || step.youtube);
+				return step.videoUrl || step.video_url || step.youtube;
+			}
+		}
+	}
+
+	console.log("ProjectOverview: No YouTube URL found");
+	return null;
 }
