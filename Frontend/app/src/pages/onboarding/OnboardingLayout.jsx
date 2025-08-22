@@ -11,21 +11,16 @@ const OnboardingLayout = ({
 	disableNext = false,
 	showSkip = false,
 }) => {
-	const showBack = currentStep > 1;
 	const progress = (currentStep / totalSteps) * 100;
 
 	return (
 		<div className="p-4 max-w-md mx-auto min-h-screen flex flex-col">
 			<div className="flex items-center justify-between mb-2">
-				{showBack ? (
-					<button
-						onClick={onBack}
-						className="text-gray-500 hover:text-gray-700 text-xl">
-						←
-					</button>
-				) : (
-					<div />
-				)}
+				<button
+					onClick={onBack}
+					className="text-gray-500 hover:text-gray-700 text-xl">
+					←
+				</button>
 				<span className="text-sm text-gray-500">
 					{currentStep} of {totalSteps}
 				</span>

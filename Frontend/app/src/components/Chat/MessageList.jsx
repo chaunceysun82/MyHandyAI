@@ -11,7 +11,12 @@ export default function MessageList({ messages = [] }) {
         }
 
         return (
-          <MessageBubble key={index} role={m.sender}>
+          <MessageBubble 
+            key={index} 
+            role={m.sender}
+            images={m.images || []}
+            isImageOnly={m.isImageOnly || false}
+          >
             {content}
           </MessageBubble>
         );

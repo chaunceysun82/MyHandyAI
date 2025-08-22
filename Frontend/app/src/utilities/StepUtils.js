@@ -35,18 +35,21 @@ export const extractSpecificStep = (stepsData, stepIndex) => {
 
 // Transform step data to our display format
 export const transformStepData = (stepData, stepNumber, allStepsData) => {
-	const totalSteps = getTotalSteps(allStepsData);
+	console.log("StepUtils: transformStepData called with:", {
+		stepData,
+		stepNumber,
+		allStepsDataLength: Array.isArray(allStepsData) ? allStepsData.length : 'Not an array'
+	});
 	
-	console.log("StepUtils: transformStepData called with:", { stepData, stepNumber, allStepsData });
-	console.log("StepUtils: Raw step data:", stepData);
-	console.log("StepUtils: Calculated totalSteps:", totalSteps);
-	
-	// Fallback: if we can't determine total steps, use a reasonable default
-	const fallbackTotal = totalSteps || 8; // Default to 8 steps if we can't determine
+	// Log all available fields in stepData
+	console.log("StepUtils: Available fields in stepData:", Object.keys(stepData));
+	console.log("StepUtils: videoUrl field value:", stepData.videoUrl);
+	console.log("StepUtils: video_url field value:", stepData.video_url);
+	console.log("StepUtils: youtube field value:", stepData.youtube);
 	
 	const result = {
 		number: stepNumber,
-		total: fallbackTotal,
+		total: getTotalSteps(allStepsData),
 		title: stepData.title || stepData.step_title || `Step ${stepNumber}`,
 		subtitle: stepData.subtitle || stepData.summary || stepData.description || "Step description",
 		time: stepData.time_text || stepData.time || stepData.est_time_min ? `${stepData.est_time_min} min` : "10-15 min",
@@ -58,11 +61,12 @@ export const transformStepData = (stepData, stepNumber, allStepsData) => {
 		safety: formatSafetyWarnings(stepData.safety_warnings || stepData.safety || stepData.safety_warning || []),
 		tips: formatTips(stepData.tips || stepData.tip || []),
 		imageUrl: stepData.imageUrl || stepData.image_url || null,
-		videoUrl: stepData.videoUrl || stepData.video_url || null,
+		videoUrl: stepData.videoUrl || stepData.video_url || stepData.youtube || null,
 		completed: stepData.completed || false // Add the completed field from API data
 	};
 	
 	console.log("StepUtils: Transformed result:", result);
+	console.log("StepUtils: Final videoUrl value:", result.videoUrl);
 	console.log("StepUtils: Final step object:", { number: result.number, total: result.total, completed: result.completed });
 	return result;
 };

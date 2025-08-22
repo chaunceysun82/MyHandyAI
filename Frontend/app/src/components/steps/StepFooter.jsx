@@ -8,6 +8,7 @@ export default function StepFooter({
 	stepNumber, 
 	stepTitle, 
 	totalSteps,
+	projectVideoUrl, // Add this prop
 	onPrev, 
 	onNext,
 	userId,
@@ -40,6 +41,16 @@ export default function StepFooter({
 		setOpenModal(true);
 	};
 
+	const handlePrevClick = () => {
+		// Call the onPrev function passed from parent
+		onPrev();
+	};
+
+	const handleNextClick = () => {
+		// Call the onNext function passed from parent
+		onNext();
+	};
+
 	return (
 		<div className="px-4 pb-4 space-y-3">
 			{/* Assistant prompt pill */}
@@ -68,7 +79,7 @@ export default function StepFooter({
 			{/* Bottom Navigation */}
 			<div className="grid grid-cols-2 gap-3">
 				<button
-					onClick={onPrev}
+					onClick={handlePrevClick}
 					disabled={isPrevDisabled}
 					className={`py-2 rounded-lg font-medium ${
 						isPrevDisabled
@@ -78,7 +89,7 @@ export default function StepFooter({
 					Previous
 				</button>
 				<button
-					onClick={onNext}
+					onClick={handleNextClick}
 					disabled={isNextDisabled}
 					className={`py-2 rounded-lg font-medium ${
 						isNextDisabled

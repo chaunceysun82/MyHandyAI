@@ -305,37 +305,6 @@ export default function ChatWindow({
 
 
   // Send message handler
-//   const handleSend = async (text, files = []) => {
-//     if (!text.trim() && files.length === 0) return;
-
-//     let messageContent = text.trim();
-//     if (files.length > 0) {
-//       const fileNames = files.map((f) => f.name).join(", ");
-//       messageContent = messageContent ? `${messageContent}\n\nFiles: ${fileNames}` : `Files: ${fileNames}`;
-//     }
-
-//     // Add user message locally
-//     setMessages((prev) => [...prev, { sender: "user", content: messageContent }]);
-
-//     try {
-//       const formData = new FormData();
-//       formData.append("message", text);
-//       formData.append("user", userId);
-//       formData.append("project", projectId);
-//       formData.append("session_id", sessionId);
-//       files.forEach((f, i) => formData.append(`file_${i}`, f));
-
-//       const res = await axios.post(`${URL}/chatbot/chat`, formData, {
-//         headers: { "Content-Type": "multipart/form-data" },
-//       });
-
-//       setMessages((prev) => [...prev, { sender: "bot", content: res.data.response }]);
-//     } catch (err) {
-//       console.error("Chat error", err);
-//       setMessages((prev) => [...prev, { sender: "bot", content: "Oops! Something went wrong." }]);
-//     }
-//   };
-
 const handleSend = async (text, files = []) => {
     if (!text.trim() && files.length === 0) return;
 
@@ -363,16 +332,14 @@ const handleSend = async (text, files = []) => {
 
       setMessages((prev) => [...prev, userMsg]);
 
+      // Prepare payload for backend (combine text and first image)
       const currInput = text;
       let uploadedimage = null;
 
       const currFile = files[0];
-
-      if(currFile)
-      {
+      if(currFile && currFile.type.startsWith('image/')) {
         uploadedimage = await toBase64(currFile);
       }
-
 
       const payload = 
       {
@@ -384,7 +351,6 @@ const handleSend = async (text, files = []) => {
         step: stepNumber || null
       };
       
-
       setLoading(true);
 
       const res = await axios.post(

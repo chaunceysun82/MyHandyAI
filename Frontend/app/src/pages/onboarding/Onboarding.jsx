@@ -98,6 +98,23 @@ const Onboarding = () => {
 		fetchData();
 	}, [step, stepIndex, navigate, location.pathname]);
 
+	// Handle browser back button
+	useEffect(() => {
+		const handlePopState = (event) => {
+			// If user is on first step and tries to go back, redirect to login
+			if (stepIndex === 0) {
+				event.preventDefault();
+				navigate("/login", { replace: true });
+			}
+		};
+
+		window.addEventListener('popstate', handlePopState);
+		
+		return () => {
+			window.removeEventListener('popstate', handlePopState);
+		};
+	}, [stepIndex, navigate]);
+
 	const handleAnswer = useCallback((stepId, value) => {
 		setAnswers((prev) => ({
 			...prev,
@@ -132,9 +149,20 @@ const Onboarding = () => {
 	};
 
 	const handleBack = () => {
+		console.log("handleBack called, current step:", step, "stepIndex:", stepIndex);
+		console.log("Current URL:", window.location.href);
+		console.log("Current pathname:", window.location.pathname);
 		const prevStep = Number(step) - 1;
 		if (prevStep > 0) {
+			console.log("Going to previous step:", prevStep);
 			navigate(`/onboarding/${prevStep}`);
+		} else {
+			console.log("On first step, going to login page");
+			// Clear auth token so user can go back to login
+			localStorage.removeItem("authToken");
+			sessionStorage.removeItem("authToken");
+			// Always go to login page when on first step, and replace history
+			navigate("/login", { replace: true });
 		}
 	};
 
