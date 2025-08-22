@@ -216,7 +216,7 @@ def start_step_guidance_task(payload: StartTaskRequest):
         problem_summary=project_data.get("problem_summary", "")
     )
     
-    project = project_collection.find_one({"_id": payload.project})
+    project = project_collection.find_one({"_id": ObjectId(payload.project)})
 
     _log(session_id, "assistant", welcome, bot, project["userId"], payload.project)
 
@@ -234,7 +234,7 @@ def chat_with_step_guidance(payload: ChatMessage):
     
     print (payload)
     
-    project = project_collection.find_one({"_id": payload.project})
+    project = project_collection.find_one({"_id": ObjectId(payload.project)})
 
     _log(session_id, "user", payload.message, bot, project["userId"], payload.project)
     
