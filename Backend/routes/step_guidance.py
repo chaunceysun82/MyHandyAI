@@ -229,7 +229,7 @@ def start_step_guidance_task(payload: StartTaskRequest):
 
 @router.post("/chat", response_model=ChatResponse)
 def chat_with_step_guidance(payload: ChatMessage):
-    session_id = payload.session_id
+    session_id = payload.session_id or uuid.uuid4().hex
     bot = get_latest_chatbot(session_id)
     
     print (payload)

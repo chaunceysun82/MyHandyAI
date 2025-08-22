@@ -57,7 +57,7 @@ class StepGuidanceChatbot:
         Before answering, verify relevance; if off-topic, nudge the user.
         """
         
-        self.current_step=step
+        self.current_step=step or 1
         user_message = (user_message or "").strip()
         self._remember("user", user_message)
 
