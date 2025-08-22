@@ -24,13 +24,11 @@ router = APIRouter(prefix="/step-guidance", tags=["step-guidance"])
 # -------------------- Models --------------------
 
 class StartTaskRequest(BaseModel):
-    user: str
     project: str
     session_id:str
 
 class ChatMessage(BaseModel):
     message: str
-    user: str
     project: str
     step: int
     session_id: Optional[str] = None
@@ -217,8 +215,10 @@ def start_step_guidance_task(payload: StartTaskRequest):
         tools_data=tools_data,
         problem_summary=project_data.get("problem_summary", "")
     )
+    
+    project = project_collection.find_one({"_id": payload.project})
 
-    _log(session_id, "assistant", welcome, bot, payload.user, payload.project)
+    _log(session_id, "assistant", welcome, bot, project["userId"], payload.project)
 
     return ChatResponse(
         response=welcome,
@@ -229,15 +229,17 @@ def start_step_guidance_task(payload: StartTaskRequest):
 
 @router.post("/chat", response_model=ChatResponse)
 def chat_with_step_guidance(payload: ChatMessage):
-    session_id = payload.session_id
+    session_id = payload.session_id or uuid.uuid4().hex
     bot = get_latest_chatbot(session_id)
     
     print (payload)
+    
+    project = project_collection.find_one({"_id": payload.project})
 
-    _log(session_id, "user", payload.message, bot, payload.user, payload.project)
+    _log(session_id, "user", payload.message, bot, project["userId"], payload.project)
     
     reply = bot.chat(payload.message, payload.step)
-    _log(session_id, "assistant", reply, bot, payload.user, payload.project)
+    _log(session_id, "assistant", reply, bot, project["userId"], payload.project)
 
     return ChatResponse(
         response=reply,
