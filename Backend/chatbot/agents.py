@@ -170,7 +170,7 @@ class ProblemRecognitionAgent:
                     "model": "gpt-5-mini", 
                     "messages": messages, 
                     "max_completion_tokens": 300, 
-                    "reasoning_effort": "low",
+                    "reasoning_effort": "minimal",
                     "verbosity":"low"
                 },
                 timeout=15,
