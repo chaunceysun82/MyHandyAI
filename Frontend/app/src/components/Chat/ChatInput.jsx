@@ -1,41 +1,49 @@
 import { useState, useEffect, useRef } from "react";
+import { detectTools } from "../../services/toolDetection";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
 import QuickReplyButtons from "./QuickReplyButtons";
-import { detectTools } from "../../services/toolDetection"; // make sure this export exists
 
-export default function ChatInput({ onSend, onDetected, showQuickReplies = true }) {
+export default function ChatInput({ onSend, onDetected, apiBase, showQuickReplies = true }) {
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
-  const [objectUrls, setObjectUrls] = useState([]); // 1:1 with selectedFiles
   const fileInputRef = useRef(null);
-
-  // lightweight UI state for detection
+  const [previews, setPreviews] = useState([]);
   const [detecting, setDetecting] = useState(false);
-  const [detectErr, setDetectErr] = useState("");
+  const [detectError, setDetectError] = useState("");
 
-  const { transcript, listening, resetTranscript, browserSupportsSpeechRecognition } =
-    useSpeechRecognition();
+  const { transcript, listening, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
 
   useEffect(() => {
     if (transcript) setInput(transcript);
   }, [transcript]);
 
-  // cleanup object URLs on unmount
+  // Cleanup object URLs when component unmounts
   useEffect(() => {
     return () => {
-      objectUrls.forEach((url) => URL.revokeObjectURL(url));
+      previews.forEach(url => url && URL.revokeObjectURL(url));
     };
-  }, [objectUrls]);
+  }, [previews]);
+
+  // Build previews when selectedFiles changes, and clean up old URLs
+  useEffect(() => {
+    // clean up old
+    previews.forEach(u => u && URL.revokeObjectURL(u));
+
+    const next = selectedFiles.map(f =>
+      f.type?.startsWith("image/") ? URL.createObjectURL(f) : null
+    );
+    setPreviews(next);
+
+    // clean up if the component re-renders/unmounts before next change
+    return () => next.forEach(u => u && URL.revokeObjectURL(u));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFiles]);
 
   const send = () => {
     if (!input.trim() && selectedFiles.length === 0) return;
     onSend?.(input, selectedFiles);
     setInput("");
-
-    // cleanup previews and files
-    objectUrls.forEach((url) => URL.revokeObjectURL(url));
-    setObjectUrls([]);
-    setSelectedFiles([]);
+    setSelectedFiles([]);      // previews will auto-clean in effect
   };
 
   const handleQuickReply = (reply) => {
@@ -51,69 +59,64 @@ export default function ChatInput({ onSend, onDetected, showQuickReplies = true 
       SpeechRecognition.stopListening();
     } else {
       resetTranscript();
-      SpeechRecognition.startListening({ continuous: false, language: "en-US" });
+      SpeechRecognition.startListening({
+        continuous: false,
+        language: "en-US",
+      });
     }
   };
 
-  const handleFileSelect = () => fileInputRef.current?.click();
+  const handleFileSelect = () => {
+    fileInputRef.current?.click();
+  };
 
-  // Handles file selection + image tool detection
   const handleFiles = async (event) => {
-    const files = Array.from(event.target.files || []);
-    if (!files.length) return;
-
-    // Extend selected files and create stable object URLs (so we don’t recreate on every render)
+    const files = Array.from(event.target.files);
     setSelectedFiles((prev) => [...prev, ...files]);
-
-    const newUrls = files.map((f) =>
-      f.type.startsWith("image/") ? URL.createObjectURL(f) : null
-    );
-    setObjectUrls((prev) => [...prev, ...newUrls]);
-
-    // reset input element so selecting the same file again triggers change
+    
     event.target.value = "";
 
-    // kick off detection for images
-    const imageFiles = files.filter((f) => f.type?.startsWith("image/"));
-    if (!imageFiles.length) return;
-
-    setDetecting(true);
-    setDetectErr("");
-    try {
-      const results = await Promise.all(imageFiles.map((f) => detectTools(f)));
-      const allTools = results.flatMap((r) => r?.tools || []);
-      onDetected?.(allTools || []);
-    } catch (err) {
-      console.error(err);
-      setDetectErr(err?.message || "Tool detection failed");
-    } finally {
-      setDetecting(false);
+    // Run tool detection on the first image (if any)
+    const first = files.find(f => f.type?.startsWith("image/"));
+    if (first) {
+      try {
+        setDetectError("");
+        setDetecting(true);
+        const data = await detectTools(first, apiBase);
+        onDetected?.(data.tools || []);
+      } catch (e) {
+        setDetectError(e.message || "Detection failed");
+      } finally {
+        setDetecting(false);
+      }
     }
   };
 
   const removeFile = (index) => {
-    // cleanup URL if present
-    const url = objectUrls[index];
-    if (url) URL.revokeObjectURL(url);
-
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
-    setObjectUrls((prev) => prev.filter((_, i) => i !== index));
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   return (
     <div className="flex flex-col gap-1">
       {/* Quick Reply Buttons */}
       {showQuickReplies && <QuickReplyButtons onQuickReply={handleQuickReply} />}
+      {/* Small detection status */}
+      {detecting && (
+        <div className="text-xs text-gray-500 px-1">Analyzing image…</div>
+      )}
+      {!!detectError && (
+        <div className="text-xs text-red-500 px-1">{detectError}</div>
+      )}
 
       {/* Selected files preview */}
       {selectedFiles.length > 0 && (
         <div className="flex flex-wrap gap-2 bg-gray-100 rounded-md p-2">
           {selectedFiles.map((file, idx) => (
             <div key={idx} className="relative group">
-              {file.type.startsWith("image/") && (
+              {previews[idx] && (
                 <div className="w-16 h-16 rounded-lg overflow-hidden border border-gray-300 flex-shrink-0">
                   <img
-                    src={objectUrls[idx] || ""}
+                    src={previews[idx]}
                     alt={file.name}
                     className="w-full h-full object-cover"
                   />
@@ -121,7 +124,6 @@ export default function ChatInput({ onSend, onDetected, showQuickReplies = true 
                     onClick={() => removeFile(idx)}
                     className="absolute -top-2 -right-2 w-4 h-4 bg-black text-white rounded-full flex items-center justify-center text-xs font-bold hover:bg-gray-800 transition-colors shadow-md"
                     aria-label="Remove image"
-                    type="button"
                   >
                     ✕
                   </button>
@@ -145,7 +147,7 @@ export default function ChatInput({ onSend, onDetected, showQuickReplies = true 
             ref={fileInputRef}
             onChange={handleFiles}
             multiple
-            accept="image/*"
+            accept="image/*" // Only allow image files
             className="hidden"
           />
         </button>
@@ -171,9 +173,6 @@ export default function ChatInput({ onSend, onDetected, showQuickReplies = true 
           </svg>
         </button>
       </div>
-
-      {detecting && <div className="text-xs text-gray-600 mt-1">Analyzing image…</div>}
-      {!!detectErr && <div className="text-xs text-red-500 mt-1">{detectErr}</div>}
     </div>
   );
 }

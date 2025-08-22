@@ -386,7 +386,7 @@ export default function ChatWindow({
             <ChatInput
               onSend={handleSend}
               onDetected={handleDetectedTools}
-              // showQuickReplies defaults to true in ChatInput
+              apiBase={URL}
             />
           </div>
 
