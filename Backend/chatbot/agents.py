@@ -381,7 +381,7 @@ class ImageAnalysisAgent:
             f"Problem type: {problem_type}\n"
             f"User description: {user_description}\n"
             f"Additional context: {qa_prompt_text}\n\n"
-            "Since no image was provided, analyze the problem description and generate relevant questions.\n"
+            "Analyze the problem description and generate relevant questions.\n"
             "Return JSON with:\n"
             '- "analysis": brief description based on the problem description\n'
             '- "questions": list of questions (ask one-by-one)\n'
@@ -1062,7 +1062,7 @@ class AgenticChatbot:
             if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
                 intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
             else:
-                intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
+                intro_message = f"Okay! Based on your description:\n\n{self.image_analysis}\n\n"
             
             return (
                 f"{intro_message}"
@@ -1078,7 +1078,7 @@ class AgenticChatbot:
         if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
             intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
         else:
-            intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
+            intro_message = f"Okay! Based on your description:\n\n{self.image_analysis}\n\n"
         
         return (
             f"{intro_message}"
