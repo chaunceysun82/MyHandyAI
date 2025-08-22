@@ -6,6 +6,7 @@ export default function ChatInput({ onSend, showQuickReplies = true }) {
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const fileInputRef = useRef(null);
+  const [objectUrls, setObjectUrls] = useState([]); // Store object URLs for cleanup
 
   const { transcript, listening, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
 
@@ -13,11 +14,21 @@ export default function ChatInput({ onSend, showQuickReplies = true }) {
     if (transcript) setInput(transcript);
   }, [transcript]);
 
+  // Cleanup object URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      objectUrls.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [objectUrls]);
+
   const send = () => {
     if (!input.trim() && selectedFiles.length === 0) return;
     onSend?.(input, selectedFiles);
     setInput("");
     setSelectedFiles([]);
+    // Clean up object URLs
+    objectUrls.forEach(url => URL.revokeObjectURL(url));
+    setObjectUrls([]);
   };
 
   const handleQuickReply = (reply) => {
@@ -47,11 +58,28 @@ export default function ChatInput({ onSend, showQuickReplies = true }) {
   const handleFiles = (event) => {
     const files = Array.from(event.target.files);
     setSelectedFiles((prev) => [...prev, ...files]);
+    
+    // Create and store object URLs for image previews
+    const newUrls = files
+      .filter(file => file.type.startsWith('image/'))
+      .map(file => URL.createObjectURL(file));
+    setObjectUrls(prev => [...prev, ...newUrls]);
+    
     event.target.value = "";
   };
 
   const removeFile = (index) => {
+    const fileToRemove = selectedFiles[index];
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+    
+    // Clean up object URL if it's an image
+    if (fileToRemove.type.startsWith('image/')) {
+      const urlToRemove = objectUrls.find((_, i) => i === index);
+      if (urlToRemove) {
+        URL.revokeObjectURL(urlToRemove);
+        setObjectUrls(prev => prev.filter((_, i) => i !== index));
+      }
+    }
   };
 
   return (
@@ -61,11 +89,28 @@ export default function ChatInput({ onSend, showQuickReplies = true }) {
 
       {/* Selected files preview */}
       {selectedFiles.length > 0 && (
-        <div className="flex flex-col bg-gray-100 rounded-md p-2 space-y-1">
+        <div className="flex flex-wrap gap-2 bg-gray-100 rounded-md p-2">
           {selectedFiles.map((file, idx) => (
-            <div key={idx} className="flex justify-between items-center text-sm">
-              <span className="truncate">{file.name}</span>
-              <button onClick={() => removeFile(idx)} className="text-blue-500 font-bold">✕</button>
+            <div key={idx} className="relative group">
+              {/* Show image thumbnail if it's an image file */}
+              {file.type.startsWith('image/') && (
+                <div className="w-16 h-16 rounded-lg overflow-hidden border border-gray-300 flex-shrink-0">
+                  <img 
+                    src={URL.createObjectURL(file)} 
+                    alt={file.name}
+                    className="w-full h-full object-cover"
+                  />
+                  
+                  {/* Delete button - black background with white X */}
+                  <button 
+                    onClick={() => removeFile(idx)} 
+                    className="absolute -top-2 -right-2 w-4 h-4 bg-black text-white rounded-full flex items-center justify-center text-xs font-bold hover:bg-gray-800 transition-colors shadow-md"
+                    aria-label="Remove image"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -78,12 +123,13 @@ export default function ChatInput({ onSend, showQuickReplies = true }) {
           aria-label="Add photo or file"
           type="button"
         >
-          <span className="text-lg">＋</span>
+          <span className="text-lg">+</span>
           <input
             type="file"
             ref={fileInputRef}
             onChange={handleFiles}
             multiple
+            accept="image/*" // Only allow image files
             className="hidden"
           />
         </button>
