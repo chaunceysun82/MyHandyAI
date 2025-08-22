@@ -34,7 +34,7 @@ export default function ToolsLayout({
 				totalSteps={totalSteps}
 				onPrev={onPrev} 
 				onNext={onNext}
-				isPrevDisabled={true} // Tools is always first, so no previous
+				isPrevDisabled={false} // Enable previous button to go back to overview
 				isNextDisabled={false}
 				isNextFinal={false}
 			/>

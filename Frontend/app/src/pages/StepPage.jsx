@@ -24,6 +24,29 @@ export default function StepPage() {
 	const [step, setStep] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
+	const [allSteps, setAllSteps] = useState([]);
+
+	// Function to refresh step data after completion updates
+	const refreshStepData = async () => {
+		try {
+			const stepsData = await fetchSteps(projectId);
+			if (stepsData) {
+				setAllSteps(stepsData);
+				
+				// Update current step data
+				const stepNumber = parseInt(stepIndex) || 1;
+				const actualStepIndex = stepNumber - 1;
+				const specificStep = extractSpecificStep(stepsData, actualStepIndex);
+				
+				if (specificStep) {
+					const transformedStep = transformStepData(specificStep, stepNumber, stepsData);
+					setStep(transformedStep);
+				}
+			}
+		} catch (err) {
+			console.error("Error refreshing step data:", err);
+		}
+	};
 
 	// Fetch step data from backend using project_id and step number
 	useEffect(() => {
@@ -44,6 +67,9 @@ export default function StepPage() {
 					setLoading(false);
 					return;
 				}
+
+				// Store all steps for validation
+				setAllSteps(stepsData);
 
 				// Calculate the actual step index based on URL stepIndex
 				// URL stepIndex 1 = first actual project step (index 0 in backend)
@@ -204,8 +230,8 @@ export default function StepPage() {
 			<div className="flex flex-col h-screen bg-gray-50">
 				{/* Header - Fixed at top */}
 				<StepHeader
-					stepNumber={parseInt(stepIndex) + 1}
-					totalSteps={step.total}
+					stepNumber={parseInt(stepIndex)}
+					totalSteps={step.total - 1}
 					title={step.title}
 					onBack={handleBack}
 				/>
@@ -235,6 +261,9 @@ export default function StepPage() {
 						projectId={projectId} 
 						stepNumber={step.number} 
 						stepCompleted={step.completed}
+						allSteps={allSteps}
+						currentStepIndex={parseInt(stepIndex)}
+						onStepUpdate={refreshStepData}
 					/>
 				</main>
 

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
+import QuickReplyButtons from "./QuickReplyButtons";
 
-export default function ChatInput({ onSend }) {
+export default function ChatInput({ onSend, showQuickReplies = true }) {
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const fileInputRef = useRef(null);
@@ -17,6 +18,10 @@ export default function ChatInput({ onSend }) {
     onSend?.(input, selectedFiles);
     setInput("");
     setSelectedFiles([]);
+  };
+
+  const handleQuickReply = (reply) => {
+    onSend?.(reply, []);
   };
 
   const handleMicrophone = () => {
@@ -49,9 +54,11 @@ export default function ChatInput({ onSend }) {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-
   return (
     <div className="flex flex-col gap-1">
+      {/* Quick Reply Buttons */}
+      {showQuickReplies && <QuickReplyButtons onQuickReply={handleQuickReply} />}
+
       {/* Selected files preview */}
       {selectedFiles.length > 0 && (
         <div className="flex flex-col bg-gray-100 rounded-md p-2 space-y-1">
