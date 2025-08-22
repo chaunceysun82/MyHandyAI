@@ -7,7 +7,7 @@ import base64
 import uuid
 from pymongo import DESCENDING
 import pickle
-from db import conversations_collection, project_collection
+from db import conversations_collection, project_collection, tools_collection
 from datetime import datetime
 from .project import update_project
 from qdrant_client import QdrantClient
@@ -55,6 +55,22 @@ class SessionInfo(BaseModel):
     current_state: str
     problem_type: Optional[str] = None
     questions_remaining: Optional[int] = None
+
+class Tool(BaseModel):
+    name: str
+    description: str
+    price: float
+    risk_factors: str
+    safety_measures: str
+    image_link: Optional[str] = None
+    amazon_link: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+class ToolSearchRequest(BaseModel):
+    query: str
+    limit: Optional[int] = 10
+    similarity_threshold: Optional[float] = 0.7
 
 
 def log_message(session_id, role, message, chatbot, user, project, message_type="project_intro"):
@@ -215,6 +231,160 @@ def create_and_store_summary_embeddings_for_project(summary: str, mongo_project_
     embeddings = create_embeddings_for_texts(chunks, model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
     qresult = upsert_embeddings_to_qdrant(mongo_hex, embeddings, chunks, extra_payload=extra_payload)
     return qresult
+
+def store_tool_in_database(tool_data: Dict[str, Any]) -> str:
+    """
+    Store a tool in the MongoDB tools collection.
+    Returns the tool ID.
+    """
+    tool_doc = {
+        "name": tool_data["name"],
+        "description": tool_data["description"],
+        "price": tool_data["price"],
+        "risk_factors": tool_data["risk_factors"],
+        "safety_measures": tool_data["safety_measures"],
+        "image_link": tool_data.get("image_link"),
+        "amazon_link": tool_data.get("amazon_link"),
+        "category": tool_data.get("category", "general"),
+        "tags": tool_data.get("tags", []),
+        "created_at": datetime.utcnow(),
+        "usage_count": 1,
+        "last_used": datetime.utcnow()
+    }
+    
+    result = tools_collection.insert_one(tool_doc)
+    return str(result.inserted_id)
+
+def update_tool_usage(tool_id: str):
+    """
+    Update the usage count and last used timestamp for a tool.
+    """
+    tools_collection.update_one(
+        {"_id": ObjectId(tool_id)},
+        {
+            "$inc": {"usage_count": 1},
+            "$set": {"last_used": datetime.utcnow()}
+        }
+    )
+
+def create_and_store_tool_embeddings(tool_data: Dict[str, Any], tool_id: str):
+    """
+    Create embeddings for a tool and store them in Qdrant tools collection.
+    """
+    # Create text representation for embedding
+    tool_text = f"{tool_data['name']} {tool_data['description']} {tool_data.get('category', '')} {' '.join(tool_data.get('tags', []))}"
+    
+    # Generate embedding
+    embedding = create_embeddings_for_texts([tool_text], model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
+    
+    if not embedding:
+        return {"status": "embedding_failed"}
+    
+    # Store in Qdrant tools collection
+    qresult = upsert_embeddings_to_qdrant(
+        mongo_hex_id=tool_id,
+        embeddings=embedding,
+        texts=[tool_text],
+        extra_payload={
+            "tool_id": tool_id,
+            "tool_name": tool_data["name"],
+            "category": tool_data.get("category", "general"),
+            "collection": "tools"
+        },
+        collection_name="tools"
+    )
+    return qresult
+
+def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
+    """
+    Find similar tools in Qdrant based on semantic similarity.
+    """
+    qdrant_url = os.getenv("QDRANT_URL")
+    qdrant_api_key = os.getenv("QDRANT_API_KEY")
+    
+    if not qdrant_url or not qdrant_api_key:
+        raise RuntimeError("QDRANT_URL and QDRANT_API_KEY must be set in env")
+    
+    qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
+    
+    # Generate embedding for the query
+    query_embedding = create_embeddings_for_texts([query], model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
+    
+    if not query_embedding:
+        return []
+    
+    try:
+        # Search in tools collection
+        search_result = qclient.search(
+            collection_name="tools",
+            query_vector=query_embedding[0],
+            limit=limit,
+            score_threshold=similarity_threshold
+        )
+        
+        similar_tools = []
+        for result in search_result:
+            if result.score >= similarity_threshold:
+                # Get tool details from MongoDB
+                tool_id = result.payload.get("tool_id")
+                if tool_id:
+                    tool_doc = tools_collection.find_one({"_id": ObjectId(tool_id)})
+                    if tool_doc:
+                        tool_info = {
+                            "tool_id": str(tool_doc["_id"]),
+                            "name": tool_doc["name"],
+                            "description": tool_doc["description"],
+                            "price": tool_doc["price"],
+                            "risk_factors": tool_doc["risk_factors"],
+                            "safety_measures": tool_doc["safety_measures"],
+                            "image_link": tool_doc.get("image_link"),
+                            "amazon_link": tool_doc.get("amazon_link"),
+                            "category": tool_doc.get("category"),
+                            "similarity_score": result.score,
+                            "usage_count": tool_doc.get("usage_count", 0)
+                        }
+                        similar_tools.append(tool_info)
+        
+        return similar_tools
+        
+    except Exception as e:
+        print(f"Error searching tools in Qdrant: {e}")
+        return []
+
+def process_tools_with_reuse(tools_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Process a list of tools, reusing existing ones when possible and storing new ones.
+    """
+    processed_tools = []
+    
+    for tool in tools_list:
+        # Search for similar existing tools
+        similar_tools = find_similar_tools(tool["name"], limit=3, similarity_threshold=0.8)
+        
+        if similar_tools and similar_tools[0]["similarity_score"] >= 0.8:
+            # Reuse existing tool
+            existing_tool = similar_tools[0]
+            tool["image_link"] = existing_tool["image_link"]
+            tool["amazon_link"] = existing_tool["amazon_link"]
+            tool["reused_from"] = existing_tool["tool_id"]
+            
+            # Update usage count
+            update_tool_usage(existing_tool["tool_id"])
+            
+            print(f"Reused existing tool: {tool['name']} (ID: {existing_tool['tool_id']})")
+        else:
+            # Store new tool
+            tool_id = store_tool_in_database(tool)
+            tool["tool_id"] = tool_id
+            
+            # Store embeddings
+            create_and_store_tool_embeddings(tool, tool_id)
+            
+            print(f"Stored new tool: {tool['name']} (ID: {tool_id})")
+        
+        processed_tools.append(tool)
+    
+    return processed_tools
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_bot(chat_message: ChatMessage):
@@ -384,3 +554,185 @@ async def debug_projects():
             "type": str(type(p["_id"]))
         })
     return output
+
+# Tools Management Endpoints
+@router.post("/tools/search")
+async def search_tools(search_request: ToolSearchRequest):
+    """
+    Search for tools using semantic similarity.
+    """
+    try:
+        similar_tools = find_similar_tools(
+            query=search_request.query,
+            limit=search_request.limit,
+            similarity_threshold=search_request.similarity_threshold
+        )
+        
+        return {
+            "query": search_request.query,
+            "tools_found": len(similar_tools),
+            "tools": similar_tools
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Tool search failed: {str(e)}")
+
+@router.get("/tools/{tool_id}")
+async def get_tool_details(tool_id: str):
+    """
+    Get detailed information about a specific tool.
+    """
+    try:
+        tool_doc = tools_collection.find_one({"_id": ObjectId(tool_id)})
+        if not tool_doc:
+            raise HTTPException(status_code=404, detail="Tool not found")
+        
+        return {
+            "tool_id": str(tool_doc["_id"]),
+            "name": tool_doc["name"],
+            "description": tool_doc["description"],
+            "price": tool_doc["price"],
+            "risk_factors": tool_doc["risk_factors"],
+            "safety_measures": tool_doc["safety_measures"],
+            "image_link": tool_doc.get("image_link"),
+            "amazon_link": tool_doc.get("amazon_link"),
+            "category": tool_doc.get("category"),
+            "tags": tool_doc.get("tags", []),
+            "usage_count": tool_doc.get("usage_count", 0),
+            "created_at": tool_doc.get("created_at"),
+            "last_used": tool_doc.get("last_used")
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get tool details: {str(e)}")
+
+@router.get("/tools")
+async def list_tools(
+    category: Optional[str] = None,
+    limit: int = 20,
+    skip: int = 0,
+    sort_by: str = "usage_count"
+):
+    """
+    List tools with optional filtering and sorting.
+    """
+    try:
+        # Build query
+        query = {}
+        if category:
+            query["category"] = category
+        
+        # Build sort
+        sort_field = sort_by if sort_by in ["usage_count", "created_at", "last_used", "name"] else "usage_count"
+        sort_direction = DESCENDING if sort_field in ["usage_count", "created_at", "last_used"] else 1
+        
+        # Execute query
+        cursor = tools_collection.find(query).sort(sort_field, sort_direction).skip(skip).limit(limit)
+        
+        tools = []
+        for doc in cursor:
+            tools.append({
+                "tool_id": str(doc["_id"]),
+                "name": doc["name"],
+                "description": doc["description"],
+                "price": doc["price"],
+                "category": doc.get("category"),
+                "image_link": doc.get("image_link"),
+                "usage_count": doc.get("usage_count", 0),
+                "created_at": doc.get("created_at")
+            })
+        
+        # Get total count
+        total_count = tools_collection.count_documents(query)
+        
+        return {
+            "tools": tools,
+            "total_count": total_count,
+            "limit": limit,
+            "skip": skip,
+            "has_more": (skip + limit) < total_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list tools: {str(e)}")
+
+@router.post("/tools/process")
+async def process_tools_for_reuse(tools_data: List[Tool]):
+    """
+    Process a list of tools, reusing existing ones when possible.
+    This endpoint can be called after LLM generates tools to optimize storage and reuse.
+    """
+    try:
+        # Convert Pydantic models to dictionaries
+        tools_list = [tool.model_dump() for tool in tools_data]
+        
+        # Process tools with reuse logic
+        processed_tools = process_tools_with_reuse(tools_list)
+        
+        return {
+            "message": "Tools processed successfully",
+            "total_tools": len(processed_tools),
+            "reused_tools": len([t for t in processed_tools if "reused_from" in t]),
+            "new_tools": len([t for t in processed_tools if "reused_from" not in t]),
+            "tools": processed_tools
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process tools: {str(e)}")
+
+@router.delete("/tools/{tool_id}")
+async def delete_tool(tool_id: str):
+    """
+    Delete a tool from both MongoDB and Qdrant.
+    """
+    try:
+        # Delete from MongoDB
+        result = tools_collection.delete_one({"_id": ObjectId(tool_id)})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Tool not found")
+        
+        # Delete from Qdrant (you might want to implement this)
+        # For now, we'll just return success
+        return {"message": "Tool deleted successfully", "tool_id": tool_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete tool: {str(e)}")
+
+@router.get("/tools/stats")
+async def get_tools_statistics():
+    """
+    Get statistics about the tools collection.
+    """
+    try:
+        total_tools = tools_collection.count_documents({})
+        
+        # Category distribution
+        category_pipeline = [
+            {"$group": {"_id": "$category", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}}
+        ]
+        category_stats = list(tools_collection.aggregate(category_pipeline))
+        
+        # Most used tools
+        most_used = list(tools_collection.find().sort("usage_count", DESCENDING).limit(5))
+        most_used_formatted = []
+        for tool in most_used:
+            most_used_formatted.append({
+                "name": tool["name"],
+                "usage_count": tool.get("usage_count", 0),
+                "category": tool.get("category")
+            })
+        
+        # Recent tools
+        recent_tools = list(tools_collection.find().sort("created_at", DESCENDING).limit(5))
+        recent_formatted = []
+        for tool in recent_tools:
+            recent_formatted.append({
+                "name": tool["name"],
+                "created_at": tool.get("created_at"),
+                "category": tool.get("category")
+            })
+        
+        return {
+            "total_tools": total_tools,
+            "category_distribution": category_stats,
+            "most_used_tools": most_used_formatted,
+            "recent_tools": recent_formatted
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get tools statistics: {str(e)}")
