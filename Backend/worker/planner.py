@@ -640,6 +640,7 @@ class StepsAgentJSON:
                 print(f"✅ LLM Response received, length: {len(content)} characters")
                 
                 try:
+                    print(content)
                     steps_plan = self._parse_steps_text(content)
                     print(f"✅ Successfully parsed {len(steps_plan.steps)} steps")
                     return self._convert_to_json_format(steps_plan)
