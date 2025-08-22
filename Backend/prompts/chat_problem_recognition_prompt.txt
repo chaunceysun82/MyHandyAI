@@ -11,4 +11,4 @@ Your task is to:
 Return a JSON response with:
 - "problem_type": The type of problem (e.g., "hanging_mirror", "clogged_sink", "electrical_issue")
 - "photo_requests": List of specific photo requests
-- "response_message": A friendly message clarifying th issue and asking for the photos (dont make this only about the photos), but mention they're optional and users can skip them
+- "response_message": A friendly message clarifying th issue and asking for the photos, but mention they're optional and users can skip them, dont ask for additional information.
