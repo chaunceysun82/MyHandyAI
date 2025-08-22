@@ -206,104 +206,70 @@ export default function ChatWindow({
 
 
   // Send message handler
-//   const handleSend = async (text, files = []) => {
-//     if (!text.trim() && files.length === 0) return;
-
-//     let messageContent = text.trim();
-//     if (files.length > 0) {
-//       const fileNames = files.map((f) => f.name).join(", ");
-//       messageContent = messageContent ? `${messageContent}\n\nFiles: ${fileNames}` : `Files: ${fileNames}`;
-//     }
-
-//     // Add user message locally
-//     setMessages((prev) => [...prev, { sender: "user", content: messageContent }]);
-
-//     try {
-//       const formData = new FormData();
-//       formData.append("message", text);
-//       formData.append("user", userId);
-//       formData.append("project", projectId);
-//       formData.append("session_id", sessionId);
-//       files.forEach((f, i) => formData.append(`file_${i}`, f));
-
-//       const res = await axios.post(`${URL}/chatbot/chat`, formData, {
-//         headers: { "Content-Type": "multipart/form-data" },
-//       });
-
-//       setMessages((prev) => [...prev, { sender: "bot", content: res.data.response }]);
-//     } catch (err) {
-//       console.error("Chat error", err);
-//       setMessages((prev) => [...prev, { sender: "bot", content: "Oops! Something went wrong." }]);
-//     }
-//   };
-
 const handleSend = async (text, files = []) => {
     if (!text.trim() && files.length === 0) return;
 
-
-    let messageContent = text.trim();
-    
     try 
     {
-
-      if (files.length > 0) 
-      {
-        const fileNames = files.map(f => f.name).join('\n');
-        if (messageContent) {
-          messageContent = `${messageContent}\nFiles:\n${fileNames}`;
-        } 
-        else 
-        {
-          messageContent = `Files: ${fileNames}`;
+      // First, send images as separate messages if any
+      if (files.length > 0) {
+        for (const file of files) {
+          if (file.type.startsWith('image/')) {
+            const imageUrl = await toBase64(file);
+            
+            // Send image as a separate message
+            const imageMsg = { 
+              sender: "user", 
+              content: "", // No text content for image message
+              images: [imageUrl], // Store image URL
+              isImageOnly: true // Flag to identify image-only messages
+            };
+            
+            setMessages((prev) => [...prev, imageMsg]);
+          }
         }
       }
 
+      // Then send text message if there's any text
+      if (text.trim()) {
+        const textMsg = { 
+          sender: "user", 
+          content: text.trim(),
+          images: [], // No images for text message
+          isImageOnly: false
+        };
+        
+        setMessages((prev) => [...prev, textMsg]);
+      }
 
-      const userMsg = { 
-        sender: "user", 
-        content: messageContent 
-      };
-
-      setMessages((prev) => [...prev, userMsg]);
-
+      // Prepare payload for backend (combine text and first image)
       const currInput = text;
       let uploadedimage = null;
 
       const currFile = files[0];
-
-      if(currFile)
-      {
+      if(currFile && currFile.type.startsWith('image/')) {
         uploadedimage = await toBase64(currFile);
       }
-
 
       const payload = 
       {
         message: currInput,
-        user: userId,            // Replace with actual user ID
-        project: projectId,    // Replace with actual project name
-        session_id: sessionId,   // If you have one
-        uploaded_image: uploadedimage // base64 string or null
+        user: userId,
+        project: projectId,
+        session_id: sessionId,
+        uploaded_image: uploadedimage
       };
       
-
       setLoading(true);
 
       const res = await axios.post(
         `${URL}/chatbot/chat`,
-        // {
-        //   message: input,
-        //   user: "test",
-        //   project: "test",
-        //   session_id: sessionId,
-        // },
         payload,
         { 
           headers: 
             { "Content-Type": "application/json" } 
         }
       );
-
 
       const botMsg = { sender: "bot", content: res.data.response };
 
