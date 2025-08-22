@@ -29,6 +29,27 @@ export default function ChatWindow({
   const [status, setStatus] = useState(false);
   const [status2, setStatus2] = useState(false);
 
+  const tips = [
+      "💡 Tip: You can upload multiple files for better results.",
+      "⚠️ Please be careful when using any tools or materials provided by MyHandyAI.",
+      "⚠️ Make sure your internet connection is stable.",
+      "📂 Keep your project organized for quick access.",
+      "💬 Use short and clear prompts for better responses.",
+    ];
+  
+  const [currentTipIndex, setCurrentTipIndex] = useState(0);
+
+  useEffect(() => 
+  {
+    if (status) {
+      const interval = setInterval(() => {
+        setCurrentTipIndex((prevIndex) => (prevIndex + 1) % tips.length);
+      }, 4500);
+      return () => clearInterval(interval);
+    }
+  }, [status, tips.length]);
+
+
   const api = secondChatStatus ? "step-guidance" : "chatbot";
 
   const [bool, setBool] = useState(null);
@@ -67,23 +88,27 @@ export default function ChatWindow({
     return saved ? JSON.parse(saved) : [];
   });
 
-  const [sessionId, setSessionId] = useState(null);
+  const [sessionId, setSessionId] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_SESSION_KEY);
+    return saved || null;
+  })
 
-  useEffect(() => {
-    const getSessionId = async () => {
-      try {
-        const res = await axios.get(`${URL}/${api}/session/${projectId}`);
-        // console.log("Res", res.data.session);
-        if(res.data)
-        {
-          setSessionId(res.data.session);
-        }
-      } catch (err) {
-        console.error("Error fetching session ID:", err);
-      }
-    }
-    getSessionId();
-  }, []);
+
+  // useEffect(() => {
+  //   const getSessionId = async () => {
+  //     try {
+  //       const res = await axios.get(`${URL}/${api}/session/${projectId}`);
+  //       // console.log("Res", res.data.session);
+  //       if(res.data)
+  //       {
+  //         setSessionId(res.data.session);
+  //       }
+  //     } catch (err) {
+  //       console.error("Error fetching session ID:", err);
+  //     }
+  //   }
+  //   getSessionId();
+  // }, []);
 
 
 
@@ -252,8 +277,8 @@ export default function ChatWindow({
               { user: userId, project: projectId },
               { headers: { "Content-Type": "application/json" } 
             });
-            setSessionId(res.data.session);
-            // localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
+            setSessionId(res.data.session_id);
+            localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
             setMessages([{ sender: "bot", content: res.data.intro_message }]);
             
             // if(secondChatStatus)
@@ -286,8 +311,8 @@ export default function ChatWindow({
               { project: projectId, session_id: sessionId },
               { headers: { "Content-Type": "application/json" } 
             });
-            setSessionId(res.data.session);
-            // localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
+            setSessionId(res.data.session_id);
+            localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
             // Append the new bot's response to the formatted messages and use setMessages
             // to update the state
             setMessages((prev) => [...prev, { sender: "bot", content: res.data.response }]);
@@ -465,14 +490,17 @@ const handleSend = async (text, files = []) => {
             )}
           </div>
           ) : (
-                <div className="items center justify-center flex flex-1 ">
-                  <RotatingLines
-                    strokeColor="blue"
-                    strokeWidth="2"
-                    animationDuration="0.1"
-                    width="45"
-                    visible={true}
-                  />
+                <div className="flex flex-col items-center justify-center h-screen w-full px-4">
+                    <RotatingLines
+                      strokeColor="blue"
+                      strokeWidth="2"
+                      animationDuration="0.1"
+                      width="45"
+                      visible={true}
+                    />
+                    <p className="mt-6 text-gray-600 text-sm text-center transition-all duration-500 ease-in-out">
+                      {tips[currentTipIndex]}
+                    </p>
                 </div>
               )
           }
