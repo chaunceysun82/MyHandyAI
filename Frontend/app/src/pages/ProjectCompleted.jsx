@@ -40,7 +40,7 @@ export default function ProjectCompleted() {
   const handleClose = () => navigate("/home");
   const handleGoBack = () => navigate(`/projects/${projectId}/overview`);
 
-  // Send feedback to backend
+  // Send feedback to backend using the same API service
   async function saveFeedbackAndGo(target = "/home") {
     if (!rating) {
       setError("Please select a rating before continuing.");
