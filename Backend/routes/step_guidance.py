@@ -187,6 +187,13 @@ def _fetch_project_data(project_id: str) -> Dict[str, Any]:
 
 # -------------------- Endpoints --------------------
 
+@router.get("/started/{project}")
+def is_started(project):
+    cursor = conversations_collection.find_one({"project":project, "chat_type":CHAT_TYPE})
+    if cursor:
+        return True
+    return False
+
 @router.get("/session/{project}")
 def get_session(project):
     cursor = conversations_collection.find_one({"project":project})
