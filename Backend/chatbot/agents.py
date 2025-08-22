@@ -377,7 +377,6 @@ class ImageAnalysisAgent:
         """Generate questions based on problem description when no image is provided"""
 
         system_prompt = (
-            f"{image_analysis_prompt_text}\n\n"
             f"Problem type: {problem_type}\n"
             f"User description: {user_description}\n"
             f"Additional context: {qa_prompt_text}\n\n"
@@ -1060,7 +1059,7 @@ class AgenticChatbot:
             
             # Determine the appropriate message based on whether image was provided
             if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
-                intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
+                intro_message = f"Great, thanks for the photo! \n\n{self.image_analysis}\n\n"
             else:
                 intro_message = f"Okay! Based on your description:\n\n{self.image_analysis}\n\n"
             
@@ -1078,7 +1077,7 @@ class AgenticChatbot:
         if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
             intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
         else:
-            intro_message = f"Okay! Based on your description:\n\n{self.image_analysis}\n\n"
+            intro_message = f"Okay!\n\n"
         
         return (
             f"{intro_message}"
