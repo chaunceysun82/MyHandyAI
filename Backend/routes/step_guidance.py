@@ -187,6 +187,13 @@ def _fetch_project_data(project_id: str) -> Dict[str, Any]:
 
 # -------------------- Endpoints --------------------
 
+@router.get("/started/{project}")
+def is_started(project):
+    cursor = conversations_collection.find_one({"project":project, "chat_type":CHAT_TYPE})
+    if cursor:
+        return True
+    return False
+
 @router.get("/session/{project}")
 def get_session(project):
     cursor = conversations_collection.find_one({"project":project})
@@ -196,7 +203,7 @@ def get_session(project):
 
 @router.post("/start", response_model=ChatResponse)
 def start_step_guidance_task(payload: StartTaskRequest):
-    session_id = get_session(payload.project)
+    session_id = get_session(payload.project)['session']
     bot = StepGuidanceChatbot()
 
     # Fetch project data from database
@@ -227,7 +234,7 @@ def start_step_guidance_task(payload: StartTaskRequest):
 
 @router.post("/chat", response_model=ChatResponse)
 def chat_with_step_guidance(payload: ChatMessage):
-    session_id = get_session(payload.project)
+    session_id = get_session(payload.project)['session']
     bot = get_latest_chatbot(session_id)
     
     print (payload)
