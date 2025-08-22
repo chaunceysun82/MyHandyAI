@@ -74,6 +74,8 @@ export default function StepVideoGuide({ videoUrl, title = "Video Guide" }) {
 						frameBorder="0"
 						allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
 						allowFullScreen
+						onLoad={() => console.log("StepVideoGuide: iframe loaded successfully with URL:", embedUrl)}
+						onError={(e) => console.error("StepVideoGuide: iframe error:", e)}
 					/>
 				) : (
 					<div className="w-full h-full bg-gray-100 flex items-center justify-center">

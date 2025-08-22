@@ -38,7 +38,17 @@ export default function ProjectCompleted() {
   }, [projectId]);
 
   const handleClose = () => navigate("/home");
-  const handleGoBack = () => navigate(`/projects/${projectId}/overview`);
+  const handleGoBack = () => {
+    // Get the video URL from navigation state
+    const projectVideoUrl = state?.projectVideoUrl;
+    navigate(`/projects/${projectId}/overview`, {
+      state: {
+        projectId,
+        projectName: projectName || "Project",
+        projectVideoUrl: projectVideoUrl
+      }
+    });
+  };
 
   // Send feedback to backend using the same API service
   async function saveFeedbackAndGo(target = "/home") {
