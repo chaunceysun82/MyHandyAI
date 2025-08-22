@@ -6,6 +6,7 @@ import LoadingPlaceholder from "../components/LoadingPlaceholder";
 import MobileWrapper from "../components/MobileWrapper";
 import { fetchProjectTools, mockTools, transformToolsData } from "../services/tools";
 import { fetchSteps } from "../services/overview";
+import StepVideoGuide from "../components/steps/StepVideoGuide"; // Add this import
 
 export default function ToolsPage() {
 	const { projectId } = useParams();
@@ -137,8 +138,14 @@ export default function ToolsPage() {
 				onNext={handleNext}
 				projectId={projectId}
 				projectName={location.state?.projectName || "Project"}
+				projectVideoUrl={projectVideoUrl}
 			>
 				<div className="space-y-4">
+					{/* Video Guide Section
+					{projectVideoUrl && (
+						<StepVideoGuide videoUrl={projectVideoUrl} title="Project Video Guide" />
+					)} */}
+					
 					{/* Tools Grid */}
 					{tools.length > 0 ? (
 						<ToolsGrid tools={tools} />

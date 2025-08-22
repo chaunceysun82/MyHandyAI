@@ -133,7 +133,13 @@ export default function StepPage() {
 
 	const handleBack = () => {
 		// Always go back to Project Overview from any step page
-		navigate(`/projects/${projectId}/overview`);
+		navigate(`/projects/${projectId}/overview`, {
+			state: {
+				projectId,
+				projectName: state?.projectName || "Project",
+				projectVideoUrl: projectVideoUrl
+			}
+		});
 	};
 
 	const handlePrev = () => {
@@ -307,6 +313,7 @@ export default function StepPage() {
 					stepNumber={parseInt(stepIndex) + 1}
 					stepTitle={step?.title || ""}
 					totalSteps={step?.total || 0}
+					projectVideoUrl={projectVideoUrl}
 					onPrev={handlePrev}
 					onNext={handleNext}
 					isPrevDisabled={false}
