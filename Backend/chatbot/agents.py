@@ -167,7 +167,7 @@ class ProblemRecognitionAgent:
                 self.api_url,
                 headers=self.headers,
                 json={
-                    "model": "gpt-5-mini", 
+                    "model": "gpt-5-nano", 
                     "messages": messages, 
                     "max_completion_tokens": 300, 
                     "reasoning_effort": "minimal",
@@ -746,7 +746,7 @@ Description: \"\"\"{description}\"\"\"
                 {"role": "user",   "content": "Please respond with JSON only."}
             ],
             "max_completion_tokens": 50,
-            "reasoning_effort": "low",
+            "reasoning_effort": "minimal",
             "verbosity":"low"
         }
         try:
