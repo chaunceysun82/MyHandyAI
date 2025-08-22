@@ -636,6 +636,7 @@ class StepsAgentJSON:
             
             r = requests.post(self.api_url, headers=self.headers, json=payload)
             if r.status_code == 200:
+                print(r.json())
                 content = r.json()["choices"][0]["message"]["content"].strip()
                 print(f"✅ LLM Response received, length: {len(content)} characters")
                 
