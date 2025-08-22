@@ -120,6 +120,7 @@ class ProblemRecognitionAgent:
             ],
             "max_completion_tokens": 200,
             "reasoning_effort": "minimal",
+            "verbosity":"low"
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -136,8 +137,9 @@ class ProblemRecognitionAgent:
                  },
                 {"role": "user", "content": message}
             ],
-            "max_completion_tokens": 20,
-            "reasoning_effort": "minimal",
+            "max_completion_tokens": 60,
+            "reasoning_effort": "low",
+            "verbosity":"low"
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -168,7 +170,8 @@ class ProblemRecognitionAgent:
                     "model": "gpt-5-mini", 
                     "messages": messages, 
                     "max_completion_tokens": 300, 
-                    "reasoning_effort": "medium"
+                    "reasoning_effort": "low",
+                    "verbosity":"low"
                 },
                 timeout=15,
             )
@@ -304,6 +307,7 @@ class ImageAnalysisAgent:
             ],
             "max_completion_tokens": 100,
             "reasoning_effort": "minimal",
+            "verbosity":"low"
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload)
@@ -348,7 +352,7 @@ class ImageAnalysisAgent:
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800,"reasoning_effort": "medium"},
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800,"reasoning_effort": "medium", "verbosity":"low"},
             )
             if r.status_code == 200:
                 txt = r.json()["choices"][0]["message"]["content"].strip()
@@ -392,7 +396,7 @@ class ImageAnalysisAgent:
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800, "reasoning_effort": "low"}
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800, "reasoning_effort": "low", "verbosity":"low"}
             )
             if r.status_code == 200:
                 txt = r.json()["choices"][0]["message"]["content"].strip()
@@ -498,6 +502,7 @@ class SummaryAgent:
             ],
             "max_completion_tokens": 100,
             "reasoning_effort": "minimal",
+            "verbosity":"low"
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -569,6 +574,7 @@ class QuestionClarificationAgent:
             ],
             "max_completion_tokens": 1000,
             "reasoning_effort": "low",
+            "verbosity":"low"
         }
         try:
             resp = requests.post(self.api_url, headers=self.headers, json=payload, timeout=15)
@@ -741,6 +747,7 @@ Description: \"\"\"{description}\"\"\"
             ],
             "max_completion_tokens": 50,
             "reasoning_effort": "low",
+            "verbosity":"low"
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
