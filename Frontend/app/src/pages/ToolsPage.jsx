@@ -18,6 +18,9 @@ export default function ToolsPage() {
 	const [totalSteps, setTotalSteps] = useState(1);
 	const [showRawData, setShowRawData] = useState(false);
 
+	// const userId = location.state?.userId;
+	// console.log("User ID:", userId);
+
 	useEffect(() => {
 		const fetchData = async () => {
 			try {

@@ -24,6 +24,9 @@ export default function StepPage() {
 	const [step, setStep] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
+	const location = useLocation();
+
+	const userId = location.state?.userId || null;
 
 	// Fetch step data from backend using project_id and step number
 	useEffect(() => {
@@ -247,6 +250,7 @@ export default function StepPage() {
 					totalSteps={step?.total || 0}
 					onPrev={handlePrev}
 					onNext={handleNext}
+					userId={userId}
 					isPrevDisabled={false}
 					isNextDisabled={false}
 					isNextFinal={(() => {

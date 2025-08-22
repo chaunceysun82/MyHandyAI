@@ -1,5 +1,6 @@
-import React from "react";
+import React, {useState} from "react";
 import { useNavigate } from "react-router-dom";
+import ChatWindow from "../Chat/ChatWindow";
 
 export default function StepFooter({ 
 	projectId, 
@@ -9,22 +10,34 @@ export default function StepFooter({
 	totalSteps,
 	onPrev, 
 	onNext,
+	userId,
 	isPrevDisabled = false,
 	isNextDisabled = false,
 	isNextFinal = false
 }) {
 	const navigate = useNavigate();
 
+	const [openModal, setOpenModal] = useState(false);
+	const [open, setOpen] = useState(true);
+
+	const URL = process.env.REACT_APP_BASE_URL;
+
+
+	// const userId = localStorage.getItem("authToken");
+	
+	console.log("User ID:", userId);
+
 	const handleChatClick = () => {
-		navigate("/chat", { 
-			state: { 
-				projectId, 
-				projectName: projectName || "Project",
-				from: "step",
-				stepNumber: stepNumber,
-				stepTitle: stepTitle
-			}
-		});
+		// navigate("/chat", { 
+		// 	state: { 
+		// 		projectId, 
+		// 		projectName: projectName || "Project",
+		// 		from: "step",
+		// 		stepNumber: stepNumber,
+		// 		stepTitle: stepTitle
+		// 	}
+		// });
+		setOpenModal(true);
 	};
 
 	return (
@@ -38,6 +51,19 @@ export default function StepFooter({
 					Ask
 				</button>
 			</div>
+
+			{openModal && (
+				<ChatWindow
+					isOpen={open}
+					projectId={projectId}
+					onClose={() => setOpenModal(false)}
+					secondChatStatus={true}
+					URL={URL}
+					userId={userId}
+					stepNumber={stepNumber}
+					// secondSessionID={true}
+				/>
+			)}
 
 			{/* Bottom Navigation */}
 			<div className="grid grid-cols-2 gap-3">

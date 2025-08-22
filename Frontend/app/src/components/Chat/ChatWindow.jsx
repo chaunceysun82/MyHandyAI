@@ -14,14 +14,43 @@ export default function ChatWindow({
   projectName,
   userId,
   URL,
+  secondChatStatus,
+  stepNumber
 }) {
+
+  console.log("User ID:", userId);
+  console.log("Project ID:", projectId);
+  console.log("Step Number:", stepNumber);
+
   const [render, setRender] = useState(isOpen);
   const [closing, setClosing] = useState(false);
   const [opening, setOpening] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(false);
-
   const [status2, setStatus2] = useState(false);
+
+  const api = secondChatStatus ? "step-guidance" : "chatbot";
+
+  const [bool, setBool] = useState(null);
+
+  useEffect(() => {
+    const check = async () => {
+      try 
+      {
+        const res = await axios.get(`${URL}/step-guidance/started/${projectId}`);
+        console.log("Bool:", res.data);
+        if (res.data) 
+        {
+          setBool(res.data);
+        }
+      } catch (err)
+      {
+        console.error("Error checking step guidance status:", err);
+      }
+    }
+    check();
+  }, []);
+
 
 
   const [drag, setDrag] = useState({ active: false, startY: 0, dy: 0 });
@@ -38,9 +67,25 @@ export default function ChatWindow({
     return saved ? JSON.parse(saved) : [];
   });
 
-  const [sessionId, setSessionId] = useState(
-    localStorage.getItem(STORAGE_SESSION_KEY) || ""
-  );
+  const [sessionId, setSessionId] = useState(null);
+
+  useEffect(() => {
+    const getSessionId = async () => {
+      try {
+        const res = await axios.get(`${URL}/${api}/session/${projectId}`);
+        // console.log("Res", res.data.session);
+        if(res.data)
+        {
+          setSessionId(res.data.session);
+        }
+      } catch (err) {
+        console.error("Error fetching session ID:", err);
+      }
+    }
+    getSessionId();
+  }, []);
+
+
 
   useEffect(() => {
 	if (messagesEndRef.current) 
@@ -51,6 +96,26 @@ export default function ChatWindow({
 		});
 	}
    }, [messages]);
+
+
+  //  useEffect(() => {
+  //     const firstRun = async () => {
+  //         try {
+  //           const historyRes = await axios.get(`${URL}/chatbot/session/${sessionId}/history`);
+  //           const formattedMessages = historyRes.data.map(({role, message}) => ({
+  //             sender: role === "user" ? "user" : "bot",
+  //             content: message,
+  //         }));
+  //         setMessages(formattedMessages);
+  //       } catch (err) {
+  //         setMessages([{sender: "bot", content: "Failed to load chat history."}]);
+  //       }
+  //     } 
+  //     if(secondChatStatus)
+  //     {
+  //       firstRun(); // this is only run if secondChatStatus is true
+  //     }
+  //  }, []);
   
   
 
@@ -146,6 +211,7 @@ export default function ChatWindow({
                   if(message === "generation completed")
                   {
                     clearInterval(interval);
+                    // Reset the session ID
                     navigate(`/projects/${projectId}/overview`);
                   }
                 }
@@ -172,18 +238,29 @@ export default function ChatWindow({
 
   // Load or start session
   useEffect(() => {
+    console.log("Session ID:", sessionId);
+
     async function loadOrStartSession() {
+      console.log("Loading or starting session for:", { projectId, userId });
       if(!sessionId)
       {
         try {
-          const res = await axios.post(
-            `${URL}/chatbot/start`,
-            { user: userId, project: projectId },
-            { headers: { "Content-Type": "application/json" } 
-          });
-          setSessionId(res.data.session_id);
-          localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
-          setMessages([{ sender: "bot", content: res.data.intro_message }]);
+            console.log("Full URL", `${URL}/${api}/start`);
+
+            const res = await axios.post(
+              `${URL}/${api}/start`,
+              { user: userId, project: projectId },
+              { headers: { "Content-Type": "application/json" } 
+            });
+            setSessionId(res.data.session);
+            // localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
+            setMessages([{ sender: "bot", content: res.data.intro_message }]);
+            
+            // if(secondChatStatus)
+            // {
+            //   setBool(false);
+            // }
+
         } catch (err) 
         {
           console.error("Intro message error", err);
@@ -195,7 +272,29 @@ export default function ChatWindow({
             sender: role === "user" ? "user" : "bot",
             content: message,
           }));
+
+          console.log("Formatted Messages:", formattedMessages);
           setMessages(formattedMessages);
+
+
+          if(secondChatStatus && !bool)
+          {
+            setBool(true);
+
+            const res = await axios.post(
+              `${URL}/${api}/start`,
+              { project: projectId, session_id: sessionId },
+              { headers: { "Content-Type": "application/json" } 
+            });
+            setSessionId(res.data.session);
+            // localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
+            // Append the new bot's response to the formatted messages and use setMessages
+            // to update the state
+            setMessages((prev) => [...prev, { sender: "bot", content: res.data.response }]);
+
+            console.log("Response:", res.data);
+          }
+
         } catch (err) {
           setMessages([{sender: "bot", content: "Failed to load chat history."}]);
         }
@@ -243,9 +342,8 @@ const handleSend = async (text, files = []) => {
 
     let messageContent = text.trim();
     
-    try 
+    try
     {
-
       if (files.length > 0) 
       {
         const fileNames = files.map(f => f.name).join('\n');
@@ -257,7 +355,6 @@ const handleSend = async (text, files = []) => {
           messageContent = `Files: ${fileNames}`;
         }
       }
-
 
       const userMsg = { 
         sender: "user", 
@@ -280,30 +377,24 @@ const handleSend = async (text, files = []) => {
       const payload = 
       {
         message: currInput,
-        user: userId,            // Replace with actual user ID
-        project: projectId,    // Replace with actual project name
-        session_id: sessionId,   // If you have one
-        uploaded_image: uploadedimage // base64 string or null
+        user: userId,            
+        project: projectId,    
+        session_id: sessionId,
+        uploaded_image: uploadedimage, 
+        step: stepNumber || null
       };
       
 
       setLoading(true);
 
       const res = await axios.post(
-        `${URL}/chatbot/chat`,
-        // {
-        //   message: input,
-        //   user: "test",
-        //   project: "test",
-        //   session_id: sessionId,
-        // },
+        `${URL}/${api}/chat`,
         payload,
         { 
           headers: 
             { "Content-Type": "application/json" } 
         }
       );
-
 
       const botMsg = { sender: "bot", content: res.data.response };
 

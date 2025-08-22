@@ -10,6 +10,8 @@ const Chat = () => {
   const navigate = useNavigate();
   const URL = process.env.REACT_APP_BASE_URL;
 
+  console.log("URL:", URL);
+
   const [loading, setLoading] = useState(true);
   
   
@@ -32,7 +34,8 @@ const Chat = () => {
     try {
       const response = await axios.get(`${URL}/generation/status/${projectId}`);
 
-      if (response) {
+      if (response) 
+      {
         const message = response.data.message;
         console.log("Message:", message);
 
@@ -48,7 +51,7 @@ const Chat = () => {
         setLoading(false);
         if(statusCheck)
         {
-          navigate(`/projects/${projectId}/overview`);
+          navigate(`/projects/${projectId}/overview`, {state: {userId}});
         }
       }, 800);
     }

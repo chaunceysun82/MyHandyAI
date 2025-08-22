@@ -4,12 +4,28 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { fetchEstimations, fetchSteps } from "../services/overview";
 import StepCard from "../components/StepCard";
 import EstimatedBreakdown from "../components/EstimationBreakdown";
+import ChatWindow from "../components/Chat/ChatWindow";
+
 
 export default function ProjectOverview() {
+
+	const URL = process.env.REACT_APP_BASE_URL;
+
 	const navigate = useNavigate();
 	const { projectId } = useParams();
 	const { state } = useLocation();
+	const location = useLocation();
+
+
+	const [open, setOpen] = useState(true);
+
+	const {userId} = location.state || {};
+
+	console.log("User ID:", userId);
+
 	const userName = state?.userName || "User";
+
+	const [openModal, setOpenModal] = useState(false);
 
 	const [loading, setLoading] = useState(true);
 	const [steps, setSteps] = useState([]);
@@ -111,15 +127,26 @@ export default function ProjectOverview() {
 	}, [estimations, steps]);
 
 	const handleClose = () => navigate(-1);
-	const openAssistant = () =>
-		navigate("/chat", { state: { projectId, from: "overview" } });
+
+	const openAssistant = () => {
+
+		// Have a modal open up with the chat assistant
+		console.log("User ID", userId);
+		console.log("Project ID", projectId);
+		setOpenModal(true);
+	};
+		// navigate("/chat", { state: { projectId, from: "overview" } });
+
+
 	const goPrev = () => navigate(-1);
+
 	const goNext = () => {
 		// Always navigate to Step 1 (Tools Required) when Next Step is clicked
 		if (displayedSteps.length > 0) {
 			console.log("ProjectOverview: Navigating to Step 1 (Tools Required)");
+			console.log("User ID:", userId);
 			navigate(`/projects/${projectId}/tools`, {
-				state: { projectId, stepIndex: 0 }
+				state: { projectId, stepIndex: 0, userId }
 			});
 		}
 	};
@@ -227,6 +254,19 @@ export default function ProjectOverview() {
 							Ask
 						</button>
 					</div>
+
+					{/* Chat Assistant Modal */}
+					{openModal && (
+						<ChatWindow
+							isOpen={open}
+							projectId={projectId}
+							onClose={() => setOpenModal(false)}
+							secondChatStatus={true}
+							URL={URL}
+							userId={userId}
+							// secondSessionID={true}
+						/>
+					)}
 
 					{/* Bottom Navigation */}
 					<div className="grid grid-cols-2 gap-3">
