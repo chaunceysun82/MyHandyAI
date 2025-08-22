@@ -130,7 +130,7 @@ class ProblemRecognitionAgent:
 
     def valid_description(self, message):
         payload = {
-            "model": "gpt-5-nano",
+            "model": "gpt-5-mini",
             "messages": [
                 {"role": "system", 
                  "content": valid_description_prompt_text
