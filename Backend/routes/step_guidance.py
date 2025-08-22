@@ -25,13 +25,11 @@ router = APIRouter(prefix="/step-guidance", tags=["step-guidance"])
 
 class StartTaskRequest(BaseModel):
     project: str
-    session_id:str
 
 class ChatMessage(BaseModel):
     message: str
     project: str
     step: int
-    session_id: Optional[str] = None
     uploaded_image: Optional[str] = None  # placeholder; not used by this bot
 
 class ChatResponse(BaseModel):
@@ -191,14 +189,14 @@ def _fetch_project_data(project_id: str) -> Dict[str, Any]:
 
 @router.get("/session/{project}")
 def get_session(project):
-    cursor = conversations_collection.find_one({"project":project,"chat_type":CHAT_TYPE})
+    cursor = conversations_collection.find_one({"project":project})
     if not cursor:
         return {"session": None}
     return {"session": cursor["session_id"]}
 
 @router.post("/start", response_model=ChatResponse)
 def start_step_guidance_task(payload: StartTaskRequest):
-    session_id = payload.session_id
+    session_id = get_session(payload.project)
     bot = StepGuidanceChatbot()
 
     # Fetch project data from database
@@ -216,7 +214,7 @@ def start_step_guidance_task(payload: StartTaskRequest):
         problem_summary=project_data.get("problem_summary", "")
     )
     
-    project = project_collection.find_one({"_id": payload.project})
+    project = project_collection.find_one({"_id": ObjectId(payload.project)})
 
     _log(session_id, "assistant", welcome, bot, project["userId"], payload.project)
 
@@ -229,12 +227,12 @@ def start_step_guidance_task(payload: StartTaskRequest):
 
 @router.post("/chat", response_model=ChatResponse)
 def chat_with_step_guidance(payload: ChatMessage):
-    session_id = payload.session_id or uuid.uuid4().hex
+    session_id = get_session(payload.project)
     bot = get_latest_chatbot(session_id)
     
     print (payload)
     
-    project = project_collection.find_one({"_id": payload.project})
+    project = project_collection.find_one({"_id": ObjectId(payload.project)})
 
     _log(session_id, "user", payload.message, bot, project["userId"], payload.project)
     
