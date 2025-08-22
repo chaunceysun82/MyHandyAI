@@ -114,7 +114,7 @@ export default function ToolsPage() {
 	return (
 		<MobileWrapper>
 			<ToolsLayout
-				stepNumber={1}
+				stepNumber={0}
 				totalSteps={totalSteps}
 				title="Tools Required"
 				onBack={handleBack}

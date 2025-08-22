@@ -110,7 +110,7 @@ export default function ProjectOverview() {
 		return result;
 	}, [estimations, steps]);
 
-	const handleClose = () => navigate(-1);
+	const handleClose = () => navigate("/home");
 	const openAssistant = () =>
 		navigate("/chat", { state: { projectId, from: "overview" } });
 	const goPrev = () => navigate(-1);
@@ -201,7 +201,7 @@ export default function ProjectOverview() {
 							return (
 								<StepCard
 									key={s.key || i}
-									index={i + 1}
+									index={i}
 									icon={s.icon}
 									title={s.title}
 									subtitle={s.subtitle}
