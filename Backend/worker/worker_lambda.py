@@ -59,8 +59,8 @@ def lambda_handler(event, context):
                 print("LLM Generation steps failed")
                 return {"message": "LLM Generation steps failed"}
             
-            for step in steps_result['steps']:
-                step["youtube"]= get_youtube_link(step)
+            
+            steps_result["youtube"]= get_youtube_link(cursor["summary"])
             
             steps_result["status"]="complete"
 
@@ -134,14 +134,39 @@ def clean_and_parse_json(raw_str: str):
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON format: {e}")
 
-def get_youtube_link(step):
+def get_youtube_link(summary):
     YOUTUBE_KEY = os.getenv("YOUTUBE_API_KEY")
     OPENAI_KEY   = os.getenv("OPENAI_API_KEY")
+    
+    payload = {
+        "model": "gpt-5-nano",  # or the model you prefer
+        "messages": [
+            {"role": "system", "content": (
+                "You are a summarization agent for youtube searches"
+                "Return one line in based of the text provided to search the most helpfull video"
+            )},
+            {"role": "user", "content": json.dumps({
+                "description": summary
+            })}
+        ],
+        "max_completion_tokens": 500,
+        "reasoning_effort": "low",
+    }
+    r = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {OPENAI_KEY}"},
+        json=payload, timeout=30
+    )
+    r.raise_for_status()
+    data = r.json()
+    content = data["choices"][0]["message"]["content"]
+    print (content)
+    
     url = "https://www.googleapis.com/youtube/v3/search"
     params = {
         "key": YOUTUBE_KEY,
         "part": "snippet",
-        "q": step["title"],
+        "q": content,
         "type": "video",
         "maxResults": 8,
         "videoEmbeddable": "true",
@@ -159,10 +184,6 @@ def get_youtube_link(step):
         "channelTitle": it["snippet"].get("channelTitle", ""),
     } for it in items]
     
-    step_text=step["title"]
-    for i in step["instructions"]:
-        step_text+= "\n" + i
-    
     payload = {
         "model": "gpt-5-mini",  # or the model you prefer
         "messages": [
@@ -173,7 +194,7 @@ def get_youtube_link(step):
                 "Return pure JSON with keys: best_videoId, reason."
             )},
             {"role": "user", "content": json.dumps({
-                "step": step_text,
+                "step": summary,
                 "candidates": [
                     {k: c[k] for k in ["videoId", "title", "description", "channelTitle"]}
                     for c in videos
