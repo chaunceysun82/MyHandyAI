@@ -5,7 +5,7 @@ import MessageList from "./MessageList";
 import ChatInput from "./ChatInput";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import { RotatingLines } from 'react-loader-spinner';
+import { RotatingLines } from "react-loader-spinner";
 
 export default function ChatWindow({
   isOpen,
@@ -20,9 +20,7 @@ export default function ChatWindow({
   const [opening, setOpening] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(false);
-
   const [status2, setStatus2] = useState(false);
-
 
   const [drag, setDrag] = useState({ active: false, startY: 0, dy: 0 });
   const THRESHOLD = 120;
@@ -30,10 +28,10 @@ export default function ChatWindow({
 
   const STORAGE_SESSION_KEY = `sessionId_${userId}_${projectId}`;
   const STORAGE_MESSAGES_KEY = `messages_${userId}_${projectId}`;
-  const STORAGE_TOOLS_KEY   = `owned_tools_${userId}_${projectId}`;
+  const STORAGE_TOOLS_KEY = `owned_tools_${userId}_${projectId}`;
 
   const navigate = useNavigate();
-  
+
   const [messages, setMessages] = useState(() => {
     const saved = localStorage.getItem(STORAGE_MESSAGES_KEY);
     return saved ? JSON.parse(saved) : [];
@@ -43,31 +41,32 @@ export default function ChatWindow({
     localStorage.getItem(STORAGE_SESSION_KEY) || ""
   );
 
-  // NEW: remember detected tools for this chat (and persist)
+  // Remember detected tools for this chat (and persist)
   const [ownedTools, setOwnedTools] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_TOOLS_KEY);
       return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
+    } catch {
+      return [];
+    }
   });
 
   useEffect(() => {
-	if (messagesEndRef.current) 
-	{
-		messagesEndRef.current.scrollTo({
-			top: messagesEndRef.current.scrollHeight,
-			behavior: "smooth"
-		});
-	}
-   }, [messages]);
-  
-  
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollTo({
+        top: messagesEndRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [messages]);
 
   // Drag handlers
-  const startDrag = (e) => setDrag({ active: true, startY: e.clientY, dy: 0 });
+  const startDrag = (e) =>
+    setDrag({ active: true, startY: e.clientY, dy: 0 });
   useEffect(() => {
     if (!drag.active) return;
-    const move = (e) => setDrag((d) => ({ ...d, dy: Math.max(0, e.clientY - d.startY) }));
+    const move = (e) =>
+      setDrag((d) => ({ ...d, dy: Math.max(0, e.clientY - d.startY) }));
     const up = () => {
       const shouldClose = drag.dy > THRESHOLD;
       setDrag({ active: false, startY: 0, dy: 0 });
@@ -89,7 +88,9 @@ export default function ChatWindow({
       setRender(true);
       setClosing(false);
       setOpening(true);
-      requestAnimationFrame(() => requestAnimationFrame(() => setOpening(false)));
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => setOpening(false))
+      );
     } else if (render) {
       setClosing(true);
     }
@@ -108,70 +109,44 @@ export default function ChatWindow({
     };
   }, [render, onClose]);
 
-
+  // Generation status poll (step flow)
   useEffect(() => {
-      const getStatus = async () => {
-        if(status === true)
-        {
-          // Goal is to call the generation api endpoint every 5 seconds until
-          // the message doesn't say "genertion completed". Once that is done,
-          // navigate to the project overview page/screen.
-            try 
-            {
-              const response = await axios.post(`${URL}/generation/all/${projectId}`);
-
-              if(response)
-              {
-                setStatus2(true);
-              }
-            } catch (err)
-            {
-              console.log("Err: ", err);
-            }
-          
+    const getStatus = async () => {
+      if (status === true) {
+        try {
+          const response = await axios.post(`${URL}/generation/all/${projectId}`);
+          if (response) setStatus2(true);
+        } catch (err) {
+          console.log("Err: ", err);
         }
       }
-      getStatus();
-  }, [status, navigate]);
-
-
+    };
+    getStatus();
+  }, [status, navigate, URL, projectId]);
 
   useEffect(() => {
-        if(status2 === true)
-        {
-          // Goal is to call the generation api endpoint every 5 seconds until
-          // the message doesn't say "genertion completed". Once that is done,
-          // navigate to the project overview page/screen.
-            const interval = setInterval(async () => {
-              try 
-              {
-                const response = await axios.get(`${URL}/generation/status/${projectId}`);
-
-                if(response)
-                {
-                  const message = response.data.message;
-
-                  console.log("Message:", message);
-                  if(message === "generation completed")
-                  {
-                    clearInterval(interval);
-                    navigate(`/projects/${projectId}/overview`);
-                  }
-                }
-              } 
-              catch (err)
-              {
-                console.log("Err: ", err);
-              }
-            }, 5000);
-
-            return () => clearInterval(interval);
+    if (status2 === true) {
+      const interval = setInterval(async () => {
+        try {
+          const response = await axios.get(
+            `${URL}/generation/status/${projectId}`
+          );
+          if (response) {
+            const message = response.data.message;
+            if (message === "generation completed") {
+              clearInterval(interval);
+              navigate(`/projects/${projectId}/overview`);
+            }
+          }
+        } catch (err) {
+          console.log("Err: ", err);
         }
-  }, [status2, navigate]);
+      }, 5000);
 
+      return () => clearInterval(interval);
+    }
+  }, [status2, navigate, URL, projectId]);
 
-
-  
   // Persist messages locally
   useEffect(() => {
     localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messages));
@@ -184,157 +159,119 @@ export default function ChatWindow({
     } catch {}
   }, [ownedTools, STORAGE_TOOLS_KEY]);
 
-
-
   // Load or start session
   useEffect(() => {
     async function loadOrStartSession() {
-      if(!sessionId)
-      {
+      if (!sessionId) {
         try {
           const res = await axios.post(
             `${URL}/chatbot/start`,
             { user: userId, project: projectId },
-            { headers: { "Content-Type": "application/json" } 
-          });
+            { headers: { "Content-Type": "application/json" } }
+          );
           setSessionId(res.data.session_id);
           localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
           setMessages([{ sender: "bot", content: res.data.intro_message }]);
-        } catch (err) 
-        {
+        } catch (err) {
           console.error("Intro message error", err);
         }
       } else {
         try {
-          const historyRes = await axios.get(`${URL}/chatbot/session/${sessionId}/history`);
-          const formattedMessages = historyRes.data.map(({role, message}) => ({
-            sender: role === "user" ? "user" : "bot",
-            content: message,
-          }));
+          const historyRes = await axios.get(
+            `${URL}/chatbot/session/${sessionId}/history`
+          );
+          const formattedMessages = historyRes.data.map(
+            ({ role, message }) => ({
+              sender: role === "user" ? "user" : "bot",
+              content: message,
+            })
+          );
           setMessages(formattedMessages);
         } catch (err) {
-          setMessages([{sender: "bot", content: "Failed to load chat history."}]);
+          setMessages([
+            { sender: "bot", content: "Failed to load chat history." },
+          ]);
         }
       }
     }
     loadOrStartSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, userId]);
 
-
-  // Send message handler
-//   const handleSend = async (text, files = []) => {
-//     if (!text.trim() && files.length === 0) return;
-
-//     let messageContent = text.trim();
-//     if (files.length > 0) {
-//       const fileNames = files.map((f) => f.name).join(", ");
-//       messageContent = messageContent ? `${messageContent}\n\nFiles: ${fileNames}` : `Files: ${fileNames}`;
-//     }
-
-//     // Add user message locally
-//     setMessages((prev) => [...prev, { sender: "user", content: messageContent }]);
-
-//     try {
-//       const formData = new FormData();
-//       formData.append("message", text);
-//       formData.append("user", userId);
-//       formData.append("project", projectId);
-//       formData.append("session_id", sessionId);
-//       files.forEach((f, i) => formData.append(`file_${i}`, f));
-
-//       const res = await axios.post(`${URL}/chatbot/chat`, formData, {
-//         headers: { "Content-Type": "multipart/form-data" },
-//       });
-
-//       setMessages((prev) => [...prev, { sender: "bot", content: res.data.response }]);
-//     } catch (err) {
-//       console.error("Chat error", err);
-//       setMessages((prev) => [...prev, { sender: "bot", content: "Oops! Something went wrong." }]);
-//     }
-//   };
-
-const handleSend = async (text, files = []) => {
+  // Send message handler (merged behavior)
+  const handleSend = async (text, files = []) => {
     if (!text.trim() && files.length === 0) return;
 
-    let messageContent = text.trim();
-    
-    try 
-    {
-      if (files.length > 0) 
-      {
-        const fileNames = files.map(f => f.name).join('\n');
-        if (messageContent) {
-          messageContent = `${messageContent}\nFiles:\n${fileNames}`;
-        } 
-        else 
-        {
-          messageContent = `Files: ${fileNames}`;
+    try {
+      // 1) Show selected images as separate messages (UX from main)
+      if (files.length > 0) {
+        for (const file of files) {
+          if (file.type.startsWith("image/")) {
+            const imageUrl = await toBase64(file);
+            const imageMsg = {
+              sender: "user",
+              content: "",
+              images: [imageUrl],
+              isImageOnly: true,
+            };
+            setMessages((prev) => [...prev, imageMsg]);
+          }
         }
       }
 
-      const userMsg = { 
-        sender: "user", 
-        content: messageContent 
-      };
+      // 2) Construct a unified user text message (your feature)
+      //    Append filenames and detected tool summary so LLM has context
+      let messageContent = text.trim();
+      if (files.length > 0) {
+        const fileNames = files.map((f) => f.name).join("\n");
+        messageContent = messageContent
+          ? `${messageContent}\nFiles:\n${fileNames}`
+          : `Files: ${fileNames}`;
+      }
 
-      setMessages((prev) => [...prev, userMsg]);
+      const detSummary =
+        files.length > 0 && ownedTools.length > 0
+          ? `\n\n[Detected tools in attached image: ${ownedTools
+              .map((t) => t.name)
+              .join(", ")}]`
+          : "";
 
-      
-      // include detected tools to help the model, especially if backend ignores uploaded_image
-      const detSummary = (files.length > 0 && ownedTools.length > 0)
-        ? `\n\n[Detected tools in attached image: ${ownedTools.map(t => t.name).join(", ")}]`
-        : "";
-      const currInput = `${text || ""}${detSummary}`;
-      
+      const currInput = `${messageContent || text || ""}${detSummary}`;
+
+      if (messageContent) {
+        setMessages((prev) => [...prev, { sender: "user", content: messageContent }]);
+      }
+
+      // 3) Prepare payload (keep uploaded_image + owned_tools)
       let uploadedimage = null;
+      const firstImage = files.find((f) => f.type.startsWith("image/"));
+      if (firstImage) uploadedimage = await toBase64(firstImage);
 
-      const currFile = files[0];
-
-      if(currFile)
-      {
-        uploadedimage = await toBase64(currFile);
-      }
-
-      const payload = 
-      {
+      const payload = {
         message: currInput,
-        user: userId,            // Replace with actual user ID
-        project: projectId,      // Replace with actual project name
-        session_id: sessionId,   // If you have one
+        user: userId,
+        project: projectId,
+        session_id: sessionId,
         uploaded_image: uploadedimage, // base64 string or null
-        owned_tools: ownedTools        // <- optional: lets backend filter recs
+        owned_tools: ownedTools, // helps backend filter recs (optional)
       };
-      
-      setLoading(true);
 
-      const res = await axios.post(
-        `${URL}/chatbot/chat`,
-        payload,
-        { 
-          headers: 
-            { "Content-Type": "application/json" } 
-        }
-      );
+      // 4) Send to backend
+      setLoading(true);
+      const res = await axios.post(`${URL}/chatbot/chat`, payload, {
+        headers: { "Content-Type": "application/json" },
+      });
 
       const botMsg = { sender: "bot", content: res.data.response };
-
       setLoading(false);
-
       setMessages((prev) => [...prev, botMsg]);
 
-      console.log("Current State:", res.data.current_state);
-
-      if(res.data.current_state === 'complete')
-      {
-        setTimeout(() => {
-          setStatus(true);
-        }, 1500);
+      if (res.data.current_state === "complete") {
+        setTimeout(() => setStatus(true), 1500);
       }
-
     } catch (err) {
       setLoading(false);
       console.error("Chat error", err);
-
       setMessages((prev) => [
         ...prev,
         { sender: "bot", content: "Oops! Something went wrong." },
@@ -342,33 +279,32 @@ const handleSend = async (text, files = []) => {
     }
   };
 
-
-
   const toBase64 = (file) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = () => resolve(reader.result);
       reader.onerror = (error) => reject(error);
-  });
+    });
 
-  // NEW: when ChatInput detects tools, save them and let bot "acknowledge"
+  // When ChatInput detects tools, save them and add a visible bot note
   function handleDetectedTools(tools) {
     if (!Array.isArray(tools) || tools.length === 0) return;
-    setOwnedTools(prev => {
-      const map = new Map(prev.map(t => [String(t.name||"").toLowerCase(), t]));
-      tools.forEach(t => map.set(String(t.name||"").toLowerCase(), t));
+    setOwnedTools((prev) => {
+      const map = new Map(prev.map((t) => [String(t.name || "").toLowerCase(), t]));
+      tools.forEach((t) =>
+        map.set(String(t.name || "").toLowerCase(), t)
+      );
       return Array.from(map.values());
     });
-    // Add a visible bot message so users (and the LLM context) see the result
     const summary = tools
-      .map(t => `${t.name}${t.confidence ? ` (${Math.round(t.confidence*100)}%)` : ""}`)
+      .map((t) => `${t.name}${t.confidence ? ` (${Math.round(t.confidence * 100)}%)` : ""}`)
       .join(", ");
-    setMessages(prev => [...prev, { sender: "bot", content: `Detected tools: ${summary}` }]);
+    setMessages((prev) => [
+      ...prev,
+      { sender: "bot", content: `Detected tools: ${summary}` },
+    ]);
   }
-
-
-
 
   if (!render || typeof document === "undefined") return null;
 
@@ -389,78 +325,82 @@ const handleSend = async (text, files = []) => {
         }`}
       />
 
-        <div
-          className={`absolute bottom-0 h-[90svh] md:h-[95vh] left-1/2 w-full max-w-[420px] -translate-x-1/2 px-4 pt-4 pb-0 ${
-            isDragging ? "transition-none" : "transition-[transform,opacity] duration-300 ease-out"
-          }`}
-          style={{
-            transform: `translate(-50%, ${translateY}) ${closing ? "scale(0.98)" : "scale(1)"}`,
-            opacity: closing ? 0.98 : 1,
-            willChange: "transform, opacity",
-          }}
-          onClick={(e) => e.stopPropagation()}
-          onTransitionEnd={(e) => {
-            if (closing && e.target === e.currentTarget) {
-              setRender(false);
-              setClosing(false);
-            }
-          }}
-        >
-
-          <div className="mx-auto max-w-[380px] rounded-t-3xl bg-white shadow-md flex flex-col h-full overflow-hidden">
-            <ChatHeader onClose={onClose} dragHandleProps={{ onPointerDown: startDrag }} />
+      <div
+        className={`absolute bottom-0 h-[90svh] md:h-[95vh] left-1/2 w-full max-w-[420px] -translate-x-1/2 px-4 pt-4 pb-0 ${
+          isDragging ? "transition-none" : "transition-[transform,opacity] duration-300 ease-out"
+        }`}
+        style={{
+          transform: `translate(-50%, ${translateY}) ${
+            closing ? "scale(0.98)" : "scale(1)"
+          }`,
+          opacity: closing ? 0.98 : 1,
+          willChange: "transform, opacity",
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onTransitionEnd={(e) => {
+          if (closing && e.target === e.currentTarget) {
+            setRender(false);
+            setClosing(false);
+          }
+        }}
+      >
+        <div className="mx-auto max-w-[380px] rounded-t-3xl bg-white shadow-md flex flex-col h-full overflow-hidden">
+          <ChatHeader onClose={onClose} dragHandleProps={{ onPointerDown: startDrag }} />
 
           {status === false ? (
-            <div 
-            ref={messagesEndRef}
-            className="flex-1 overflow-y-auto px-5 pt-1 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <MessageList messages={messages} />
+            <div
+              ref={messagesEndRef}
+              className="flex-1 overflow-y-auto px-5 pt-1 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
+              <MessageList messages={messages} />
 
-            {loading && (
-              <div className="flex items-center gap-2 text-gray-500 mt-2">
-                <div className="loader w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
-                
-                <div className="flex items-center gap-1">
-                  <span>Bot is thinking</span>
-                  <div className="flex items-center gap-1 translate-y-[4px]">
-                    <span className="w-1 h-1 bg-gray-400 rounded-full animate-typing-wave"></span>
-                    <span className="w-1 h-1 bg-gray-400 rounded-full animate-typing-wave [animation-delay:0.2s]"></span>
-                    <span className="w-1 h-1 bg-gray-400 rounded-full animate-typing-wave [animation-delay:0.4s]"></span>
+              {loading && (
+                <div className="flex items-center gap-2 text-gray-500 mt-2">
+                  <div className="loader w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
+
+                  <div className="flex items-center gap-1">
+                    <span>Bot is thinking</span>
+                    <div className="flex items-center gap-1 translate-y-[4px]">
+                      <span className="w-1 h-1 bg-gray-400 rounded-full animate-typing-wave"></span>
+                      <span className="w-1 h-1 bg-gray-400 rounded-full animate-typing-wave [animation-delay:0.2s]"></span>
+                      <span className="w-1 h-1 bg-gray-400 rounded-full animate-typing-wave [animation-delay:0.4s]"></span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
           ) : (
-                <div className="items center justify-center flex flex-1 ">
-                  <RotatingLines
-                    strokeColor="blue"
-                    strokeWidth="2"
-                    animationDuration="0.1"
-                    width="45"
-                    visible={true}
-                  />
-                </div>
-              )
-          }
-          
+            <div className="items center justify-center flex flex-1 ">
+              <RotatingLines
+                strokeColor="blue"
+                strokeWidth="2"
+                animationDuration="0.1"
+                width="45"
+                visible={true}
+              />
+            </div>
+          )}
 
           <div className="flex-shrink-0 flex flex-col px-4 py-3 gap-2">
             <hr className="border-t border-gray-200/70" />
-            <ChatInput onSend={handleSend} onDetected={handleDetectedTools} />
+            <ChatInput
+              onSend={handleSend}
+              onDetected={handleDetectedTools}
+              // showQuickReplies defaults to true in ChatInput
+            />
           </div>
 
           <div className="mt-auto grid grid-cols-2 gap-4 px-4 pb-4">
-            <button 
+            <button
               onClick={() => navigate("/home")}
-              className="rounded-[8px] font-regular bg-[#D9D9D9] px-4 py-2 text-black-700">
+              className="rounded-[8px] font-regular bg-[#D9D9D9] px-4 py-2 text-black-700"
+            >
               Previous
             </button>
 
             <button className="rounded-[8px] font-regular bg-[#D9D9D9] px-4 py-2 text-black-700">
               Next
             </button>
-
           </div>
         </div>
       </div>

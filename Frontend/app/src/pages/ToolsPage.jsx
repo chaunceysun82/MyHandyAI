@@ -6,6 +6,7 @@ import LoadingPlaceholder from "../components/LoadingPlaceholder";
 import MobileWrapper from "../components/MobileWrapper";
 import { fetchProjectTools, mockTools, transformToolsData } from "../services/tools";
 import { fetchSteps } from "../services/overview";
+import StepVideoGuide from "../components/steps/StepVideoGuide"; // Add this import
 
 export default function ToolsPage() {
 	const { projectId } = useParams();
@@ -17,6 +18,9 @@ export default function ToolsPage() {
 	const [error, setError] = useState("");
 	const [totalSteps, setTotalSteps] = useState(1);
 	const [showRawData, setShowRawData] = useState(false);
+	
+	// Get the project video URL from navigation state
+	const projectVideoUrl = location.state?.projectVideoUrl;
 
 	useEffect(() => {
 		const fetchData = async () => {
@@ -72,17 +76,29 @@ export default function ToolsPage() {
 	}, [projectId]);
 
 	const handleBack = () => {
-		navigate(`/projects/${projectId}/overview`);
+		navigate(`/projects/${projectId}/overview`, {
+			state: {
+				projectId,
+				projectName: location.state?.projectName || "Project",
+				projectVideoUrl: projectVideoUrl
+			}
+		});
 	};
 
 	const handlePrev = () => {
 		// Navigate back to Project Overview since Tools is the first step
-		navigate(`/projects/${projectId}/overview`);
+		navigate(`/projects/${projectId}/overview`, {
+			state: {
+				projectId,
+				projectName: location.state?.projectName || "Project",
+				projectVideoUrl: projectVideoUrl
+			}
+		});
 	};
 
 	const handleNext = () => {
 		// Navigate to the first actual step (step 1, since tools is step 0)
-		navigate(`/projects/${projectId}/steps/1`);
+		navigate(`/projects/${projectId}/steps/1`, { state: { projectVideoUrl } });
 	};
 
 	if (loading) {
@@ -114,7 +130,7 @@ export default function ToolsPage() {
 	return (
 		<MobileWrapper>
 			<ToolsLayout
-				stepNumber={1}
+				stepNumber={0} // Changed from 1 to 0 to display "Tools" instead of "Step 1/6"
 				totalSteps={totalSteps}
 				title="Tools Required"
 				onBack={handleBack}
@@ -122,8 +138,14 @@ export default function ToolsPage() {
 				onNext={handleNext}
 				projectId={projectId}
 				projectName={location.state?.projectName || "Project"}
+				projectVideoUrl={projectVideoUrl}
 			>
 				<div className="space-y-4">
+					{/* Video Guide Section
+					{projectVideoUrl && (
+						<StepVideoGuide videoUrl={projectVideoUrl} title="Project Video Guide" />
+					)} */}
+					
 					{/* Tools Grid */}
 					{tools.length > 0 ? (
 						<ToolsGrid tools={tools} />

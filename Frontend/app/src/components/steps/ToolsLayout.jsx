@@ -11,6 +11,7 @@ export default function ToolsLayout({
 	onNext,
 	projectId,
 	projectName,
+	projectVideoUrl, // Add this prop
 }) {
 	return (
 		<div className="flex flex-col h-screen bg-gray-50">
@@ -32,9 +33,10 @@ export default function ToolsLayout({
 				stepNumber={stepNumber}
 				stepTitle={title}
 				totalSteps={totalSteps}
+				projectVideoUrl={projectVideoUrl}
 				onPrev={onPrev} 
 				onNext={onNext}
-				isPrevDisabled={true} // Tools is always first, so no previous
+				isPrevDisabled={false} // Enable previous button to go back to overview
 				isNextDisabled={false}
 				isNextFinal={false}
 			/>

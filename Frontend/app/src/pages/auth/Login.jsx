@@ -1,13 +1,14 @@
 import React, { useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useState } from "react";
-import { loginUser } from "../../services/auth";
+import { loginUser, hasCompletedOnboarding } from "../../services/auth";
 import { useNavigate } from "react-router-dom";
 import {ReactComponent as Google} from '../../assets/google.svg';
 import {ReactComponent as Facebook} from '../../assets/Facebook.svg';
 import {getAuth, GoogleAuthProvider, signInWithPopup} from "firebase/auth";
 import { app } from "../../firebase";
 import { getUserById } from "../../services/auth";
+import FieldError from "../../components/FieldError";
 
 const Login = () => {
 	const location = useLocation();
@@ -16,34 +17,37 @@ const Login = () => {
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [rememberMe, setRememberMe] = useState(false);
-	const [toast, setToast] = useState({ show: false, message: "", type: "" });
+	
+	// Field-level error states
+	const [errors, setErrors] = useState({
+		email: "",
+		password: "",
+		general: ""
+	});
+	
 	const navigate = useNavigate();
 
 	const auth = getAuth(app);
 	const googleProvider = new GoogleAuthProvider();
 
-	// Toast function
-	const showToast = (message, type = "info") => {
-		setToast({ show: true, message, type });
-		setTimeout(() => {
-			setToast({ show: false, message: "", type: "" });
-		}, 3000);
-	};
-
-
-	// const signInValidation = () => {
-	// 	if(email === '' || password === '')
-	// 	{
-	// 		console.log("Please enter both email and password to proceed.");
-	// 		return false;
-	// 	}
-	// 	return true;
-	// }
-
+	// Clear errors when path changes
 	useEffect(() => {
 		setEmail("");
 		setPassword("");
+		setErrors({
+			email: "",
+			password: "",
+			general: ""
+		});
 	}, [location.pathname]);
+
+	// Clear specific field error when user starts typing
+	const clearFieldError = (fieldName) => {
+		setErrors(prev => ({
+			...prev,
+			[fieldName]: ""
+		}));
+	};
 
 	const signUpWithGoogle = async () => {
 		try {
@@ -51,99 +55,173 @@ const Login = () => {
 			const user = result.user;
 			console.log("Google login attempt for:", user.email);
 			
-			// Check if user exists in our backend
+			// For Google sign-in, we'll try to find existing user by attempting to create a temporary user
+			// This works with the existing backend endpoint
 			try {
-				const response = await fetch(`${process.env.REACT_APP_BASE_URL}/users/email/${user.email}`);
-				
-				if (response.ok) {
-					// User exists in backend, proceed with login
-					console.log("Existing user found, proceeding with login");
-					const store = rememberMe ? localStorage : sessionStorage;
-					store.setItem("authToken", user.uid);
-					const name = user.displayName || (user.email?.split("@")[0]) || "User";
-					store.setItem("displayName", name);
-					store.setItem("email", user.email || "");
-					navigate("/home");
-				} else {
-					// User doesn't exist in backend, redirect to signup
-					console.log("User not found in database, redirecting to signup");
-					
-					// Store Google user data temporarily for signup
-					localStorage.setItem("tempGoogleUser", JSON.stringify({
-						uid: user.uid,
+				const response = await fetch(`${process.env.REACT_APP_BASE_URL}/users`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						firstname: "temp",
+						lastname: "temp",
 						email: user.email,
-						displayName: user.displayName || user.email?.split("@")[0] || "User"
-					}));
-					
-					// Show toast message and redirect to signup
-					showToast("User account not found. Please sign up first.", "error");
-					setTimeout(() => {
-						navigate("/signup");
-					}, 2000); // Wait 2 seconds for toast to be visible
-				}
-			} catch (error) {
-				console.error("Error checking user existence:", error);
-				// If we can't check, assume user doesn't exist and redirect to signup
-				console.log("Couldn't verify user, redirecting to signup");
+						password: "temp"
+					}),
+				});
 				
-				// Store Google user data temporarily for signup
+				if (response.status === 400) {
+					const error = await response.json();
+					if (error.detail === "Email already exists") {
+						// User exists, we need to check onboarding completion
+						// But since we don't have a way to get user data by email without backend changes,
+						// we'll redirect to onboarding to let them complete it
+						console.log("Existing user found, redirecting to onboarding");
+						
+						// Store Google user data temporarily
+						localStorage.setItem("tempGoogleUser", JSON.stringify({
+							uid: user.uid,
+							email: user.email,
+							displayName: user.displayName || user.email?.split("@")[0] || "User"
+						}));
+						
+						setErrors(prev => ({
+							...prev,
+							general: "Please login with your password to continue, or complete onboarding if you haven't finished it."
+						}));
+						return;
+					}
+				}
+				
+				// User doesn't exist, proceed with signup
+				console.log("New user, proceeding with signup");
 				localStorage.setItem("tempGoogleUser", JSON.stringify({
 					uid: user.uid,
 					email: user.email,
 					displayName: user.displayName || user.email?.split("@")[0] || "User"
 				}));
+				navigate("/signup");
 				
-				// Show toast message and redirect to signup
-				showToast("Unable to verify user account. Please sign up first.", "error");
-				setTimeout(() => {
-					navigate("/signup");
-				}, 2000);
+			} catch (error) {
+				console.error("Error checking user existence:", error);
+				// If we can't check, assume new user and redirect to signup
+				localStorage.setItem("tempGoogleUser", JSON.stringify({
+					uid: user.uid,
+					email: user.email,
+					displayName: user.displayName || user.email?.split("@")[0] || "User"
+				}));
+				navigate("/signup");
 			}
 		} catch (error) {
-			console.error("An error occurred during Google login:", error);
-			showToast("Google authentication failed. Please try again.", "error");
+			console.error("An error occurred during Google sign-in:", error);
+			setErrors(prev => ({
+				...prev,
+				general: "Google authentication failed. Please try again."
+			}));
 		}
 	};
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
+		
+		// Clear previous errors
+		setErrors({
+			email: "",
+			password: "",
+			general: ""
+		});
+
+		// Basic validation
+		let hasErrors = false;
+		const newErrors = { email: "", password: "", general: "" };
+
+		if (!email.trim()) {
+			newErrors.email = "Email is required";
+			hasErrors = true;
+		} else if (!/\S+@\S+\.\S+/.test(email)) {
+			newErrors.email = "Please enter a valid email address";
+			hasErrors = true;
+		}
+
+		if (!password.trim()) {
+			newErrors.password = "Password is required";
+			hasErrors = true;
+		}
+
+		if (hasErrors) {
+			setErrors(newErrors);
+			return;
+		}
+
 		try {
 			console.log("Calling the loginUser function");
 			const res = await loginUser(email, password);
 			
-			//if(res.id)
-			//{
-				//if(rememberMe)
-				//{
-					//localStorage.setItem("authToken", res.id);
-				//}
-				//else
-				//{
-					//sessionStorage.setItem("authToken", res.id);
-				//}
-			//}
 			const store = rememberMe ? localStorage : sessionStorage;
      		store.setItem("authToken", res.id);
-    		// fetch name and cache it for the header
+    		
+    		// fetch user data and check onboarding completion
      		try {
-       		const u = await getUserById(res.id);
-       		const full = [u.firstname, u.lastname].filter(Boolean).join(" ") || (u.email ?? "User");
+       		const user = await getUserById(res.id);
+       		const full = [user.firstname, user.lastname].filter(Boolean).join(" ") || (user.email ?? "User");
        		store.setItem("displayName", full);
-     		} catch { /* ignore; we'll fallback in Home */ }
+       		
+       		// Check if user has completed onboarding
+       		if (hasCompletedOnboarding(user)) {
+       			console.log("User has completed onboarding, redirecting to home");
+       			navigate("/home");
+       		} else {
+       			console.log("User has not completed onboarding, redirecting to onboarding");
+       			// Store user data temporarily for onboarding completion
+       			localStorage.setItem("tempUserData", JSON.stringify({
+       				userId: res.id,
+       				firstname: user.firstname,
+       				lastname: user.lastname,
+       				email: user.email
+       			}));
+       			navigate("/onboarding", { replace: true });
+       		}
+     		} catch (error) {
+       		console.error("Error fetching user data:", error);
+       		// If we can't fetch user data, redirect to home as fallback
+       		navigate("/home");
+     		}
 
 			console.log("Login result: ", res);
-			navigate("/home")
 		}
 		catch (err) {
 			console.log("Login error: ", err.message);
+			
+			// Handle specific error cases
+			if (err.message.includes("Invalid credentials") || err.message.includes("Login failed")) {
+				setErrors(prev => ({
+					...prev,
+					general: "Incorrect email or password. Please try again!"
+				}));
+			} else {
+				setErrors(prev => ({
+					...prev,
+					general: err.message || "Login failed. Please try again."
+				}));
+			}
 		}
 	};
-
-
 
 	return (
 		<div className="min-h-screen flex flex-col items-center p-4">
 			<h1 className="text-[20px] mt-[-24px] font-semibold p-10">Welcome back!</h1>
+			
+			{/* General Error Message */}
+			{errors.general && (
+				<div className="w-full max-w-sm mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+					<div className="flex items-center gap-2 text-red-800">
+						<svg className="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+							<path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+						</svg>
+						<span className="text-sm font-medium">{errors.general}</span>
+					</div>
+				</div>
+			)}
+			
 			<div className="relative w-full max-w-sm mx-auto mb-8">
 				{/* Tab buttons */}
 				<div className="flex">
@@ -173,46 +251,83 @@ const Login = () => {
 					/>
 				</div>
 			</div>
+			
 			<form className="w-full " onSubmit={handleSubmit}>
-				<label className="block mb-2 text-sm font-medium text-gray-700">
-					Email <span className="text-red-500">*</span>
-				</label>
-				<input
-					type="email"
-					value={email}
-					onChange={(e) => setEmail(e.target.value)}
-					style={{backgroundColor: '#F7F7F7'}}
-					className="w-full p-2 mb-7 border text-[12px] border-gray-300 rounded-[20px]"
-					placeholder="hello@example.com"
-				/>
-				<label className="block mb-2 text-sm font-medium text-gray-700">
-					Password <span className="text-red-500">*</span>
-				</label>
-				<div className="relative w-full mb-5">
-					<input
-						value={password}
-						onChange={(e) => setPassword(e.target.value)}
-						type={showPassword ? "text" : "password"}
-						placeholder="Password"
-						style={{backgroundColor: '#F7F7F7'}}
-						className="w-full p-2 pr-10 border border-gray-300 text-[12px] rounded-[20px]"
-					/>
-					<div
-						className="absolute inset-y-0 right-3 flex items-center cursor-pointer text-gray-500"
-						onClick={() => setShowPassword((prev) => !prev)}>
-						{showPassword ? 
-							<img 
-								alt = "opening eye" 
-								src="https://cdn-icons-png.flaticon.com/128/159/159604.png"
-								className="w-5 h-5"
-							/> : <img 
-									src="https://cdn-icons-png.flaticon.com/128/2767/2767146.png" 	
-									alt = "eye-closing" 
-									className="w-5 h-5"
-								/>
-						}
+				<FieldError error={errors.email}>
+					<label className="block mb-2 text-sm font-medium text-gray-700">
+						Email <span className="text-red-500">*</span>
+					</label>
+					<div className="relative">
+						<input
+							type="email"
+							value={email}
+							onChange={(e) => {
+								setEmail(e.target.value);
+								clearFieldError('email');
+							}}
+							style={{backgroundColor: '#F7F7F7'}}
+							className={`w-full p-2 mb-7 border text-[12px] rounded-[20px] transition-colors ${
+								errors.email 
+									? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
+									: 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
+							}`}
+							placeholder="hello@example.com"
+						/>
+						{errors.email && (
+							<div className="absolute inset-y-0 right-3 flex items-center">
+								<div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+									<span className="text-white text-xs font-bold">!</span>
+								</div>
+							</div>
+						)}
 					</div>
-				</div>
+				</FieldError>
+
+				<FieldError error={errors.password}>
+					<label className="block mb-2 text-sm font-medium text-gray-700">
+						Password <span className="text-red-500">*</span>
+					</label>
+					<div className="relative w-full mb-5">
+						<input
+							value={password}
+							onChange={(e) => {
+								setPassword(e.target.value);
+								clearFieldError('password');
+							}}
+							type={showPassword ? "text" : "password"}
+							placeholder="Password"
+							style={{backgroundColor: '#F7F7F7'}}
+							className={`w-full p-2 pr-10 border text-[12px] rounded-[20px] transition-colors ${
+								errors.password 
+									? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
+									: 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
+							}`}
+						/>
+						<div className="absolute inset-y-0 right-3 flex items-center gap-2">
+							{errors.password && (
+								<div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+									<span className="text-white text-xs font-bold">!</span>
+								</div>
+							)}
+							<div
+								className="cursor-pointer text-gray-500"
+								onClick={() => setShowPassword((prev) => !prev)}>
+								{showPassword ? 
+									<img 
+										alt = "opening eye" 
+										src="https://cdn-icons-png.flaticon.com/128/159/159604.png"
+										className="w-5 h-5"
+									/> : <img 
+											src="https://cdn-icons-png.flaticon.com/128/2767/2767146.png" 	
+											alt = "eye-closing" 
+											className="w-5 h-5"
+										/>
+								}
+							</div>
+						</div>
+					</div>
+				</FieldError>
+
 				<div className="flex justify-between items-center">
 					<label className="flex text-[12px] items-center text-sm text-gray-700">
 						<input
@@ -262,40 +377,6 @@ const Login = () => {
 				<p className="text-[12px] text-[#595959] font-light">Don't have an account?</p>
 				<a href = "/signup" className="text-[12px] text-[#55D468] hover:underline font-semibold">Sign up</a>
 			</div>
-			
-
-			{/* <p className="text-xs text-center mt-auto mb-6 text-gray-500">
-				By login, you agree to our{" "}
-				<a href="/" className="text-blue-600 hover:underline">
-					Terms of Conditions
-				</a>{" "}
-				and{" "}
-				<a href="/" className="text-blue-600 hover:underline">
-					Privacy Policy
-				</a>
-				.
-			</p> */}
-
-			{/* Toast Notification */}
-			{toast.show && (
-				<div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm ${
-					toast.type === "error" 
-						? "bg-red-500 text-white" 
-						: toast.type === "success" 
-						? "bg-green-500 text-white" 
-						: "bg-blue-500 text-white"
-				}`}>
-					<div className="flex items-center justify-between">
-						<span className="text-sm font-medium">{toast.message}</span>
-						<button 
-							onClick={() => setToast({ show: false, message: "", type: "" })}
-							className="ml-4 text-white hover:text-gray-200"
-						>
-							×
-						</button>
-					</div>
-				</div>
-			)}
 		</div>
 	);
 };

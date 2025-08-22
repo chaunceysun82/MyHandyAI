@@ -22,22 +22,30 @@ export const submitOnboardingAnswers = async (answers) => {
 	const authToken = localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
 	
 	if (tempUserData) {
-		// This is a new signup - use combined signup approach
+		// This is a new signup - user already exists in DB, just update with onboarding data
 		try {
 			const userData = JSON.parse(tempUserData);
-			const result = await signupUserWithOnboarding(userData, answers);
-			console.log("User created with onboarding data:", result);
+			const userId = userData.userId;
+			
+			if (!userId) {
+				throw new Error("User ID not found for onboarding update");
+			}
+			
+			// Transform onboarding answers to user schema fields
+			const transformedOnboardingData = transformOnboardingAnswers(answers);
+			
+			// Update existing user with onboarding data using PUT
+			const result = await updateUser(userId, transformedOnboardingData);
+			console.log("User updated with onboarding data:", result);
 			
 			// Store the user ID for authentication
-			if (result.id) {
-				localStorage.setItem("authToken", result.id);
-				localStorage.removeItem("tempUserData");
-				console.log("User authenticated after combined signup");
-			}
+			localStorage.setItem("authToken", userId);
+			localStorage.removeItem("tempUserData");
+			console.log("User authenticated after onboarding completion");
 			
 			return result;
 		} catch (error) {
-			console.error("Error in combined signup:", error);
+			console.error("Error updating user with onboarding data:", error);
 			throw error;
 		}
 	} else if (authToken) {

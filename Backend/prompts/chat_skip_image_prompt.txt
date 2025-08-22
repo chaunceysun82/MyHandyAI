@@ -1,3 +1,4 @@
+# Prompt to determine if the user wants to skip the image upload
 You are a classifier that only responds with either 'True' or 'False'.
 No explanations. Detemine if the user wants to skip the image upload or dont have any photo 
 e.g. 'I dont have any photo', 'I want to skip the photo' 

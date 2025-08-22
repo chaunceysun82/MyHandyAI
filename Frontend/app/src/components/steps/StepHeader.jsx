@@ -8,6 +8,9 @@ export default function StepHeader({
 	onBack,
 	className = "", // lets you pass extra classes if needed
 }) {
+	// Check if this is the tools step (stepNumber === 0)
+	const isToolsStep = stepNumber === 0;
+
 	return (
 		// bg-transparent so it matches the page; no border
 		<header className={`relative bg-transparent ${className}`}>
@@ -32,10 +35,10 @@ export default function StepHeader({
 					</svg>
 				</button>
 
-				{/* Center: Step number */}
+				{/* Center: Step number or Tools text */}
 				<div className="flex-1 flex justify-center">
 					<span className="text-lg font-semibold text-gray-900">
-						Step {stepNumber}/{totalSteps}
+						{isToolsStep ? "Tools" : `Step ${stepNumber}/${totalSteps}`}
 					</span>
 				</div>
 
