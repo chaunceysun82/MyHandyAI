@@ -160,7 +160,7 @@ def get_youtube_link(step):
     } for it in items]
     
     step_text=step["title"]
-    for i in step["instruction"]:
+    for i in step["instructions"]:
         step_text+= "\n" + i
     
     payload = {
