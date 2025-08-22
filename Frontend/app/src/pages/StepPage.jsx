@@ -230,8 +230,8 @@ export default function StepPage() {
 			<div className="flex flex-col h-screen bg-gray-50">
 				{/* Header - Fixed at top */}
 				<StepHeader
-					stepNumber={parseInt(stepIndex) + 1}
-					totalSteps={step.total}
+					stepNumber={parseInt(stepIndex)}
+					totalSteps={step.total - 1}
 					title={step.title}
 					onBack={handleBack}
 				/>

@@ -201,7 +201,7 @@ export default function ProjectOverview() {
 							return (
 								<StepCard
 									key={s.key || i}
-									index={i + 1}
+									index={i}
 									icon={s.icon}
 									title={s.title}
 									subtitle={s.subtitle}
