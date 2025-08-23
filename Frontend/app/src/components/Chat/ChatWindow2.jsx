@@ -358,6 +358,7 @@ export default function ChatWindow2({
                     try {
                         const historyRes = await axios.get(`${URL}/step-guidance/session/${sessionRes.data.session}/history`);
                         if (!cancelled) {
+                            console.log("history: ",historyRes)
                             const formattedMessages = historyRes.data.map(({role, message}) => ({
                                 sender: role === "user" ? "user" : "bot",
                                 content: message,
