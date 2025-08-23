@@ -69,7 +69,6 @@ class StepGuidanceChatbot:
                 f"That question doesn’t appear related to the current step "
                 f"(Step {self.current_step}: {step_title}). "
                 "Ask me about this step, the tools/materials involved, safety, or troubleshooting. "
-                "If you still want to proceed with that other question, say: 'answer anyway'."
             )
             self._remember("assistant", msg)
             return msg
@@ -107,7 +106,7 @@ class StepGuidanceChatbot:
         return (
             "You are a friendly, concise step-by-step home repair guide.\n"
             "Goals:\n"
-            "1) Help the user complete the CURRENT step safely and correctly.\n"
+            "1) Help the user complete the CURRENT step safely and correctly.If the step is 0 provide guidance about the tools needed. if no step is provide focus on answr general questions the user is in the overview page\n"
             "2) Answer free-form questions using the provided guide context only.\n"
             "3) Offer practical tips and highlight safety warnings when relevant.\n"
             "4) Keep answers actionable and compact; use bullets or short numbered lists when helpful.\n"
