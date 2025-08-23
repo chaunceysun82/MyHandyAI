@@ -282,7 +282,7 @@ def get_step_guidance_history(session_id: str):
 
     # Sort merged list by timestamp
     history = sorted(history, key=lambda x: x["timestamp"])
-    return {"session_id": session_id, "history": history}
+    return history
 
 @router.post("/session/{session_id}/reset")
 def reset_step_guidance_session(session_id: str, project: str, user: str):
