@@ -1,6 +1,6 @@
 import React, {useState} from "react";
 import { useNavigate } from "react-router-dom";
-import ChatWindow from "../Chat/ChatWindow";
+import ChatWindow2 from "../Chat/ChatWindow2";
 
 export default function StepFooter({ 
 	projectId, 
@@ -64,15 +64,12 @@ export default function StepFooter({
 			</div>
 
 			{openModal && (
-				<ChatWindow
+				<ChatWindow2
 					isOpen={open}
 					projectId={projectId}
 					onClose={() => setOpenModal(false)}
-					secondChatStatus={true}
 					URL={URL}
-					userId={userId}
 					stepNumber={stepNumber}
-					// secondSessionID={true}
 				/>
 			)}
 

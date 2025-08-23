@@ -4,7 +4,7 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { fetchEstimations, fetchSteps } from "../services/overview";
 import StepCard from "../components/StepCard";
 import EstimatedBreakdown from "../components/EstimationBreakdown";
-import ChatWindow from "../components/Chat/ChatWindow";
+import ChatWindow2 from "../components/Chat/ChatWindow2";
 
 
 export default function ProjectOverview() {
@@ -289,14 +289,12 @@ export default function ProjectOverview() {
 
 					{/* Chat Assistant Modal */}
 					{openModal && (
-						<ChatWindow
+						<ChatWindow2
 							isOpen={open}
 							projectId={projectId}
 							onClose={() => setOpenModal(false)}
-							secondChatStatus={true}
 							URL={URL}
-							userId={userId}
-							// secondSessionID={true}
+							stepNumber={null}
 						/>
 					)}
 

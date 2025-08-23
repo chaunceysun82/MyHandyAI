@@ -24,11 +24,10 @@ export default function ChatWindow({
   const [status, setStatus] = useState(false);
   const [status2, setStatus2] = useState(false);
 
-  // Tips while loading (from main)
+  // Tips while loading
   const tips = [
     "💡 Tip: You can upload multiple files for better results.",
     "⚠️ Please be careful when using any tools or materials provided by MyHandyAI.",
-    "⚠️ Make sure your internet connection is stable.",
     "📂 Keep your project organized for quick access.",
     "💬 Use short and clear prompts for better responses.",
   ];
@@ -36,7 +35,7 @@ export default function ChatWindow({
   useEffect(() => {
     if (status) {
       const interval = setInterval(() => {
-        setCurrentTipIndex((prevIndex) => (prevIndex + 1) % tips.length);
+        setCurrentTipIndex((i) => (i + 1) % tips.length);
       }, 4500);
       return () => clearInterval(interval);
     }
@@ -45,7 +44,7 @@ export default function ChatWindow({
   // Which API to talk to
   const api = secondChatStatus ? "step-guidance" : "chatbot";
 
-  // Step-guidance bootstrap flag (from main)
+  // Step-guidance bootstrap flag
   const [bool, setBool] = useState(null);
   useEffect(() => {
     const check = async () => {
@@ -100,8 +99,7 @@ export default function ChatWindow({
   }, [messages]);
 
   // Drag handlers
-  const startDrag = (e) =>
-    setDrag({ active: true, startY: e.clientY, dy: 0 });
+  const startDrag = (e) => setDrag({ active: true, startY: e.clientY, dy: 0 });
   useEffect(() => {
     if (!drag.active) return;
     const move = (e) =>
@@ -350,9 +348,7 @@ export default function ChatWindow({
     if (!Array.isArray(tools) || tools.length === 0) return;
     setOwnedTools((prev) => {
       const map = new Map(prev.map((t) => [String(t.name || "").toLowerCase(), t]));
-      tools.forEach((t) =>
-        map.set(String(t.name || "").toLowerCase(), t)
-      );
+      tools.forEach((t) => map.set(String(t.name || "").toLowerCase(), t));
       return Array.from(map.values());
     });
     const summary = tools
@@ -384,7 +380,7 @@ export default function ChatWindow({
       />
 
       <div
-        className={`absolute bottom-0 h-[90svh] md:h-[95vh] left-1/2 w	full max-w-[420px] -translate-x-1/2 px-4 pt-4 pb-0 ${
+        className={`absolute bottom-0 h-[90svh] md:h-[95vh] left-1/2 w-full max-w-[420px] -translate-x-1/2 px-4 pt-4 pb-0 ${
           isDragging ? "transition-none" : "transition-[transform,opacity] duration-300 ease-out"
         }`}
         style={{
