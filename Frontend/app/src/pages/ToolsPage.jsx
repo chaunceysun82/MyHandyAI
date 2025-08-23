@@ -22,6 +22,9 @@ export default function ToolsPage() {
 	// Get the project video URL from navigation state
 	const projectVideoUrl = location.state?.projectVideoUrl;
 
+	// const userId = location.state?.userId;
+	// console.log("User ID:", userId);
+
 	useEffect(() => {
 		const fetchData = async () => {
 			try {

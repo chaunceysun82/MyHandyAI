@@ -14,6 +14,8 @@ export default function ChatWindow({
   projectName,
   userId,
   URL,
+  secondChatStatus,
+  stepNumber
 }) {
   const [render, setRender] = useState(isOpen);
   const [closing, setClosing] = useState(false);
@@ -22,13 +24,48 @@ export default function ChatWindow({
   const [status, setStatus] = useState(false);
   const [status2, setStatus2] = useState(false);
 
+  // Tips while loading (from main)
+  const tips = [
+    "💡 Tip: You can upload multiple files for better results.",
+    "⚠️ Please be careful when using any tools or materials provided by MyHandyAI.",
+    "⚠️ Make sure your internet connection is stable.",
+    "📂 Keep your project organized for quick access.",
+    "💬 Use short and clear prompts for better responses.",
+  ];
+  const [currentTipIndex, setCurrentTipIndex] = useState(0);
+  useEffect(() => {
+    if (status) {
+      const interval = setInterval(() => {
+        setCurrentTipIndex((prevIndex) => (prevIndex + 1) % tips.length);
+      }, 4500);
+      return () => clearInterval(interval);
+    }
+  }, [status, tips.length]);
+
+  // Which API to talk to
+  const api = secondChatStatus ? "step-guidance" : "chatbot";
+
+  // Step-guidance bootstrap flag (from main)
+  const [bool, setBool] = useState(null);
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const res = await axios.get(`${URL}/step-guidance/started/${projectId}`);
+        if (res.data) setBool(res.data);
+      } catch (err) {
+        console.error("Error checking step guidance status:", err);
+      }
+    };
+    check();
+  }, [URL, projectId]);
+
   const [drag, setDrag] = useState({ active: false, startY: 0, dy: 0 });
   const THRESHOLD = 120;
   const messagesEndRef = useRef(null);
 
   const STORAGE_SESSION_KEY = `sessionId_${userId}_${projectId}`;
   const STORAGE_MESSAGES_KEY = `messages_${userId}_${projectId}`;
-  const STORAGE_TOOLS_KEY = `owned_tools_${userId}_${projectId}`;
+  const STORAGE_TOOLS_KEY   = `owned_tools_${userId}_${projectId}`;
 
   const navigate = useNavigate();
 
@@ -37,9 +74,10 @@ export default function ChatWindow({
     return saved ? JSON.parse(saved) : [];
   });
 
-  const [sessionId, setSessionId] = useState(
-    localStorage.getItem(STORAGE_SESSION_KEY) || ""
-  );
+  const [sessionId, setSessionId] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_SESSION_KEY);
+    return saved || null;
+  });
 
   // Remember detected tools for this chat (and persist)
   const [ownedTools, setOwnedTools] = useState(() => {
@@ -51,6 +89,7 @@ export default function ChatWindow({
     }
   });
 
+  // Autoscroll
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollTo({
@@ -128,9 +167,7 @@ export default function ChatWindow({
     if (status2 === true) {
       const interval = setInterval(async () => {
         try {
-          const response = await axios.get(
-            `${URL}/generation/status/${projectId}`
-          );
+          const response = await axios.get(`${URL}/generation/status/${projectId}`);
           if (response) {
             const message = response.data.message;
             if (message === "generation completed") {
@@ -142,17 +179,15 @@ export default function ChatWindow({
           console.log("Err: ", err);
         }
       }, 5000);
-
       return () => clearInterval(interval);
     }
   }, [status2, navigate, URL, projectId]);
 
-  // Persist messages locally
+  // Persist messages/tools locally
   useEffect(() => {
     localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messages));
   }, [messages, STORAGE_MESSAGES_KEY]);
 
-  // Persist owned tools locally
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_TOOLS_KEY, JSON.stringify(ownedTools));
@@ -165,7 +200,8 @@ export default function ChatWindow({
       if (!sessionId) {
         try {
           const res = await axios.post(
-            `${URL}/chatbot/start`,
+            `${URL}/${api}/start`,
+            // chatbot expects {user, project}; step-guidance ignores user.
             { user: userId, project: projectId },
             { headers: { "Content-Type": "application/json" } }
           );
@@ -177,8 +213,9 @@ export default function ChatWindow({
         }
       } else {
         try {
+          // fetch history from the right API family
           const historyRes = await axios.get(
-            `${URL}/chatbot/session/${sessionId}/history`
+            `${URL}/${api}/session/${sessionId}/history`
           );
           const formattedMessages = historyRes.data.map(
             ({ role, message }) => ({
@@ -187,23 +224,36 @@ export default function ChatWindow({
             })
           );
           setMessages(formattedMessages);
+
+          // If step-guidance mode and not started, kick it off using the existing session
+          if (secondChatStatus && !bool) {
+            const res = await axios.post(
+              `${URL}/${api}/start`,
+              { project: projectId, session_id: sessionId },
+              { headers: { "Content-Type": "application/json" } }
+            );
+            setSessionId(res.data.session_id);
+            localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
+            setMessages((prev) => [
+              ...prev,
+              { sender: "bot", content: res.data.response },
+            ]);
+          }
         } catch (err) {
-          setMessages([
-            { sender: "bot", content: "Failed to load chat history." },
-          ]);
+          setMessages([{ sender: "bot", content: "Failed to load chat history." }]);
         }
       }
     }
     loadOrStartSession();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, userId]);
+  }, [projectId, userId, api]);
 
   // Send message handler (merged behavior)
   const handleSend = async (text, files = []) => {
     if (!text.trim() && files.length === 0) return;
 
     try {
-      // 1) Show selected images as separate messages (UX from main)
+      // 1) Show selected images as separate messages (image bubbles)
       if (files.length > 0) {
         for (const file of files) {
           if (file.type.startsWith("image/")) {
@@ -219,8 +269,7 @@ export default function ChatWindow({
         }
       }
 
-      // 2) Construct a unified user text message (your feature)
-      //    Append filenames and detected tool summary so LLM has context
+      // 2) Build visible user text + file list
       let messageContent = text.trim();
       if (files.length > 0) {
         const fileNames = files.map((f) => f.name).join("\n");
@@ -228,37 +277,46 @@ export default function ChatWindow({
           ? `${messageContent}\nFiles:\n${fileNames}`
           : `Files: ${fileNames}`;
       }
-
-      const detSummary =
-        files.length > 0 && ownedTools.length > 0
-          ? `\n\n[Detected tools in attached image: ${ownedTools
-              .map((t) => t.name)
-              .join(", ")}]`
-          : "";
-
-      const currInput = `${messageContent || text || ""}${detSummary}`;
-
       if (messageContent) {
         setMessages((prev) => [...prev, { sender: "user", content: messageContent }]);
       }
 
-      // 3) Prepare payload (keep uploaded_image + owned_tools)
-      let uploadedimage = null;
+      // 3) Add detected-tools hint for the LLM
+      const detSummary =
+        files.length > 0 && ownedTools.length > 0
+          ? `\n\n[Detected tools in attached image: ${ownedTools.map(t => t.name).join(", ")}]`
+          : "";
+      const currInput = `${messageContent || text || ""}${detSummary}`;
+
+      // 4) Prepare payload per API
+      let uploaded_image = null;
       const firstImage = files.find((f) => f.type.startsWith("image/"));
-      if (firstImage) uploadedimage = await toBase64(firstImage);
+      if (firstImage) uploaded_image = await toBase64(firstImage);
 
-      const payload = {
-        message: currInput,
-        user: userId,
-        project: projectId,
-        session_id: sessionId,
-        uploaded_image: uploadedimage, // base64 string or null
-        owned_tools: ownedTools, // helps backend filter recs (optional)
-      };
+      let payload;
+      let endpoint = `${URL}/${api}/chat`;
+      if (api === "chatbot") {
+        payload = {
+          message: currInput,
+          user: userId,
+          project: projectId,
+          session_id: sessionId,
+          uploaded_image,
+          owned_tools: ownedTools,
+        };
+      } else {
+        // step-guidance
+        payload = {
+          message: currInput,
+          project: projectId,
+          step: stepNumber || 0,
+          uploaded_image,
+        };
+      }
 
-      // 4) Send to backend
+      // 5) Send
       setLoading(true);
-      const res = await axios.post(`${URL}/chatbot/chat`, payload, {
+      const res = await axios.post(endpoint, payload, {
         headers: { "Content-Type": "application/json" },
       });
 
@@ -287,7 +345,7 @@ export default function ChatWindow({
       reader.onerror = (error) => reject(error);
     });
 
-  // When ChatInput detects tools, save them and add a visible bot note
+  // When ChatInput detects tools, save and show a visible bot note
   function handleDetectedTools(tools) {
     if (!Array.isArray(tools) || tools.length === 0) return;
     setOwnedTools((prev) => {
@@ -326,13 +384,11 @@ export default function ChatWindow({
       />
 
       <div
-        className={`absolute bottom-0 h-[90svh] md:h-[95vh] left-1/2 w-full max-w-[420px] -translate-x-1/2 px-4 pt-4 pb-0 ${
+        className={`absolute bottom-0 h-[90svh] md:h-[95vh] left-1/2 w	full max-w-[420px] -translate-x-1/2 px-4 pt-4 pb-0 ${
           isDragging ? "transition-none" : "transition-[transform,opacity] duration-300 ease-out"
         }`}
         style={{
-          transform: `translate(-50%, ${translateY}) ${
-            closing ? "scale(0.98)" : "scale(1)"
-          }`,
+          transform: `translate(-50%, ${translateY}) ${closing ? "scale(0.98)" : "scale(1)"}`,
           opacity: closing ? 0.98 : 1,
           willChange: "transform, opacity",
         }}
@@ -357,7 +413,6 @@ export default function ChatWindow({
               {loading && (
                 <div className="flex items-center gap-2 text-gray-500 mt-2">
                   <div className="loader w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
-
                   <div className="flex items-center gap-1">
                     <span>Bot is thinking</span>
                     <div className="flex items-center gap-1 translate-y-[4px]">
@@ -370,7 +425,7 @@ export default function ChatWindow({
               )}
             </div>
           ) : (
-            <div className="items center justify-center flex flex-1 ">
+            <div className="flex flex-col items-center justify-center h-screen w-full px-4">
               <RotatingLines
                 strokeColor="blue"
                 strokeWidth="2"
@@ -378,6 +433,9 @@ export default function ChatWindow({
                 width="45"
                 visible={true}
               />
+              <p className="mt-6 text-gray-600 text-sm text-center transition-all duration-500 ease-in-out">
+                {tips[currentTipIndex]}
+              </p>
             </div>
           )}
 

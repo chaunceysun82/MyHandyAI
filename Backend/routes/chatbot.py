@@ -416,6 +416,20 @@ async def chat_with_bot(chat_message: ChatMessage):
         if getattr(chatbot, "current_state", None) == "complete":
             await save_information(session_id=session_id)
             await qdrant_function(project_id=chat_message.project)
+            
+            # FLOW 1: Extract and save tools from completed project
+            try:
+                print(f"🔄 FLOW 1: Extracting tools from completed project {chat_message.project}")
+                # Check if project has tool_generation data first
+                project = project_collection.find_one({"_id": ObjectId(chat_message.project)})
+                if project and "tool_generation" in project and "tools" in project["tool_generation"]:
+                    await extract_and_save_tools_from_project(chat_message.project)
+                    print(f"✅ FLOW 1: Tools extracted and saved successfully")
+                else:
+                    print(f"ℹ️ FLOW 1: No tool_generation data found, skipping extraction")
+            except Exception as e:
+                print(f"⚠️ FLOW 1: Failed to extract tools: {e}")
+                # Don't fail the main chat response if tool extraction fails
 
         return ChatResponse(
             response=response,
@@ -556,6 +570,63 @@ async def debug_projects():
     return output
 
 # Tools Management Endpoints
+@router.post("/tools/save")
+async def save_tool_to_collections(tool_data: Tool):
+    """
+    Save a single tool to both MongoDB tools_collection and Qdrant.
+    This is the basic building block for the tools system.
+    """
+    try:
+        # Convert Pydantic model to dict
+        tool_dict = tool_data.model_dump()
+        
+        print(f"🔧 Saving tool: {tool_dict['name']}")
+        
+        # 1. Save to MongoDB tools_collection
+        tool_doc = {
+            "name": tool_dict["name"],
+            "description": tool_dict["description"],
+            "price": tool_dict["price"],
+            "risk_factors": tool_dict["risk_factors"],
+            "safety_measures": tool_dict["safety_measures"],
+            "image_link": tool_dict.get("image_link"),
+            "amazon_link": tool_dict.get("amazon_link"),
+            "category": tool_dict.get("category", "general"),
+            "tags": tool_dict.get("tags", []),
+            "created_at": datetime.utcnow(),
+            "usage_count": 1,
+            "last_used": datetime.utcnow()
+        }
+        
+        result = tools_collection.insert_one(tool_doc)
+        tool_id = str(result.inserted_id)
+        print(f"✅ Saved to MongoDB with ID: {tool_id}")
+        
+        # 2. Create embeddings and save to Qdrant
+        try:
+            embedding_result = create_and_store_tool_embeddings(tool_dict, tool_id)
+            print(f"✅ Saved embeddings to Qdrant: {embedding_result}")
+            
+            return {
+                "success": True,
+                "message": "Tool saved successfully to both MongoDB and Qdrant",
+                "tool_id": tool_id,
+                "qdrant_result": embedding_result
+            }
+            
+        except Exception as e:
+            print(f"⚠️ Qdrant save failed: {e}")
+            return {
+                "success": True,
+                "message": "Tool saved to MongoDB but Qdrant failed",
+                "tool_id": tool_id,
+                "qdrant_error": str(e)
+            }
+            
+    except Exception as e:
+        print(f"❌ MongoDB save failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save tool: {str(e)}")
+
 @router.post("/tools/search")
 async def search_tools(search_request: ToolSearchRequest):
     """
@@ -736,3 +807,229 @@ async def get_tools_statistics():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get tools statistics: {str(e)}")
+
+@router.get("/tools/test/connection")
+async def test_tools_connection():
+    """
+    Test the connection to both MongoDB tools collection and Qdrant.
+    """
+    try:
+        # Test MongoDB connection
+        mongo_count = tools_collection.count_documents({})
+        mongo_sample = list(tools_collection.find({}, {"name": 1, "category": 1}).limit(3))
+        for tool in mongo_sample:
+            tool["_id"] = str(tool["_id"])
+        
+        # Test Qdrant connection
+        qdrant_url = os.getenv("QDRANT_URL")
+        qdrant_api_key = os.getenv("QDRANT_API_KEY")
+        
+        qdrant_status = "not_configured"
+        qdrant_info = {}
+        
+        if qdrant_url and qdrant_api_key:
+            try:
+                qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
+                collections = qclient.get_collections()
+                collection_names = [c.name for c in collections.collections]
+                
+                tools_collection_exists = "tools" in collection_names
+                
+                if tools_collection_exists:
+                    info = qclient.get_collection("tools")
+                    qdrant_info = {
+                        "vector_count": info.vectors_count,
+                        "vector_size": info.config.params.vectors.size
+                    }
+                    qdrant_status = "connected_with_tools"
+                else:
+                    qdrant_status = "connected_no_tools"
+                    
+            except Exception as e:
+                qdrant_status = f"error: {str(e)}"
+        
+        return {
+            "mongodb": {
+                "status": "connected",
+                "tools_count": mongo_count,
+                "sample_tools": mongo_sample
+            },
+            "qdrant": {
+                "status": qdrant_status,
+                "url": qdrant_url,
+                "info": qdrant_info
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Connection test failed: {str(e)}")
+
+@router.post("/tools/extract-from-project/{project_id}")
+async def extract_and_save_tools_from_project(project_id: str):
+    """
+    MAIN FLOW: Extract tools from project.tool_generation and save them to tools_collection + Qdrant.
+    This is triggered after the user completes chat and tool generation is done.
+    """
+    try:
+        # 1. Get the project and check if it has tool_generation data
+        project = project_collection.find_one({"_id": ObjectId(project_id)})
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        if "tool_generation" not in project:
+            raise HTTPException(status_code=400, detail="Project has no tool_generation data")
+        
+        tool_generation = project["tool_generation"]
+        
+        # Extract tools from tool_generation.tools
+        if "tools" not in tool_generation:
+            raise HTTPException(status_code=400, detail="No tools found in tool_generation")
+        
+        tools_list = tool_generation["tools"]
+        print(f"🔧 Found {len(tools_list)} tools in project {project_id}")
+        
+        saved_tools = []
+        failed_tools = []
+        
+        # 2. Save each tool to tools_collection and Qdrant
+        for tool in tools_list:
+            try:
+                # Ensure required fields exist
+                if not all(key in tool for key in ["name", "description", "price", "risk_factors", "safety_measures"]):
+                    print(f"⚠️ Skipping tool with missing required fields: {tool.get('name', 'unknown')}")
+                    failed_tools.append({"tool": tool, "error": "missing_required_fields"})
+                    continue
+                
+                # Check if tool already exists in tools_collection (avoid duplicates)
+                existing_tool = tools_collection.find_one({"name": tool["name"]})
+                if existing_tool:
+                    print(f"✅ Tool '{tool['name']}' already exists, skipping")
+                    saved_tools.append({"tool_id": str(existing_tool["_id"]), "status": "already_exists"})
+                    continue
+                
+                # Save new tool
+                tool_id = store_tool_in_database(tool)
+                embedding_result = create_and_store_tool_embeddings(tool, tool_id)
+                
+                saved_tools.append({
+                    "tool_id": tool_id,
+                    "name": tool["name"],
+                    "status": "saved",
+                    "qdrant_result": embedding_result
+                })
+                
+                print(f"✅ Saved tool: {tool['name']} (ID: {tool_id})")
+                
+            except Exception as e:
+                print(f"❌ Failed to save tool {tool.get('name', 'unknown')}: {e}")
+                failed_tools.append({"tool": tool.get('name', 'unknown'), "error": str(e)})
+        
+        # 3. Update project to mark tools as processed
+        update_project(project_id, {"tools_extracted_to_collection": True, "tools_extraction_date": datetime.utcnow()})
+        
+        return {
+            "message": f"Processed {len(tools_list)} tools from project",
+            "project_id": project_id,
+            "saved_tools": len(saved_tools),
+            "failed_tools": len(failed_tools),
+            "tools": saved_tools,
+            "failures": failed_tools
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to extract tools from project: {str(e)}")
+
+@router.post("/tools/compare-and-enhance")
+async def compare_and_enhance_tools(tools_data: List[Dict[str, Any]]):
+    """
+    FLOW 2: Compare newly generated tools with existing ones and enhance them.
+    This is called during tool generation to reuse images/links from similar existing tools.
+    """
+    try:
+        enhanced_tools = []
+        reuse_stats = {"reused": 0, "new": 0, "errors": 0}
+        
+        print(f"🔍 Comparing {len(tools_data)} newly generated tools with existing tools")
+        
+        for tool in tools_data:
+            try:
+                tool_name = tool.get("name", "")
+                if not tool_name:
+                    print(f"⚠️ Skipping tool without name")
+                    enhanced_tools.append(tool)
+                    reuse_stats["errors"] += 1
+                    continue
+                
+                print(f"🔍 Analyzing tool: {tool_name}")
+                
+                # Search for similar existing tools in our tools collection
+                similar_tools = find_similar_tools(
+                    query=tool_name,
+                    limit=3,
+                    similarity_threshold=0.75  # Lower threshold for broader matching
+                )
+                
+                if similar_tools:
+                    # Get the most similar tool
+                    best_match = similar_tools[0]
+                    similarity_score = best_match["similarity_score"]
+                    
+                    print(f"   Found similar tool: {best_match['name']} (Score: {similarity_score:.3f})")
+                    
+                    # If similarity is high enough, reuse image and amazon links
+                    if similarity_score >= 0.8:
+                        # High similarity - reuse everything
+                        tool["image_link"] = best_match["image_link"]
+                        tool["amazon_link"] = best_match["amazon_link"]
+                        tool["reused_from"] = best_match["tool_id"]
+                        tool["similarity_score"] = similarity_score
+                        tool["reuse_type"] = "high_similarity"
+                        
+                        # Update usage count for the existing tool
+                        update_tool_usage(best_match["tool_id"])
+                        
+                        reuse_stats["reused"] += 1
+                        print(f"   ✅ HIGH SIMILARITY - Reused image/links from existing tool")
+                        
+                    elif similarity_score >= 0.65:
+                        # Medium similarity - reuse image only (amazon link might be different)
+                        tool["image_link"] = best_match["image_link"]
+                        tool["reference_tool"] = best_match["tool_id"]
+                        tool["similarity_score"] = similarity_score
+                        tool["reuse_type"] = "medium_similarity"
+                        
+                        reuse_stats["reused"] += 1
+                        print(f"   📷 MEDIUM SIMILARITY - Reused image only")
+                        
+                    else:
+                        # Low similarity - no reuse
+                        tool["similarity_score"] = similarity_score
+                        tool["reuse_type"] = "no_reuse"
+                        reuse_stats["new"] += 1
+                        print(f"   🆕 LOW SIMILARITY - Treating as new tool")
+                        
+                else:
+                    # No similar tools found
+                    tool["reuse_type"] = "no_similar_found"
+                    reuse_stats["new"] += 1
+                    print(f"   🆕 NO SIMILAR TOOLS - Treating as new tool")
+                
+                enhanced_tools.append(tool)
+                
+            except Exception as e:
+                print(f"❌ Error processing tool {tool.get('name', 'unknown')}: {e}")
+                tool["error"] = str(e)
+                enhanced_tools.append(tool)
+                reuse_stats["errors"] += 1
+        
+        return {
+            "message": "Tools comparison and enhancement completed",
+            "total_tools": len(tools_data),
+            "reuse_statistics": reuse_stats,
+            "enhanced_tools": enhanced_tools
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to compare and enhance tools: {str(e)}")
