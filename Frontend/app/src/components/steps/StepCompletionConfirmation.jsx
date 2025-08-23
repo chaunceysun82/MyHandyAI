@@ -8,17 +8,19 @@ export default function StepCompletionConfirmation({
 	stepCompleted, 
 	allSteps, 
 	currentStepIndex,
-	onStepUpdate 
+	onStepUpdate,
+	onProjectComplete // New prop for navigation to project completion
 }) {
 	const [showValidationModal, setShowValidationModal] = useState(false);
 	const [validationType, setValidationType] = useState(null); // 'previous' or 'final'
 	const [pendingAction, setPendingAction] = useState(null);
 
-	// Check if previous steps are completed
+	// Check if previous steps are completed (excluding tools step)
 	const checkPreviousStepsCompleted = () => {
-		if (currentStepIndex === 0) return true; // First step, no previous steps to check
+		if (currentStepIndex <= 1) return true; // First instruction step (step 1), no previous instruction steps to check
 		
-		for (let i = 0; i < currentStepIndex; i++) {
+		// Check only instruction steps (skip tools step at index 0)
+		for (let i = 1; i < currentStepIndex; i++) {
 			if (!allSteps[i]?.completed) {
 				return false;
 			}
@@ -29,8 +31,47 @@ export default function StepCompletionConfirmation({
 	// Check if this is the final step (excluding tools step)
 	const isFinalStep = () => {
 		// Filter out tools step and check if current step is the last instruction step
-		const instructionSteps = allSteps.filter(step => step.type !== 'tools');
-		return currentStepIndex === instructionSteps.length - 1;
+		const instructionSteps = allSteps.filter((step, index) => index > 0); // Skip tools step (index 0)
+		return currentStepIndex === instructionSteps.length;
+	};
+
+	// Check if all instruction steps are completed
+	const checkAllStepsCompleted = () => {
+		// Check all instruction steps (skip tools step at index 0)
+		for (let i = 1; i < allSteps.length; i++) {
+			if (!allSteps[i]?.completed) {
+				return false;
+			}
+		}
+		return true;
+	};
+
+	// Complete all remaining steps and finish project
+	const completeAllStepsAndFinish = async () => {
+		try {
+			// Mark all incomplete instruction steps as completed (skip tools step at index 0)
+			for (let i = 1; i < allSteps.length; i++) {
+				if (!allSteps[i]?.completed) {
+					await toggleStepCompletion(projectId, i + 1);
+				}
+			}
+			
+			// Mark current step as completed
+			await toggleStepCompletion(projectId, stepNumber);
+			
+			// Close modal and update UI
+			setShowValidationModal(false);
+			if (onStepUpdate) onStepUpdate();
+			
+			// Navigate to project completion page
+			if (onProjectComplete) {
+				onProjectComplete();
+			}
+			
+		} catch (error) {
+			console.error('Error completing all steps:', error);
+			alert('Failed to complete all steps. Please try again.');
+		}
 	};
 
 	const handleStepComplete = async () => {
@@ -57,7 +98,7 @@ export default function StepCompletionConfirmation({
 				if (isFinalStep()) {
 					// Show final step warning
 					setValidationType('final');
-					setPendingAction(() => () => completeStepWithPrevious());
+					setPendingAction(() => () => completeAllStepsAndFinish());
 					setShowValidationModal(true);
 					return;
 				}
@@ -72,11 +113,11 @@ export default function StepCompletionConfirmation({
 		}
 	};
 
-	// Complete current step and mark previous incomplete steps as completed
+	// Complete current step and mark previous incomplete steps as completed (excluding tools step)
 	const completeStepWithPrevious = async () => {
 		try {
-			// Mark all previous incomplete steps as completed
-			for (let i = 0; i < currentStepIndex; i++) {
+			// Mark all previous incomplete instruction steps as completed (skip tools step at index 0)
+			for (let i = 1; i < currentStepIndex; i++) {
 				if (!allSteps[i]?.completed) {
 					await toggleStepCompletion(projectId, i + 1);
 				}
@@ -116,12 +157,23 @@ export default function StepCompletionConfirmation({
 				cancelText: "No, Go Back"
 			};
 		} else if (validationType === 'final') {
-			return {
-				title: "Final Step Warning",
-				message: "This is the final step! Complete all steps and finish project?",
-				confirmText: "Yes, Complete Project",
-				cancelText: "No, Go Back"
-			};
+			// Check if all steps are already completed
+			const allCompleted = checkAllStepsCompleted();
+			if (allCompleted) {
+				return {
+					title: "Project Completion",
+					message: "All steps are completed! Ready to finish this project?",
+					confirmText: "Yes, Complete Project",
+					cancelText: "No, Go Back"
+				};
+			} else {
+				return {
+					title: "Final Step - Complete All Steps",
+					message: "This is the final step! Some previous steps are not completed. Would you like to mark all remaining steps as complete and finish the project?",
+					confirmText: "Yes, Complete All Steps & Finish",
+					cancelText: "No, Go Back"
+				};
+			}
 		}
 		return {};
 	};

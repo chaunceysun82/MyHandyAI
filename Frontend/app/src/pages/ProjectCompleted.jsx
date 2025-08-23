@@ -39,13 +39,12 @@ export default function ProjectCompleted() {
 
   const handleClose = () => navigate("/home");
   const handleGoBack = () => {
-    // Get the video URL from navigation state
-    const projectVideoUrl = state?.projectVideoUrl;
+    // Navigate back to Project Overview, preserving any existing state
     navigate(`/projects/${projectId}/overview`, {
       state: {
         projectId,
         projectName: projectName || "Project",
-        projectVideoUrl: projectVideoUrl
+        ...state // Pass through any existing state including projectVideoUrl if it exists
       }
     });
   };

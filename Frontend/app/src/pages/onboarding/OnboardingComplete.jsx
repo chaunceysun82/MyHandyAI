@@ -47,6 +47,8 @@ const OnboardingComplete = () => {
 
 	const handleFinish = () => {
 		console.log("Onboarding completed, navigating to home");
+		// Set flag to indicate user is coming from onboarding
+		localStorage.setItem("fromOnboarding", "true");
 		navigate("/home");
 	};
 
