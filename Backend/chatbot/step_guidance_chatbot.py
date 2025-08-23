@@ -56,8 +56,9 @@ class StepGuidanceChatbot:
         Free-form chat with the LLM using the guide + current step context.
         Before answering, verify relevance; if off-topic, nudge the user.
         """
-        
-        self.current_step=step or 1
+        if (step>0):
+            step=step-1
+        self.current_step=step
         user_message = (user_message or "").strip()
         self._remember("user", user_message)
 
@@ -75,7 +76,7 @@ class StepGuidanceChatbot:
 
         # 2) Build messages for the main model
         system = self._build_system_prompt()
-        guide_context = self._build_guide_context_block()
+        guide_context = self._build_guide_context_block(self.current_step)
         step_context = self._build_step_context_block(self.current_step)
         
         print("step_context: ", step_context)
@@ -114,28 +115,43 @@ class StepGuidanceChatbot:
             "Do not introduce new steps or change the step order."
         )
 
-    def _build_guide_context_block(self) -> str:
+    def _build_guide_context_block(self, step) -> str:
         # tools brief
-        # tools_brief = ""
-        # try:
-        #     tools = (self.tools_data or {}).get("tools") or []
-        #     if isinstance(tools, list) and tools:
-        #         names = [t.get("name") for t in tools if isinstance(t, dict) and t.get("name")]
-        #         if names:
-        #             tools_brief = f"Tools in guide: {', '.join(names[:20])}"
-        # except Exception:
-        #     pass
+        tools_brief = "Tools in guide:"
+        try:
+            tools = (self.tools_data or {}).get("tools") or []
+            for t in tools:
+                tools_brief += "\n- "+t.get("name","")
+                if step==0:
+                    tools_brief +="\ndescription: "+ t.get("description","")
+                    tools_brief +="\nprice: "+ t.get("price","")
+                    tools_brief +="\nrisk_factors: "+ t.get("risk_factors","")
+                    tools_brief +="\nsafety_measures: "+ t.get("safety_measures","")
+                    
+        except Exception:
+            pass
 
         parts = []
         if self.problem_summary:
             parts.append(f"Problem summary: {self.problem_summary}")
-        # if tools_brief:
-        #     parts.append(tools_brief)
+        if tools_brief:
+            parts.append(tools_brief)
         parts.append(f"Total steps: {self.total_steps}")
 
         return "GUIDE OVERVIEW\n" + "\n".join(parts)
 
     def _build_step_context_block(self, step_idx: int) -> str:
+        if step <0:
+            steps_brief = ""
+            try:
+                for step_num, step in self.steps_data.items():
+                    steps_brief += (step or {}).get("title") or ""
+            except Exception:
+                pass
+        
+        if step == 0:  
+            pass  
+            
         step = self.steps_data.get(step_idx, {})
         title = step.get("title", f"Step {step_idx}")
         instr = step.get("instructions") or []
@@ -165,7 +181,7 @@ class StepGuidanceChatbot:
     # ---------- Rendering helpers ----------
 
     def _render_welcome(self) -> str:
-        return "🛠️ I’ll guide you step by step. Ask me anything about the current step.\n\n" + self._render_step(1)
+        return "I’ll guide you step by step. Ask me anything about the project, steps or tools.\n\n"
 
     def _render_step(self, step_idx: int) -> str:
         step = self.steps_data.get(step_idx, {})
