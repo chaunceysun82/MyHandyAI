@@ -10,8 +10,27 @@ const Chat = () => {
   const navigate = useNavigate();
   const URL = process.env.REACT_APP_BASE_URL;
 
+  console.log("URL:", URL);
+
   const [loading, setLoading] = useState(true);
+
+  const tips = [
+    "💡 Tip: You can upload multiple files for better results.",
+    "⚠️ Please be careful when using any tools or materials provided by MyHandyAI.",
+    "📂 Keep your project organized for quick access.",
+    "💬 Use short and clear prompts for better responses.",
+  ];
+
+  const [currentTipIndex, setCurrentTipIndex] = useState(0);
   
+  useEffect(() => {
+    if (loading) {
+      const interval = setInterval(() => {
+        setCurrentTipIndex((prevIndex) => (prevIndex + 1) % tips.length);
+      }, 2500);
+      return () => clearInterval(interval);
+    }
+  }, [loading, tips.length]);
   
   // const [statusCheck, setStatusCheck] = useState(false);
 
@@ -32,7 +51,8 @@ const Chat = () => {
     try {
       const response = await axios.get(`${URL}/generation/status/${projectId}`);
 
-      if (response) {
+      if (response) 
+      {
         const message = response.data.message;
         console.log("Message:", message);
 
@@ -48,12 +68,7 @@ const Chat = () => {
         setLoading(false);
         if(statusCheck)
         {
-          navigate(`/projects/${projectId}/overview`, {
-            state: {
-              projectId,
-              projectName: projectName || "Project"
-            }
-          });
+          navigate(`/projects/${projectId}/overview`, {state: {userId}});
         }
       }, 800);
     }
@@ -80,7 +95,7 @@ const Chat = () => {
     <MobileWrapper>
 
       {(loading) ? (
-        <div className="flex items-center justify-center h-screen">
+        <div className="flex flex-col items-center justify-center h-screen w-full px-4">
             <RotatingLines
               strokeColor="blue"
               strokeWidth="2"
@@ -88,6 +103,9 @@ const Chat = () => {
               width="45"
               visible={true}
             />
+            <p className="mt-6 text-gray-600 text-sm text-center transition-all duration-500 ease-in-out">
+              {tips[currentTipIndex]}
+            </p>
         </div>
       ) : (
         <ChatWindow
