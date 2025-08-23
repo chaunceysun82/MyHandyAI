@@ -370,6 +370,20 @@ export default function ChatWindow2({
                         }
                     }
                 } else {
+                    try {
+                        const historyRes = await axios.get(`${URL}/step-guidance/session/${sessionRes.data.session}/history`);
+                        if (!cancelled) {
+                            const formattedMessages = historyRes.data.map(({role, message}) => ({
+                                sender: role === "user" ? "user" : "bot",
+                                content: message,
+                            }));
+                            setMessages(formattedMessages);
+                        }
+                    } catch (historyErr) {
+                        if (!cancelled) {
+                            setMessages([{sender: "bot", content: "Failed to load chat history."}]);
+                        }
+                    }
                     // No session exists, start new one
                     const startRes = await axios.post(
                         `${URL}/step-guidance/start`,
