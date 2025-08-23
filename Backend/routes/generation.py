@@ -17,7 +17,7 @@ from datetime import datetime
 # Import tools reuse functions from chatbot
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from routes.chatbot import process_tools_with_reuse
+from routes.chatbot import find_similar_tools, update_tool_usage
 
 router = APIRouter(prefix="/generation", tags=["generation"])
 
@@ -83,19 +83,59 @@ async def generate_tools(project:str):
         if tools_result is None:
             raise HTTPException(status_code=400, detail="Missing required fields (summary, answers, questions) on project")
 
-        # Process tools with reuse logic to find existing tools and reuse images
+        # FLOW 2: Compare and enhance tools with existing ones
         if "tools" in tools_result and tools_result["tools"]:
-            processed_tools = process_tools_with_reuse(tools_result["tools"])
-            tools_result["tools"] = processed_tools
+            print(f"🔄 FLOW 2: Comparing {len(tools_result['tools'])} generated tools with existing tools")
             
-            # Add metadata about reuse
-            reused_count = len([t for t in processed_tools if "reused_from" in t])
-            new_count = len([t for t in processed_tools if "reused_from" not in t])
-            tools_result["reuse_metadata"] = {
-                "reused_tools": reused_count,
-                "new_tools": new_count,
-                "total_tools": len(processed_tools)
-            }
+            try:
+                # Use the direct function call instead of HTTP request
+                enhanced_tools = []
+                reuse_stats = {"reused": 0, "new": 0, "errors": 0}
+                
+                for tool in tools_result["tools"]:
+                    try:
+                        # Search for similar existing tools
+                        similar_tools = find_similar_tools(
+                            query=tool.get("name", ""),
+                            limit=3,
+                            similarity_threshold=0.75
+                        )
+                        
+                        if similar_tools and similar_tools[0]["similarity_score"] >= 0.8:
+                            # High similarity - reuse image and amazon link
+                            best_match = similar_tools[0]
+                            tool["image_link"] = best_match["image_link"]
+                            tool["amazon_link"] = best_match["amazon_link"]
+                            tool["reused_from"] = best_match["tool_id"]
+                            tool["similarity_score"] = best_match["similarity_score"]
+                            
+                            # Update usage count
+                            update_tool_usage(best_match["tool_id"])
+                            
+                            reuse_stats["reused"] += 1
+                            print(f"   ✅ Reused image/links for: {tool['name']}")
+                            
+                        else:
+                            # No good match - keep as new tool
+                            reuse_stats["new"] += 1
+                            print(f"   🆕 New tool: {tool['name']}")
+                        
+                        enhanced_tools.append(tool)
+                        
+                    except Exception as e:
+                        print(f"❌ Error processing tool {tool.get('name', 'unknown')}: {e}")
+                        enhanced_tools.append(tool)
+                        reuse_stats["errors"] += 1
+                
+                # Update tools_result with enhanced tools
+                tools_result["tools"] = enhanced_tools
+                tools_result["reuse_metadata"] = reuse_stats
+                
+                print(f"✅ FLOW 2 completed: {reuse_stats['reused']} reused, {reuse_stats['new']} new")
+                
+            except Exception as e:
+                print(f"⚠️ FLOW 2 comparison error: {e}")
+                tools_result["reuse_metadata"] = {"error": str(e)}
 
         update_project(str(cursor["_id"]), {"tool_generation":tools_result})
         
