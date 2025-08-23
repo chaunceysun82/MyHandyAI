@@ -5,22 +5,17 @@ const RAW_BASE =
   "";
 
 export async function detectTools(file, apiBase) {
-  const base = (apiBase || RAW_BASE || "").replace(/\/$/, "");
-  if (!base) {
-    throw new Error("Missing API base URL for tool detection");
-  }
-
+  const base = (apiBase || "").replace(/\/$/, "");
   const form = new FormData();
   form.append("file", file);
 
-  const res = await fetch(`${base}/api/tools/detect`, {
+  const res = await fetch(`${base}/chatbot/tools/detect`, {
     method: "POST",
     body: form,
   });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Tool detect failed: HTTP ${res.status} ${text}`);
-  }
-  return res.json(); // { tools: [...] }
+  if (res.status === 404) return { tools: [] }; // quiet fallback until backend is live
+  if (!res.ok) throw new Error(`Tool detect failed: ${res.status}`);
+  return res.json();
 }
+

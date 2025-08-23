@@ -37,7 +37,7 @@ app.include_router(chatbot.router)
 app.include_router(generation.router)
 app.include_router(feedback.router)
 app.include_router(step_guidance.router)
-app.include_router(tool_detection.router)
+app.include_router(tool_detection.router, prefix="/chatbot/tools")
 
 # handler for AWS
 handler = Mangum(app)
