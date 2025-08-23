@@ -7,21 +7,17 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { RotatingLines } from 'react-loader-spinner';
 
-export default function ChatWindow({
+export default function ChatWindow2({
   isOpen,
   onClose,
   projectId,
-  projectName,
-  userId,
   URL,
-  secondChatStatus,
   stepNumber
 }) {
 
-  console.log("ChatWindow1 Opened");
-  // console.log("User ID:", userId);
-  // console.log("Project ID:", projectId);
-  // console.log("Step Number:", stepNumber);
+//   console.log("User ID:", userId);
+  console.log("Project ID:", projectId);
+  console.log("Step Number:", stepNumber);
 
   const [render, setRender] = useState(isOpen);
   const [closing, setClosing] = useState(false);
@@ -50,27 +46,27 @@ export default function ChatWindow({
   }, [status, tips.length]);
 
 
-  const api = secondChatStatus ? "step-guidance" : "chatbot";
+//   const api = secondChatStatus ? "step-guidance" : "chatbot";
 
-  const [bool, setBool] = useState(null);
+//   const [bool, setBool] = useState(null);
 
-  useEffect(() => {
-    const check = async () => {
-      try 
-      {
-        const res = await axios.get(`${URL}/step-guidance/started/${projectId}`);
-        // console.log("Bool:", res.data);
-        if (res.data) 
-        {
-          setBool(res.data);
-        }
-      } catch (err)
-      {
-        console.error("Error checking step guidance status:", err);
-      }
-    }
-    check();
-  }, []);
+//   useEffect(() => {
+//     const check = async () => {
+//       try 
+//       {
+//         const res = await axios.get(`${URL}/step-guidance/started/${projectId}`);
+//         console.log("Bool:", res.data);
+//         if (res.data) 
+//         {
+//           setBool(res.data);
+//         }
+//       } catch (err)
+//       {
+//         console.error("Error checking step guidance status:", err);
+//       }
+//     }
+//     check();
+//   }, []);
 
 
 
@@ -78,8 +74,8 @@ export default function ChatWindow({
   const THRESHOLD = 120;
   const messagesEndRef = useRef(null);
 
-  const STORAGE_SESSION_KEY = `sessionId_${userId}_${projectId}`;
-  const STORAGE_MESSAGES_KEY = `messages_${userId}_${projectId}`;
+//   const STORAGE_SESSION_KEY = `sessionId_${userId}_${projectId}`;
+  const STORAGE_MESSAGES_KEY = `messages_${projectId}`;
 
   const navigate = useNavigate();
   
@@ -88,10 +84,31 @@ export default function ChatWindow({
     return saved ? JSON.parse(saved) : [];
   });
 
-  const [sessionId, setSessionId] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_SESSION_KEY);
-    return saved || null;
-  })
+//   const [messages, setMessages] = useState([]);
+
+ 
+//   const [sessionId, setSessionId] = useState(() => {
+//     const saved = localStorage.getItem(STORAGE_SESSION_KEY);
+//     return saved || null;
+//   })
+    const [sessionId, setSessionId] = useState(null);
+
+    // useEffect(() => {
+    //     const getSessionId = async () => {
+    //         try {
+    //             const res = await axios.get(`${URL}/step-guidance/session/${projectId}`);
+    //             // console.log("Res", res.data.session);
+    //             if(res.data)
+    //             {
+    //                 setSessionId(res.data.session_id);
+    //             }
+    //         } catch (err) {
+    //             console.error("Error fetching session ID:", err);
+    //         }
+    //     }
+    //     getSessionId();
+    // }, []);
+    // console.log("Session ID:", sessionId);
 
 
   // useEffect(() => {
@@ -255,79 +272,146 @@ export default function ChatWindow({
 
   
   // Persist messages locally
-  useEffect(() => {
-    localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messages));
-  }, [messages, STORAGE_MESSAGES_KEY]);
+    useEffect(() => {
+        localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messages));
+    }, [messages, STORAGE_MESSAGES_KEY]);
 
 
 
   // Load or start session
-  useEffect(() => {
-    console.log("Session ID:", sessionId);
+//   useEffect(() => {
+//     // console.log("Session ID:", sessionId);
+//     let cancelled = false;
+//     async function loadOrStartSession() {
+//     //   console.log("Loading or starting session for:", { projectId, userId });
+//       if(cancelled) return;
 
-    async function loadOrStartSession() {
-      console.log("Loading or starting session for:", { projectId, userId });
-      if(!sessionId)
-      {
-        try {
-            console.log("Full URL", `${URL}/${api}/start`);
-            console.log("In the first chat window");
+//       if(!sessionId)
+//       {
+//         try {
+//             // console.log("Full URL", `${URL}/step-guidance/start`);
 
-            const res = await axios.post(
-              `${URL}/${api}/start`,
-              { user: userId, project: projectId },
-              { headers: { "Content-Type": "application/json" } 
-            });
-            setSessionId(res.data.session_id);
-            localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
-            setMessages([{ sender: "bot", content: res.data.intro_message }]);
+//             const res = await axios.post(
+//               `${URL}/step-guidance/start`,
+//               { project: projectId },
+//               { headers: { "Content-Type": "application/json" } 
+//             });
+//             if(!cancelled)
+//             {
+//                 console.log("Response from starting session:", res.data);
+//                 setSessionId(res.data.session_id);
+//                 // localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
+//                 setMessages([{ sender: "bot", content: res.data.response }]);
+//             }
             
-            // if(secondChatStatus)
-            // {
-            //   setBool(false);
-            // }
+//             // if(secondChatStatus)
+//             // {
+//             //   setBool(false);
+//             // }
 
-        } catch (err) 
-        {
-          console.error("Intro message error", err);
-        }
-      } else {
-        try {
-          const historyRes = await axios.get(`${URL}/chatbot/session/${sessionId}/history`);
-          const formattedMessages = historyRes.data.map(({role, message}) => ({
-            sender: role === "user" ? "user" : "bot",
-            content: message,
-          }));
+//         } catch (err) 
+//         {
+//           console.error("Intro message error", err);
+//         }
+//       } else {
+//         try {
+//           const historyRes = await axios.get(`${URL}/chatbot/session/${sessionId}/history`);
+//           if(!cancelled)
+//           {
+//             const formattedMessages = historyRes.data.map(({role, message}) => ({
+//                 sender: role === "user" ? "user" : "bot",
+//                 content: message,
+//             }));
 
-          console.log("Formatted Messages:", formattedMessages);
-          setMessages(formattedMessages);
+//             console.log("Formatted Messages:", formattedMessages);
+//             setMessages(formattedMessages);
+//           }
+//         } catch (err) {
+//             if(!cancelled)
+//             {
+//                 setMessages([{sender: "bot", content: "Failed to load chat history."}]);
+//             }
+//         }
+//       }
+//     }
+//     loadOrStartSession();
 
+//     return () => { cancelled = true; };
+//   }, [projectId]);
 
-          if(secondChatStatus && !bool)
-          {
-            setBool(true);
-
-            const res = await axios.post(
-              `${URL}/${api}/start`,
-              { project: projectId, session_id: sessionId },
-              { headers: { "Content-Type": "application/json" } 
-            });
-            setSessionId(res.data.session_id);
-            localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
-            // Append the new bot's response to the formatted messages and use setMessages
-            // to update the state
-            setMessages((prev) => [...prev, { sender: "bot", content: res.data.response }]);
-
-            console.log("Response:", res.data);
-          }
-
-        } catch (err) {
-          setMessages([{sender: "bot", content: "Failed to load chat history."}]);
-        }
-      }
-    }
-    loadOrStartSession();
-  }, [projectId, userId]);
+    useEffect(() => {
+        let cancelled = false;
+        
+        const initializeSession = async () => {
+            if (cancelled) return;
+            
+            try {
+                // First, try to get existing session
+                const sessionRes = await axios.get(`${URL}/step-guidance/session/${projectId}`);
+                
+                if (cancelled) return;
+                
+                if (sessionRes.data?.session) {
+                    // Session exists, load history
+                    setSessionId(sessionRes.data.session);
+                    
+                    try {
+                        const historyRes = await axios.get(`${URL}/step-guidance/session/${sessionRes.data.session}/history`);
+                        if (!cancelled) {
+                            const formattedMessages = historyRes.data.map(({role, message}) => ({
+                                sender: role === "user" ? "user" : "bot",
+                                content: message,
+                            }));
+                            setMessages(formattedMessages);
+                        }
+                    } catch (historyErr) {
+                        if (!cancelled) {
+                            setMessages([{sender: "bot", content: "Failed to load chat history."}]);
+                        }
+                    }
+                } else {
+                    // No session exists, start new one
+                    const startRes = await axios.post(
+                        `${URL}/step-guidance/start`,
+                        { project: projectId },
+                        { headers: { "Content-Type": "application/json" }}
+                    );
+                    
+                    if (!cancelled) {
+                        console.log("Response from starting session:", startRes.data);
+                        setSessionId(startRes.data.session);
+                        setMessages([{ sender: "bot", content: startRes.data.response }]);
+                    }
+                }
+            } catch (err) {
+                console.log("Error during session initialization:", err);
+                // if (!cancelled) {
+                //     console.error("Session initialization error:", err);
+                //     // Start new session as fallback
+                //     try {
+                //         const startRes = await axios.post(
+                //             `${URL}/step-guidance/start`,
+                //             { project: projectId },
+                //             { headers: { "Content-Type": "application/json" }}
+                //         );
+                        
+                //         if (!cancelled) {
+                //             setSessionId(startRes.data.session_id);
+                //             setMessages([{ sender: "bot", content: startRes.data.response }]);
+                //         }
+                //     } catch (startErr) {
+                //         console.error("Failed to start new session:", startErr);
+                //     }
+                // }
+            }
+        };
+        
+        initializeSession();
+        
+        return () => {
+            cancelled = true;
+        };
+    }, [projectId, URL]); // Remove the separate sessionId fetching useEffect
 
 
   // Send message handler
@@ -369,18 +453,16 @@ const handleSend = async (text, files = []) => {
 
       const payload = 
       {
-        message: currInput,
-        user: userId,            
+        message: currInput,      
         project: projectId,    
-        session_id: sessionId,
         uploaded_image: uploadedimage, 
-        step: stepNumber || null
+        step: stepNumber || -1
       };
       
       setLoading(true);
 
       const res = await axios.post(
-        `${URL}/${api}/chat`,
+        `${URL}/step-guidance/chat`,
         payload,
         { 
           headers: 
