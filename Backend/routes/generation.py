@@ -14,6 +14,11 @@ from pymongo import DESCENDING
 from db import project_collection, steps_collection
 from datetime import datetime
 
+# Import tools reuse functions from chatbot
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from routes.chatbot import process_tools_with_reuse
+
 router = APIRouter(prefix="/generation", tags=["generation"])
 
 # Pydantic models for request/response
@@ -60,6 +65,7 @@ async def generate_tools(project:str):
     """
     Generate tools and materials for a DIY project.
     This endpoint runs independently to avoid timeout issues.
+    Now integrates with tools reuse system for better image management.
     """
     try:
         # Validate project exists
@@ -76,6 +82,20 @@ async def generate_tools(project:str):
         )
         if tools_result is None:
             raise HTTPException(status_code=400, detail="Missing required fields (summary, answers, questions) on project")
+
+        # Process tools with reuse logic to find existing tools and reuse images
+        if "tools" in tools_result and tools_result["tools"]:
+            processed_tools = process_tools_with_reuse(tools_result["tools"])
+            tools_result["tools"] = processed_tools
+            
+            # Add metadata about reuse
+            reused_count = len([t for t in processed_tools if "reused_from" in t])
+            new_count = len([t for t in processed_tools if "reused_from" not in t])
+            tools_result["reuse_metadata"] = {
+                "reused_tools": reused_count,
+                "new_tools": new_count,
+                "total_tools": len(processed_tools)
+            }
 
         update_project(str(cursor["_id"]), {"tool_generation":tools_result})
         
