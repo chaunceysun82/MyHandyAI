@@ -303,6 +303,7 @@ export default function StepPage() {
 						allSteps={allSteps}
 						currentStepIndex={parseInt(stepIndex)}
 						onStepUpdate={refreshStepData}
+						onProjectComplete={() => navigate(`/projects/${projectId}/completed`)}
 					/>
 				</main>
 
@@ -334,6 +335,9 @@ export default function StepPage() {
 						
 						return isLast;
 					})()}
+					allSteps={allSteps}
+					currentStepIndex={parseInt(stepIndex)}
+					onStepUpdate={refreshStepData}
 				/>
 			</div>
 		</MobileWrapper>

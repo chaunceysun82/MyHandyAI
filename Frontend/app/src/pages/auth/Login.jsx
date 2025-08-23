@@ -168,6 +168,8 @@ const Login = () => {
        		// Check if user has completed onboarding
        		if (hasCompletedOnboarding(user)) {
        			console.log("User has completed onboarding, redirecting to home");
+       			// Set flag to indicate user is coming from login
+       			localStorage.setItem("fromLogin", "true");
        			navigate("/home");
        		} else {
        			console.log("User has not completed onboarding, redirecting to onboarding");
