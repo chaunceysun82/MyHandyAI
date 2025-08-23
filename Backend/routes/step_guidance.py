@@ -264,11 +264,7 @@ def get_step_guidance_history(session_id: str):
     cursor = conversations_step_collection.find(
         {"session_id": session_id}
     ).sort("timestamp", 1)
-    history = [
-        {"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]}
-        for doc in cursor
-    ]
-    return {"session_id": session_id, "history": history}
+    return [{"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]} for doc in cursor]
 
 @router.post("/session/{session_id}/reset")
 def reset_step_guidance_session(session_id: str, project: str, user: str):
