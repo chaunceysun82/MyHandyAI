@@ -256,8 +256,8 @@ class SceneSpec(BaseModel):
 class ImageRequest(BaseModel):
     step_text: str
     scene: Optional[SceneSpec] = None
-    size: str = "1280x720"  # medium-quality sweet spot
-    n: int = 1             # candidates; keep 1 for MVP (cheaper, faster)
+    size: str = "1024x1024" 
+    n: int = 1             
     project_id: str
     
 def _build_prompt(step_text: str, scene: SceneSpec | None, guidance="neutral") -> str:
