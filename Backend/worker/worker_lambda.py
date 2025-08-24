@@ -423,7 +423,7 @@ def generate_step_image(step_id: str, payload: ImageRequest | dict):
         "s3_key": key,
         "url": url,
         "size": payload.size,
-        "model": "gpt-image-1",
+        "model": "imagen-4.0-generate-001",
         "prompt_preview": prompt[:180],
     }
     
