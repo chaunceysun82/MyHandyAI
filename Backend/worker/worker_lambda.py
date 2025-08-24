@@ -323,6 +323,8 @@ def _build_prompt(step_text: str, guidance="neutral") -> str:
             lines.append("If any attributes are unspecified, choose the most informative composition.")
         else:
             lines.append("Prioritize clarity of tool-to-surface contact; choose view and distance to avoid occlusion.")
+        
+        lines.append("Dont write any words, just show visuals and if required numbers")
         return "\n".join(lines)
 
 # def _generate_png(prompt: str, size: str, seed: Optional[int] = None) -> bytes:
