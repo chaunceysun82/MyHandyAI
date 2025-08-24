@@ -33,7 +33,7 @@ def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x10
         print("⚠️ IMAGES_SQS_URL not set; skipping enqueue")
         return
     for i, step in enumerate(steps, start=1):
-        step_text = ", ".join(s for s in step.get("instruction", []) if s and s.strip())
+        step_text = ", ".join(s for s in step.get("instructions", []) if s and s.strip())
         body = {
             "task": "image_step",
             "project": project_id,
