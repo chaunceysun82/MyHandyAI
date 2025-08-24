@@ -270,7 +270,10 @@ async def generate_steps(project):
 
         print("Steps Generated")
 
-        update_project(str(cursor["_id"]), {"step_generation":steps_result})
+        step_meta = {k: v for k, v in steps_result.items() if k != "steps"}
+        step_meta["status"] = "complete"
+        update_project(str(cursor["_id"]), {"step_generation": step_meta})
+        # update_project(str(cursor["_id"]), {"step_generation":steps_result})
         
         for step in steps_result["steps"]:
             step_doc = {
@@ -319,10 +322,31 @@ async def generate_estimation(project):
         
         # Generate estimation using the independent agent
         estimation_agent = EstimationAgent()
+
+        meta = cursor.get("step_generation") or {}
+
+        cur = steps_collection.find({"projectId": ObjectId(project)}).sort("order", 1)
+        steps_for_est = [{
+            "order": s.get("order"),
+            "title": s.get("title", ""),
+            "estimated_time_min": s.get("est_time_min", 0),
+            "time_text": s.get("time_text", "")
+        } for s in cur]
+
+        steps_data_for_est = {
+            "steps": steps_for_est,
+            "total_est_time_min": meta.get("total_est_time_min", 0),
+            "total_steps": meta.get("total_steps", len(steps_for_est)),
+        }
+
         estimation_result = estimation_agent.generate_estimation(
             tools_data=cursor["tool_generation"],
-            steps_data=cursor["step_generation"]
+            steps_data=steps_data_for_est
         )
+        # estimation_result = estimation_agent.generate_estimation(
+        #     tools_data=cursor["tool_generation"],
+        #     steps_data=cursor["step_generation"]
+        # )
 
         update_project(str(cursor["_id"]), {"estimation_generation": estimation_result})
         

@@ -75,8 +75,8 @@ def lambda_handler(event, context):
                 print("LLM Generation steps failed")
                 return {"message": "LLM Generation steps failed"}
             
-            
-            steps_result["youtube"]= get_youtube_link(cursor["summary"])
+            youtube_url = get_youtube_link(cursor["summary"])
+            steps_result["youtube"]= youtube_url
             
             i = 1
             for step in steps_result["steps"]:
@@ -85,25 +85,49 @@ def lambda_handler(event, context):
                 step["image"] = generate_step_image(str(i), {"step_text": step_text, "project_id": project})
                 i += 1
             
-            steps_result["status"]="complete"
+            step_meta = {k: v for k, v in steps_result.items() if k != "steps"}
+            step_meta["status"] = "complete"
 
-            update_project(str(cursor["_id"]), {"step_generation":steps_result})
+            update_project(str(cursor["_id"]), {"step_generation": step_meta})
 
-            for idx, step in enumerate(steps_result.get("steps", []), start=1):
+            for step in steps_result.get("steps", []):
                 step_doc = {
-                    "projectId": ObjectId(str(cursor["_id"])),
-                    "stepNumber": step.get("order", idx),
-                    "title": step.get("title", f"Step {idx}"),
+                    "projectId": ObjectId(project),
+                    "order": step.get("order"),
+                    "stepNumber": step.get("order"),  # keep for backward compatibility
+                    "title": step.get("title", f"Step {step.get('order', 0)}"),
+                    "instructions": step.get("instructions", []),
                     "description": " ".join(step.get("instructions", [])),
-                    "tools": [],
-                    "materials": [],
-                    "images": [],
-                    "videoTutorialLink": None,
+                    "est_time_min": step.get("est_time_min", 0),
+                    "time_text": step.get("time_text", ""),
+                    "tools_needed": step.get("tools_needed", []),
+                    "safety_warnings": step.get("safety_warnings", []),
+                    "tips": step.get("tips", []),
+                    "image_url": step.get("image_url"),
+                    "videoTutorialLink": youtube_url,
                     "referenceLinks": [],
+                    "status": (step.get("status") or "pending").lower(),
                     "completed": False,
                     "createdAt": datetime.utcnow(),
+                    "updatedAt": datetime.utcnow(),
                 }
                 steps_collection.insert_one(step_doc)
+
+            # for idx, step in enumerate(steps_result.get("steps", []), start=1):
+            #     step_doc = {
+            #         "projectId": ObjectId(str(cursor["_id"])),
+            #         "stepNumber": step.get("order", idx),
+            #         "title": step.get("title", f"Step {idx}"),
+            #         "description": " ".join(step.get("instructions", [])),
+            #         "tools": [],
+            #         "materials": [],
+            #         "images": [],
+            #         "videoTutorialLink": None,
+            #         "referenceLinks": [],
+            #         "completed": False,
+            #         "createdAt": datetime.utcnow(),
+            #     }
+            #     steps_collection.insert_one(step_doc)
             
             print("Steps Generated")
             
@@ -112,10 +136,29 @@ def lambda_handler(event, context):
             update_project(str(cursor["_id"]), {"estimation_generation":{"status": "in progress"}})
             
             estimation_agent = EstimationAgent()
+            steps_for_est = [
+                {
+                    "order": s.get("order"),
+                    "title": s.get("title", ""),
+                    "est_time_min": s.get("est_time_min", 0),
+                    "time_text": s.get("time_text", "")
+                }
+                for s in steps_result.get("steps", [])
+            ]
+            steps_data_for_est = {
+                "steps": steps_for_est,
+                "total_est_time_min": steps_result.get("total_est_time_min", 0),
+                "total_steps": steps_result.get("total_steps", len(steps_for_est)),
+            }
+
             estimation_result = estimation_agent.generate_estimation(
-                tools_data=cursor["tool_generation"],
-                steps_data=cursor["step_generation"]
+                tools_data=tools_result,
+                steps_data=steps_data_for_est
             )
+            # estimation_result = estimation_agent.generate_estimation(
+            #     tools_data=cursor["tool_generation"],
+            #     steps_data=cursor["step_generation"]
+            # )
             
             if estimation_result is None:
                 print("LLM Generation steps failed")
