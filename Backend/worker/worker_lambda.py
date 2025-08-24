@@ -324,7 +324,7 @@ def _build_prompt(step_text: str, guidance="neutral") -> str:
         else:
             lines.append("Prioritize clarity of tool-to-surface contact; choose view and distance to avoid occlusion.")
         
-        lines.append("Dont write any words, just show visuals and if required numbers")
+        lines.append("DONT GENERATE ANY WORD OR WRITTN INSTRUCTION")
         return "\n".join(lines)
 
 # def _generate_png(prompt: str, size: str, seed: Optional[int] = None) -> bytes:
