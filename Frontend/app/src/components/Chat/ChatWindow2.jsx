@@ -372,7 +372,7 @@ export default function ChatWindow2({
                 } else {
                     try {
                         const historyRes = await axios.get(`${URL}/step-guidance/session/${sessionRes.data.session}/history`);
-                        
+
                         // No session exists, start new one
                         const startRes = await axios.post(
                             `${URL}/step-guidance/start`,
@@ -391,6 +391,7 @@ export default function ChatWindow2({
                               sender: "bot",
                               content: startRes.data.response,
                             });
+                            console.log("message: ", formattedMessages)
                             setMessages(formattedMessages);
                         }
                     } catch (historyErr) {
