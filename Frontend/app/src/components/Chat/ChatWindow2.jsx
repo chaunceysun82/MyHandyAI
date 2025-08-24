@@ -387,10 +387,6 @@ export default function ChatWindow2({
                                 sender: role === "user" ? "user" : "bot",
                                 content: message,
                             }));
-                            formattedMessages.push({
-                              sender: "bot",
-                              content: startRes.data.response,
-                            });
                             console.log("message: ", formattedMessages)
                             setMessages(formattedMessages);
                         }
