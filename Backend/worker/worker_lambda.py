@@ -209,6 +209,7 @@ def get_youtube_link(summary):
             {"role": "system", "content": (
                 "You are a summarization agent for youtube searches"
                 "Return one line in based of the text provided to search the most helpfull video"
+                "Provide just a sentence for youtube search, dont over extend even if you dont cover all details"
             )},
             {"role": "user", "content": json.dumps({
                 "description": summary
@@ -216,6 +217,7 @@ def get_youtube_link(summary):
         ],
         "max_completion_tokens": 500,
         "reasoning_effort": "low",
+        "verbosity": "low",
     }
     r = requests.post(
         "https://api.openai.com/v1/chat/completions",
