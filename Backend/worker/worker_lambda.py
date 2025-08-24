@@ -1,13 +1,26 @@
-import os
+import os, io, time
 import json
-import re
+import re, hashlib
 import traceback
+import boto3
+from openai import OpenAI
+from pydantic import BaseModel, Field
 from datetime import datetime
 from bson.objectid import ObjectId
 from db import project_collection, steps_collection
 from datetime import datetime
 from planner import ToolsAgent, StepsAgentJSON, EstimationAgent
+from typing import List, Dict, Any, Optional
 import requests
+import base64
+from PIL import Image
+
+
+OPENAI_KEY   = os.getenv("OPENAI_API_KEY")
+S3_BUCKET = "handyimages"
+AWS_REGION="us-east-2"
+s3 = boto3.client("s3", region_name=AWS_REGION) 
+PUBLIC_BASE    = "https://handyimages.s3.us-east-2.amazonaws.com"
 
 def lambda_handler(event, context):
     for record in event.get("Records", []):
@@ -61,6 +74,13 @@ def lambda_handler(event, context):
             
             
             steps_result["youtube"]= get_youtube_link(cursor["summary"])
+            
+            i = 1
+            for step in steps_result["steps"]:
+                # if it's always a list of strings:
+                step_text = ", ".join(s for s in step["instructions"] if s and s.strip())
+                step["image"] = generate_step_image(str(i), {"step_text": step_text, "project_id": project})
+                i += 1
             
             steps_result["status"]="complete"
 
@@ -219,3 +239,137 @@ def get_youtube_link(summary):
         # fallback to top candidate
         best = videos[0]
     return f"https://www.youtube.com/embed/{best['videoId']}"
+
+class SceneSpec(BaseModel):
+    action: Optional[str] = None
+    tool: Optional[str] = None
+    target: Optional[str] = None
+    measures: Optional[str] = None
+    angle: Optional[str] = None
+    view: Optional[str] = None
+    distance: Optional[str] = None
+    style: Optional[str] = None
+    hands_visible: Optional[str] = None
+    safety: Optional[str] = None
+    background: Optional[str] = None
+    
+class ImageRequest(BaseModel):
+    step_text: str
+    scene: Optional[SceneSpec] = None
+    size: str = "1280x720"  # medium-quality sweet spot
+    n: int = 1             # candidates; keep 1 for MVP (cheaper, faster)
+    project_id: str
+    
+def _build_prompt(step_text: str, scene: SceneSpec | None, guidance="neutral") -> str:
+        s = scene or SceneSpec()
+
+        lines = [
+            "Create an instructional image that faithfully depicts the step.",
+            "No text overlays, no logos, no watermarks. Aspect ratio 16:9.",
+            f"STEP: {step_text}"
+        ]
+        if s.style:
+            lines.append(f"Style: {s.style}.")
+        if s.action:
+            lines.append(f"Action: {s.action}.")
+        if s.tool:
+            lines.append(f"Tool: {s.tool}.")
+        if s.target:
+            lines.append(f"Target: {s.target}.")
+        if s.measures:
+            lines.append(f"Measurement cues: {s.measures}.")
+        if s.angle:
+            lines.append(f"Placement angle: {s.angle}.")
+        if s.view:
+            lines.append(f"Camera view: {s.view}.")
+        if s.distance:
+            lines.append(f"Camera distance: {s.distance}.")
+        if s.hands_visible:
+            lines.append(f"Hands visible: {s.hands_visible}.")
+        if s.background:
+            lines.append(f"Background: {s.background}.")
+        if s.safety:
+            lines.append(f"Safety: {s.safety}.")
+
+        if guidance == "neutral":
+            # Ask the model to choose composition when unspecified
+            lines.append(
+                "If any attributes are unspecified, choose the most informative composition "
+                "(select view/distance/hands/background yourself for clarity)."
+            )
+        else:
+            # optional slightly more prescriptive nudge you can toggle if needed
+            lines.append(
+                "Prioritize clarity of tool-to-surface contact; choose view and distance to avoid occlusion."
+            )
+
+        return "\n".join(lines)
+def _generate_png(prompt: str, size: str, seed: Optional[int] = None) -> bytes:
+    client = OpenAI(api_key=OPENAI_KEY)
+    kwargs: Dict[str, Any] = {"model": "gpt-image-1", "prompt": prompt, "size": size, "n": 1}
+    # If your account supports seed; if not, you can remove this key
+    if seed is not None:
+        kwargs["seed"] = seed
+    resp = client.images.generate(**kwargs)
+    b64png = resp.data[0].b64_json
+    return base64.b64decode(b64png)
+
+def _png_to_bytes_ensure_rgba(png_bytes: bytes) -> bytes:
+    # Defensive: normalize to PNG/RGBA
+    im = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+    out = io.BytesIO()
+    im.save(out, format="PNG", optimize=True)
+    return out.getvalue()
+
+def _s3_key(step_id: str, project_id: Optional[str]) -> str:
+    ts = int(time.time())
+    base = f"project_{project_id or 'na'}/steps/{step_id}"
+    return f"{base}/image_{ts}.png"
+
+def _public_url_or_presigned(key: str) -> str:
+    # If you use CloudFront or a public bucket, construct a public URL
+    if PUBLIC_BASE:
+        return f"{PUBLIC_BASE.rstrip('/')}/{key}"
+    # Otherwise return a presigned URL
+
+def generate_step_image(step_id: str, payload: ImageRequest | dict):
+    try:
+        if isinstance(payload, dict):
+            payload = ImageRequest(**payload)
+        prompt = _build_prompt(payload.step_text, payload.scene)
+        raw_png = _generate_png(prompt=prompt, size=payload.size)
+        png_bytes = _png_to_bytes_ensure_rgba(raw_png)
+    except Exception as e:
+        print("Image generation failed: {e}")
+
+    key = _s3_key(step_id, payload.project_id)
+    try:
+        s3.put_object(
+            Bucket=S3_BUCKET,
+            Key=key,
+            Body=png_bytes,
+            ContentType="image/png",
+            ACL="public-read" if PUBLIC_BASE else "private",  # set public-read only if your bucket policy allows it
+            Metadata={
+                "step_id": step_id,
+                "project_id": payload.project_id or "",
+                "size": payload.size,
+                "model": "gpt-image-1"
+            },
+        )
+    except Exception as e:
+        print(status_code=500, detail=f"S3 upload failed: {e}")
+
+    url = _public_url_or_presigned(key)
+    return {
+        "message": "ok",
+        "step_id": step_id,
+        "project_id": payload.project_id,
+        "s3_key": key,
+        "url": url,
+        "size": payload.size,
+        "model": "gpt-image-1",
+        "prompt_preview": prompt[:180],
+    }
+    
+    
