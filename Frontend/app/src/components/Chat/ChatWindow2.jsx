@@ -381,8 +381,8 @@ export default function ChatWindow2({
                         
                         if (!cancelled) {
                             console.log("Response from starting session:", startRes.data);
-                            setSessionId(startRes.data.session);
-                            const historyRes = await axios.get(`${URL}/step-guidance/session/${startRes.data.session}/history`);
+                            setSessionId(startRes.data.session_id);
+                            const historyRes = await axios.get(`${URL}/step-guidance/session/${startRes.data.session_id}/history`);
                             const formattedMessages = historyRes.data.map(({role, message}) => ({
                                 sender: role === "user" ? "user" : "bot",
                                 content: message,
