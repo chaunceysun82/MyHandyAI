@@ -79,7 +79,7 @@ export default function StepCard({
 			{isToolsStep && (
 				<div className="shrink-0">
 					<span className="inline-flex items-center text-xs px-2 py-1 rounded-full bg-white border border-gray-300">
-						Step 1 <span className="ml-1">›</span>
+						Tools <span className="ml-1">›</span>
 					</span>
 				</div>
 			)}

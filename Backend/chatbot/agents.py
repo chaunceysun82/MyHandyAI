@@ -120,6 +120,7 @@ class ProblemRecognitionAgent:
             ],
             "max_completion_tokens": 200,
             "reasoning_effort": "minimal",
+            "verbosity":"low"
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -129,15 +130,16 @@ class ProblemRecognitionAgent:
 
     def valid_description(self, message):
         payload = {
-            "model": "gpt-5-nano",
+            "model": "gpt-5-mini",
             "messages": [
                 {"role": "system", 
                  "content": valid_description_prompt_text
                  },
                 {"role": "user", "content": message}
             ],
-            "max_completion_tokens": 20,
-            "reasoning_effort": "minimal",
+            "max_completion_tokens": 60,
+            "reasoning_effort": "low",
+            "verbosity":"low"
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -165,10 +167,11 @@ class ProblemRecognitionAgent:
                 self.api_url,
                 headers=self.headers,
                 json={
-                    "model": "gpt-5-mini", 
+                    "model": "gpt-5-nano", 
                     "messages": messages, 
                     "max_completion_tokens": 300, 
-                    "reasoning_effort": "medium"
+                    "reasoning_effort": "minimal",
+                    "verbosity":"low"
                 },
                 timeout=15,
             )
@@ -304,6 +307,7 @@ class ImageAnalysisAgent:
             ],
             "max_completion_tokens": 100,
             "reasoning_effort": "minimal",
+            "verbosity":"low"
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload)
@@ -348,7 +352,7 @@ class ImageAnalysisAgent:
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800,"reasoning_effort": "medium"},
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800,"reasoning_effort": "medium", "verbosity":"low"},
             )
             if r.status_code == 200:
                 txt = r.json()["choices"][0]["message"]["content"].strip()
@@ -373,11 +377,10 @@ class ImageAnalysisAgent:
         """Generate questions based on problem description when no image is provided"""
 
         system_prompt = (
-            f"{image_analysis_prompt_text}\n\n"
             f"Problem type: {problem_type}\n"
             f"User description: {user_description}\n"
             f"Additional context: {qa_prompt_text}\n\n"
-            "Since no image was provided, analyze the problem description and generate relevant questions.\n"
+            "Analyze the problem description and generate relevant questions.\n"
             "Return JSON with:\n"
             '- "analysis": brief description based on the problem description\n'
             '- "questions": list of questions (ask one-by-one)\n'
@@ -392,7 +395,7 @@ class ImageAnalysisAgent:
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800, "reasoning_effort": "low"}
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800, "reasoning_effort": "low", "verbosity":"low"}
             )
             if r.status_code == 200:
                 txt = r.json()["choices"][0]["message"]["content"].strip()
@@ -498,6 +501,7 @@ class SummaryAgent:
             ],
             "max_completion_tokens": 100,
             "reasoning_effort": "minimal",
+            "verbosity":"low"
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -569,6 +573,7 @@ class QuestionClarificationAgent:
             ],
             "max_completion_tokens": 1000,
             "reasoning_effort": "low",
+            "verbosity":"low"
         }
         try:
             resp = requests.post(self.api_url, headers=self.headers, json=payload, timeout=15)
@@ -740,7 +745,8 @@ Description: \"\"\"{description}\"\"\"
                 {"role": "user",   "content": "Please respond with JSON only."}
             ],
             "max_completion_tokens": 50,
-            "reasoning_effort": "low",
+            "reasoning_effort": "minimal",
+            "verbosity":"low"
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -845,7 +851,7 @@ class AgenticChatbot:
                 if not isinstance(result, dict) or "analysis" not in result or "questions" not in result:
                     return "Sorry, I had trouble processing your request. Please try again."
                 
-                self.image_analysis = str(result.get("analysis") or "No image analysis available")
+                self.image_analysis = str(result.get("analysis") or "")
                 return self._prepare_questions_from_result(result)
             
             # No image uploaded and no skip command
@@ -1018,7 +1024,7 @@ class AgenticChatbot:
                 if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
                     intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
                 else:
-                    intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
+                    intro_message = f"Okay! Based on your description:\n\n{self.image_analysis}\n\n"
                 
                 return (
                     f"{intro_message}"
@@ -1053,9 +1059,9 @@ class AgenticChatbot:
             
             # Determine the appropriate message based on whether image was provided
             if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
-                intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
+                intro_message = f"Great, thanks for the photo! \n\n{self.image_analysis}\n\n"
             else:
-                intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
+                intro_message = f"Okay! Based on your description:\n\n{self.image_analysis}\n\n"
             
             return (
                 f"{intro_message}"
@@ -1071,7 +1077,7 @@ class AgenticChatbot:
         if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
             intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
         else:
-            intro_message = f"Great! Based on your description:\n\n{self.image_analysis}\n\n"
+            intro_message = f"Okay!\n\n"
         
         return (
             f"{intro_message}"

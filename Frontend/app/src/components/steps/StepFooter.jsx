@@ -1,5 +1,6 @@
-import React from "react";
+import React, {useState} from "react";
 import { useNavigate } from "react-router-dom";
+import ChatWindow2 from "../Chat/ChatWindow2";
 
 export default function StepFooter({ 
 	projectId, 
@@ -7,24 +8,47 @@ export default function StepFooter({
 	stepNumber, 
 	stepTitle, 
 	totalSteps,
+	projectVideoUrl, // Add this prop
 	onPrev, 
 	onNext,
+	userId,
 	isPrevDisabled = false,
 	isNextDisabled = false,
 	isNextFinal = false
 }) {
 	const navigate = useNavigate();
 
+	const [openModal, setOpenModal] = useState(false);
+	const [open, setOpen] = useState(true);
+
+	const URL = process.env.REACT_APP_BASE_URL;
+
+
+	// const userId = localStorage.getItem("authToken");
+	
+	console.log("User ID:", userId);
+
 	const handleChatClick = () => {
-		navigate("/chat", { 
-			state: { 
-				projectId, 
-				projectName: projectName || "Project",
-				from: "step",
-				stepNumber: stepNumber,
-				stepTitle: stepTitle
-			}
-		});
+		// navigate("/chat", { 
+		// 	state: { 
+		// 		projectId, 
+		// 		projectName: projectName || "Project",
+		// 		from: "step",
+		// 		stepNumber: stepNumber,
+		// 		stepTitle: stepTitle
+		// 	}
+		// });
+		setOpenModal(true);
+	};
+
+	const handlePrevClick = () => {
+		// Call the onPrev function passed from parent
+		onPrev();
+	};
+
+	const handleNextClick = () => {
+		// Call the onNext function passed from parent
+		onNext();
 	};
 
 	return (
@@ -39,10 +63,20 @@ export default function StepFooter({
 				</button>
 			</div>
 
+			{openModal && (
+				<ChatWindow2
+					isOpen={open}
+					projectId={projectId}
+					onClose={() => setOpenModal(false)}
+					URL={URL}
+					stepNumber={stepNumber}
+				/>
+			)}
+
 			{/* Bottom Navigation */}
 			<div className="grid grid-cols-2 gap-3">
 				<button
-					onClick={onPrev}
+					onClick={handlePrevClick}
 					disabled={isPrevDisabled}
 					className={`py-2 rounded-lg font-medium ${
 						isPrevDisabled
@@ -52,7 +86,7 @@ export default function StepFooter({
 					Previous
 				</button>
 				<button
-					onClick={onNext}
+					onClick={handleNextClick}
 					disabled={isNextDisabled}
 					className={`py-2 rounded-lg font-medium ${
 						isNextDisabled
