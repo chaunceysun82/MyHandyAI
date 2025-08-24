@@ -27,13 +27,16 @@ s3 = boto3.client("s3", region_name=AWS_REGION)
 sqs = boto3.client("sqs", region_name=AWS_REGION)
 PUBLIC_BASE    = "https://handyimages.s3.us-east-2.amazonaws.com"
 
-def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x1024") -> None:
+def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x1024",summary:str="") -> None:
     """Send one SQS message per step (no batch API)."""
     if not SQS_URL:
         print("⚠️ IMAGES_SQS_URL not set; skipping enqueue")
         return
     for i, step in enumerate(steps, start=1):
-        step_text = ", ".join(s for s in step.get("instructions", []) if s and s.strip())
+        step_text = "Overall summary: " +summary+"\n"
+        if i!=1:
+            step_text += "Previous Step: "+steps[i-1].get("title") + "\n"
+        step_text +="CURRENT STEP: "+ ", ".join(s for s in step.get("instructions", []) if s and s.strip())
         body = {
             "task": "image_step",
             "project": project_id,
@@ -119,7 +122,7 @@ def lambda_handler(event, context):
             
             steps_result["youtube"]= get_youtube_link(cursor["summary"])
             
-            enqueue_image_tasks(project, steps_result["steps"], size="1536x1024")
+            enqueue_image_tasks(project, steps_result["steps"], size="1536x1024",summary=cursor["summary"])
             # i = 1
             # for step in steps_result["steps"]:
             #     # if it's always a list of strings:
@@ -311,9 +314,9 @@ class ImageRequest(BaseModel):
     
 def _build_prompt(step_text: str, guidance="neutral") -> str:
         lines = [
-            "Create an instructional image that faithfully depicts the step.",
+            "Create an instructional image that faithfully depicts the CURRENT STEP.",
             "No text overlays, no logos, no watermarks.",
-            f"STEP: {step_text}"
+            f"Context: \n{step_text}"
         ]
         # ... keep your optional lines ...
         if guidance == "neutral":
