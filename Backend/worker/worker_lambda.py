@@ -349,7 +349,6 @@ def generate_step_image(step_id: str, payload: ImageRequest | dict):
             Key=key,
             Body=png_bytes,
             ContentType="image/png",
-            ACL="public-read" if PUBLIC_BASE else "private",  # set public-read only if your bucket policy allows it
             Metadata={
                 "step_id": step_id,
                 "project_id": payload.project_id or "",
@@ -358,7 +357,7 @@ def generate_step_image(step_id: str, payload: ImageRequest | dict):
             },
         )
     except Exception as e:
-        print(status_code=500, detail=f"S3 upload failed: {e}")
+        print(f"S3 upload failed: {e}")
 
     url = _public_url_or_presigned(key)
     return {
