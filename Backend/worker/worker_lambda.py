@@ -197,7 +197,7 @@ def get_youtube_link(summary):
         "relevanceLanguage": "en",
         "order": "relevance",
     }
-    r = requests.get(url, params=params, timeout=15)
+    r = requests.get(url, params=params, timeout=25)
     r.raise_for_status()
     items = r.json().get("items", [])
     videos=[{
