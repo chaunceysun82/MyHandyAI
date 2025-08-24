@@ -18,17 +18,58 @@ from google.genai import types
 from PIL import Image
 
 
+SQS_URL = os.getenv("IMAGES_SQS_URL")  
 api_key = os.getenv("GOOGLE_API_KEY")
 OPENAI_KEY   = os.getenv("OPENAI_API_KEY")
 S3_BUCKET = "handyimages"
 AWS_REGION="us-east-2"
 s3 = boto3.client("s3", region_name=AWS_REGION) 
+sqs = boto3.client("sqs", region_name=AWS_REGION)
 PUBLIC_BASE    = "https://handyimages.s3.us-east-2.amazonaws.com"
+
+def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x1024") -> None:
+    """Send one SQS message per step (no batch API)."""
+    if not SQS_URL:
+        print("⚠️ IMAGES_SQS_URL not set; skipping enqueue")
+        return
+    for i, step in enumerate(steps, start=1):
+        step_text = ", ".join(s for s in step.get("instruction", []) if s and s.strip())
+        body = {
+            "task": "image_step",
+            "project": project_id,
+            "step_id": str(i),
+            "step_text": step_text,
+            "size": size
+        }
+        project_collection.update_one({"_id": ObjectId(project_id)}, {"$set": {f"step_generation.steps.{int(i)-1}.image.status": "in-progress"}})
+        
+        sqs.send_message(QueueUrl=SQS_URL, MessageBody=json.dumps(body))
+        
+def handle_image_step(msg: dict) -> None:
+    """Generate+upload image for a single step and persist result."""
+    project_id = msg["project"]
+    step_id    = msg["step_id"]
+    step_text  = msg["step_text"]
+    size       = msg.get("size", "1536x1024")
+
+    # Call your existing generator (OpenAI/Gemini under the hood)
+    res = generate_step_image(step_id, {"step_text": step_text, "project_id": project_id, "size": size})
+    
+    res['status']="complete"
+
+    project_collection.update_one({"_id": ObjectId(project_id)}, {"$set": {f"step_generation.steps.{int(step_id)-1}.image": res}})
 
 def lambda_handler(event, context):
     for record in event.get("Records", []):
         try:
             payload = json.loads(record["body"])
+            task = payload.get("task", "full")
+
+            if task == "image_step":
+                # Image-only job (runs in parallel for each step)
+                handle_image_step(payload)
+                continue
+            
             project = payload.get("project")
 
             if not project:
@@ -78,12 +119,13 @@ def lambda_handler(event, context):
             
             steps_result["youtube"]= get_youtube_link(cursor["summary"])
             
-            i = 1
-            for step in steps_result["steps"]:
-                # if it's always a list of strings:
-                step_text = ", ".join(s for s in step["instructions"] if s and s.strip())
-                step["image"] = generate_step_image(str(i), {"step_text": step_text, "project_id": project})
-                i += 1
+            enqueue_image_tasks(project, steps_result["steps"], size="1536x1024")
+            # i = 1
+            # for step in steps_result["steps"]:
+            #     # if it's always a list of strings:
+            #     step_text = ", ".join(s for s in step["instructions"] if s and s.strip())
+            #     step["image"] = generate_step_image(str(i), {"step_text": step_text, "project_id": project})
+            #     i += 1
             
             steps_result["status"]="complete"
 
@@ -265,50 +307,19 @@ class ImageRequest(BaseModel):
     n: int = 1             
     project_id: str
     
-def _build_prompt(step_text: str, scene: SceneSpec | None, guidance="neutral") -> str:
-        s = scene or SceneSpec()
-
+def _build_prompt(step_text: str, guidance="neutral") -> str:
         lines = [
             "Create an instructional image that faithfully depicts the step.",
-            "No text overlays, no logos, no watermarks. Aspect ratio 16:9.",
+            "No text overlays, no logos, no watermarks.",
             f"STEP: {step_text}"
         ]
-        if s.style:
-            lines.append(f"Style: {s.style}.")
-        if s.action:
-            lines.append(f"Action: {s.action}.")
-        if s.tool:
-            lines.append(f"Tool: {s.tool}.")
-        if s.target:
-            lines.append(f"Target: {s.target}.")
-        if s.measures:
-            lines.append(f"Measurement cues: {s.measures}.")
-        if s.angle:
-            lines.append(f"Placement angle: {s.angle}.")
-        if s.view:
-            lines.append(f"Camera view: {s.view}.")
-        if s.distance:
-            lines.append(f"Camera distance: {s.distance}.")
-        if s.hands_visible:
-            lines.append(f"Hands visible: {s.hands_visible}.")
-        if s.background:
-            lines.append(f"Background: {s.background}.")
-        if s.safety:
-            lines.append(f"Safety: {s.safety}.")
-
+        # ... keep your optional lines ...
         if guidance == "neutral":
-            # Ask the model to choose composition when unspecified
-            lines.append(
-                "If any attributes are unspecified, choose the most informative composition "
-                "(select view/distance/hands/background yourself for clarity)."
-            )
+            lines.append("If any attributes are unspecified, choose the most informative composition.")
         else:
-            # optional slightly more prescriptive nudge you can toggle if needed
-            lines.append(
-                "Prioritize clarity of tool-to-surface contact; choose view and distance to avoid occlusion."
-            )
-
+            lines.append("Prioritize clarity of tool-to-surface contact; choose view and distance to avoid occlusion.")
         return "\n".join(lines)
+
 # def _generate_png(prompt: str, size: str, seed: Optional[int] = None) -> bytes:
 #     client = OpenAI(api_key=OPENAI_KEY)
 #     kwargs: Dict[str, Any] = {"model": "gpt-image-1", "prompt": prompt, "size": size, "n": 1}
@@ -355,7 +366,6 @@ def _public_url_or_presigned(key: str) -> str:
     # If you use CloudFront or a public bucket, construct a public URL
     if PUBLIC_BASE:
         return f"{PUBLIC_BASE.rstrip('/')}/{key}"
-    # Otherwise return a presigned URL
     
 def _map_size_to_aspect(size_str: str) -> str:
     # map "WxH" to Imagen aspectRatio; keep it simple and robust
@@ -378,12 +388,12 @@ def generate_step_image(step_id: str, payload: ImageRequest | dict):
     try:
         if isinstance(payload, dict):
             payload = ImageRequest(**payload)
-        prompt = _build_prompt(payload.step_text, payload.scene)
+        prompt = _build_prompt(payload.step_text)
         raw_png = _generate_png(prompt=prompt, size=payload.size)
         png_bytes = _png_to_bytes_ensure_rgba(raw_png)
     except Exception as e:
         print(f"Image generation failed: {e}")
-        raise HTTPException(HTTPException(status_code=500, detail=f"image generation failed {e}"))
+        raise
 
     key = _s3_key(step_id, payload.project_id)
     try:
@@ -396,12 +406,12 @@ def generate_step_image(step_id: str, payload: ImageRequest | dict):
                 "step_id": step_id,
                 "project_id": payload.project_id or "",
                 "size": payload.size,
-                "model": "gpt-image-1"
+                "model": "imagen-4.0-generate-001"
             },
         )
     except Exception as e:
         print(f"S3 upload failed: {e}")
-        raise HTTPException(HTTPException(status_code=500, detail=f"S3 upload failed: {e}"))
+        raise
 
     url = _public_url_or_presigned(key)
     return {
