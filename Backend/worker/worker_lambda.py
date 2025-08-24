@@ -35,7 +35,7 @@ def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x10
     for i, step in enumerate(steps, start=1):
         step_text = "Overall summary: " +summary+"\n"
         if i!=1:
-            step_text += "Previous Step: "+steps[i-1].get("title") + "\n"
+            step_text += "Previous Step: "+steps[i-2].get("title") + "\n"
         step_text +="CURRENT STEP: "+ ", ".join(s for s in step.get("instructions", []) if s and s.strip())
         body = {
             "task": "image_step",
