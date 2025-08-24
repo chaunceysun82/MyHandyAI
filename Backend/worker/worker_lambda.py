@@ -340,7 +340,7 @@ def generate_step_image(step_id: str, payload: ImageRequest | dict):
         raw_png = _generate_png(prompt=prompt, size=payload.size)
         png_bytes = _png_to_bytes_ensure_rgba(raw_png)
     except Exception as e:
-        print("Image generation failed: {e}")
+        print(f"Image generation failed: {e}")
 
     key = _s3_key(step_id, payload.project_id)
     try:
