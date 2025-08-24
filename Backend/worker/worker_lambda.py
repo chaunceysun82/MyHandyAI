@@ -319,31 +319,23 @@ def _build_prompt(step_text: str, scene: SceneSpec | None, guidance="neutral") -
 
 def _generate_png(prompt: str, size: str, seed: int | None = None) -> bytes:
     """
-    Generate a PNG with Google Gemini API (Imagen 4).
-    - model: imagen-4.0-generate-001 (override via GEMINI_IMAGE_MODEL)
-    - returns raw PNG bytes
+    Generate PNG bytes via Gemini API (Imagen 4).
+    Uses dict 'config' to avoid SDK type validation issues.
     """
-    
-    client = genai.Client(api_key=api_key)
-    aspect, sample = _map_size_to_gemini(size)
-
-    cfg = types.GenerateImagesConfig(
-        number_of_images=1,
-        aspect_ratio=aspect,          # "1:1","3:4","4:3","9:16","16:9"
-        sample_image_size=sample,     # "1K" or "2K"
-        output_mime_type="image/png",
-        # NOTE: If/when seed is supported here, you can add it. For now, omit.
-    )
+    client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+    aspect = _map_size_to_aspect(size)
 
     resp = client.models.generate_images(
         model=os.getenv("GEMINI_IMAGE_MODEL", "imagen-4.0-generate-001"),
         prompt=prompt,
-        config=cfg,
+        config={
+            "numberOfImages": 1,
+            "aspectRatio": aspect,         # "1:1","3:4","4:3","9:16","16:9"
+            "outputMimeType": "image/png", # ask for PNG bytes
+            # "sampleImageSize": "2K",     # optional; omit if your SDK rejects it
+        },
     )
-
-    # Extract bytes from the first image
-    png_bytes = resp.generated_images[0].image.image_bytes
-    return png_bytes
+    return resp.generated_images[0].image.image_bytes
 
 def _png_to_bytes_ensure_rgba(png_bytes: bytes) -> bytes:
     # Defensive: normalize to PNG/RGBA
@@ -363,29 +355,22 @@ def _public_url_or_presigned(key: str) -> str:
         return f"{PUBLIC_BASE.rstrip('/')}/{key}"
     # Otherwise return a presigned URL
     
-def _map_size_to_gemini(size_str: str) -> tuple[str, str]:
-    """
-    Convert a WxH string to (aspect_ratio, sample_image_size).
-    aspect_ratio ∈ {"1:1","3:4","4:3","9:16","16:9"}
-    sample_image_size ∈ {"1K","2K"}
-    """
+def _map_size_to_aspect(size_str: str) -> str:
+    # map "WxH" to Imagen aspectRatio; keep it simple and robust
     try:
         w, h = [int(x) for x in size_str.lower().split("x")]
         ar = w / h
-        if 1.66 <= ar <= 1.90:
-            aspect = "16:9"
-        elif 1.25 <= ar < 1.66:
-            aspect = "4:3"
-        elif 0.90 <= ar < 1.25:
-            aspect = "1:1"
-        elif 0.75 <= ar < 0.90:
-            aspect = "3:4"
-        else:
-            aspect = "9:16"
-        sample = "2K" if max(w, h) >= 1536 else "1K"
+        if 1.66 <= ar <= 1.90:  # ~16:9
+            return "16:9"
+        if 1.25 <= ar < 1.66:   # ~4:3
+            return "4:3"
+        if 0.90 <= ar < 1.25:   # ~1:1
+            return "1:1"
+        if 0.75 <= ar < 0.90:   # ~3:4
+            return "3:4"
+        return "9:16"
     except Exception:
-        aspect, sample = "16:9", "1K"
-    return aspect, sample
+        return "16:9"
 
 def generate_step_image(step_id: str, payload: ImageRequest | dict):
     try:
