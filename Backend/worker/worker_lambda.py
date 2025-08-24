@@ -206,6 +206,7 @@ def get_youtube_link(summary):
         "description": it["snippet"].get("description", ""),
         "channelTitle": it["snippet"].get("channelTitle", ""),
     } for it in items]
+    print(r.json())
     
     payload = {
         "model": "gpt-5-mini",  # or the model you prefer
@@ -234,6 +235,7 @@ def get_youtube_link(summary):
     )
     r.raise_for_status()
     data = r.json()
+    print(r.json())
     content = data["choices"][0]["message"]["content"]
     verdict=clean_and_parse_json(content)
     best_id = verdict.get("best_videoId")
