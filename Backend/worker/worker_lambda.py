@@ -316,7 +316,9 @@ def _build_prompt(step_text: str, guidance="neutral") -> str:
         lines = [
             "Create an instructional image that faithfully depicts the CURRENT STEP.",
             "No text overlays, no logos, no watermarks.",
-            f"Context: \n{step_text}"
+            "DONT GENERATE ANY WORD OR WRITTEN INSTRUCTION,DONT WRITE ANYTHING",
+            f"Context: \n{step_text}",
+            "DONT GENERATE ANY WORD OR WRITTEN INSTRUCTION,DONT WRITE ANYTHING"
         ]
         # ... keep your optional lines ...
         if guidance == "neutral":
@@ -324,7 +326,7 @@ def _build_prompt(step_text: str, guidance="neutral") -> str:
         else:
             lines.append("Prioritize clarity of tool-to-surface contact; choose view and distance to avoid occlusion.")
         
-        lines.append("DONT GENERATE ANY WORD OR WRITTN INSTRUCTION")
+        lines.append("DONT GENERATE ANY WORD OR WRITTEN INSTRUCTION,DONT WRITE ANYTHING")
         return "\n".join(lines)
 
 # def _generate_png(prompt: str, size: str, seed: Optional[int] = None) -> bytes:
