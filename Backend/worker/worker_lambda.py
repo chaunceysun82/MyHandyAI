@@ -11,11 +11,14 @@ from db import project_collection, steps_collection
 from datetime import datetime
 from planner import ToolsAgent, StepsAgentJSON, EstimationAgent
 from typing import List, Dict, Any, Optional
+from fastapi import HTTPException
 import requests
-import base64
+from google import genai
+from google.genai import types
 from PIL import Image
 
 
+api_key = os.getenv("GOOGLE_API_KEY")
 OPENAI_KEY   = os.getenv("OPENAI_API_KEY")
 S3_BUCKET = "handyimages"
 AWS_REGION="us-east-2"
@@ -304,15 +307,43 @@ def _build_prompt(step_text: str, scene: SceneSpec | None, guidance="neutral") -
             )
 
         return "\n".join(lines)
-def _generate_png(prompt: str, size: str, seed: Optional[int] = None) -> bytes:
-    client = OpenAI(api_key=OPENAI_KEY)
-    kwargs: Dict[str, Any] = {"model": "gpt-image-1", "prompt": prompt, "size": size, "n": 1}
-    # If your account supports seed; if not, you can remove this key
-    if seed is not None:
-        kwargs["seed"] = seed
-    resp = client.images.generate(**kwargs)
-    b64png = resp.data[0].b64_json
-    return base64.b64decode(b64png)
+# def _generate_png(prompt: str, size: str, seed: Optional[int] = None) -> bytes:
+#     client = OpenAI(api_key=OPENAI_KEY)
+#     kwargs: Dict[str, Any] = {"model": "gpt-image-1", "prompt": prompt, "size": size, "n": 1}
+#     # If your account supports seed; if not, you can remove this key
+#     if seed is not None:
+#         kwargs["seed"] = seed
+#     resp = client.images.generate(**kwargs)
+#     b64png = resp.data[0].b64_json
+#     return base64.b64decode(b64png)
+
+def _generate_png(prompt: str, size: str, seed: int | None = None) -> bytes:
+    """
+    Generate a PNG with Google Gemini API (Imagen 4).
+    - model: imagen-4.0-generate-001 (override via GEMINI_IMAGE_MODEL)
+    - returns raw PNG bytes
+    """
+    
+    client = genai.Client(api_key=api_key)
+    aspect, sample = _map_size_to_gemini(size)
+
+    cfg = types.GenerateImagesConfig(
+        number_of_images=1,
+        aspect_ratio=aspect,          # "1:1","3:4","4:3","9:16","16:9"
+        sample_image_size=sample,     # "1K" or "2K"
+        output_mime_type="image/png",
+        # NOTE: If/when seed is supported here, you can add it. For now, omit.
+    )
+
+    resp = client.models.generate_images(
+        model=os.getenv("GEMINI_IMAGE_MODEL", "imagen-4.0-generate-001"),
+        prompt=prompt,
+        config=cfg,
+    )
+
+    # Extract bytes from the first image
+    png_bytes = resp.generated_images[0].image.image_bytes
+    return png_bytes
 
 def _png_to_bytes_ensure_rgba(png_bytes: bytes) -> bytes:
     # Defensive: normalize to PNG/RGBA
@@ -331,6 +362,30 @@ def _public_url_or_presigned(key: str) -> str:
     if PUBLIC_BASE:
         return f"{PUBLIC_BASE.rstrip('/')}/{key}"
     # Otherwise return a presigned URL
+    
+def _map_size_to_gemini(size_str: str) -> tuple[str, str]:
+    """
+    Convert a WxH string to (aspect_ratio, sample_image_size).
+    aspect_ratio ∈ {"1:1","3:4","4:3","9:16","16:9"}
+    sample_image_size ∈ {"1K","2K"}
+    """
+    try:
+        w, h = [int(x) for x in size_str.lower().split("x")]
+        ar = w / h
+        if 1.66 <= ar <= 1.90:
+            aspect = "16:9"
+        elif 1.25 <= ar < 1.66:
+            aspect = "4:3"
+        elif 0.90 <= ar < 1.25:
+            aspect = "1:1"
+        elif 0.75 <= ar < 0.90:
+            aspect = "3:4"
+        else:
+            aspect = "9:16"
+        sample = "2K" if max(w, h) >= 1536 else "1K"
+    except Exception:
+        aspect, sample = "16:9", "1K"
+    return aspect, sample
 
 def generate_step_image(step_id: str, payload: ImageRequest | dict):
     try:
@@ -341,6 +396,7 @@ def generate_step_image(step_id: str, payload: ImageRequest | dict):
         png_bytes = _png_to_bytes_ensure_rgba(raw_png)
     except Exception as e:
         print(f"Image generation failed: {e}")
+        raise HTTPException(HTTPException(status_code=500, detail=f"image generation failed {e}"))
 
     key = _s3_key(step_id, payload.project_id)
     try:
@@ -358,6 +414,7 @@ def generate_step_image(step_id: str, payload: ImageRequest | dict):
         )
     except Exception as e:
         print(f"S3 upload failed: {e}")
+        raise HTTPException(HTTPException(status_code=500, detail=f"S3 upload failed: {e}"))
 
     url = _public_url_or_presigned(key)
     return {

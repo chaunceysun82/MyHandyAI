@@ -13,6 +13,7 @@ requests==2.31.0
 pillow==10.0.0
 python-multipart
 serpapi
+google-genai
 google-search-results
 
 
