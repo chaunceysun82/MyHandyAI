@@ -7,7 +7,7 @@ import json
 import math
 from typing import Dict, Any, List, Optional
 
-DEFAULT_MODEL = os.getenv("STEP_GUIDANCE_MODEL", "gpt-5-mini") 
+DEFAULT_MODEL = os.getenv("STEP_GUIDANCE_MODEL", "gpt-5-nano") 
 CLASSIFIER_MODEL = os.getenv("STEP_GUIDANCE_CLASSIFIER_MODEL", "gpt-5-nano")
 MAX_TURNS_IN_CONTEXT = int(os.getenv("STEP_GUIDANCE_MAX_TURNS", "10"))
 MIN_RELEVANCE_TO_ANSWER = float(os.getenv("STEP_GUIDANCE_MIN_REL", "0.35"))  # 0..1
