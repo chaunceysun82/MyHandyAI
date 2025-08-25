@@ -4,7 +4,7 @@ import MobileWrapper from "../components/MobileWrapper";
 import StepHeader from "../components/steps/StepHeader";
 import StepFooter from "../components/steps/StepFooter";
 import StepTimeEstimate from "../components/steps/StepTimeEstimate";
-import StepVideoGuide from "../components/steps/StepVideoGuide";
+import StepMediaGuide from "../components/steps/StepMediaGuide";
 import StepInstructions from "../components/steps/StepInstructions";
 import StepToolsNeeded from "../components/steps/StepToolsNeeded";
 import StepSafetyWarnings from "../components/steps/StepSafetyWarnings";
@@ -273,14 +273,22 @@ export default function StepPage() {
 					{/* Time Estimate */}
 					<StepTimeEstimate time={step.time} completed={step.completed} />
 
-					{/* Video Guide Section */}
-					<StepVideoGuide videoUrl={projectVideoUrl} title="Video Guide" />
-					{/* Debug: Log step data */}
-					{console.log("StepPage: Step data for video:", { 
-						videoUrl: step.videoUrl, 
+					{/* Media Guide Section - Video and Image */}
+					<StepMediaGuide 
+						videoUrl={projectVideoUrl} 
+						imageData={step.image || step.imageData || step.image_data} 
+						title="Step Guide" 
+					/>
+					{/* Debug: Log step data for media */}
+					{console.log("StepPage: Step data for media:", { 
+						videoUrl: projectVideoUrl, 
+						imageData: step.image || step.imageData || step.image_data,
 						projectVideoUrl: projectVideoUrl,
 						stepTitle: step.title,
-						fullStep: step 
+						fullStep: step,
+						stepImage: step.image,
+						stepImageData: step.imageData,
+						stepImageDataAlt: step.image_data
 					})}
 
 					{/* Instructions */}
