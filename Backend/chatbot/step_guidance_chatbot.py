@@ -56,8 +56,6 @@ class StepGuidanceChatbot:
         Free-form chat with the LLM using the guide + current step context.
         Before answering, verify relevance; if off-topic, nudge the user.
         """
-        if (step>0):
-            step=step-1
         self.current_step=step
         user_message = (user_message or "").strip()
         self._remember("user", user_message)
@@ -68,8 +66,7 @@ class StepGuidanceChatbot:
             step_title = self._step_title(self.current_step)
             msg = (
                 f"That question doesn’t appear related to the project "
-                f"(Step {self.current_step}: {step_title}). "
-                "Ask me about this step, the tools/materials involved, safety, or troubleshooting. "
+                "Ask me about this project, the tools/materials involved, safety, or troubleshooting. "
             )
             self._remember("assistant", msg)
             return msg
@@ -152,6 +149,9 @@ class StepGuidanceChatbot:
         
         if step_idx == 0:  
             pass  
+        
+        if (step_idx>0):
+            step_idx=step_idx-1
             
         step = self.steps_data.get(step_idx, {})
         title = step.get("title", f"Step {step_idx}")
