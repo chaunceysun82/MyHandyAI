@@ -132,7 +132,7 @@ export default function ProjectOverview() {
 		return result;
 	}, [estimations, steps]);
 
-	const handleClose = () => navigate(-1);
+	const handleClose = () => navigate("/home");
 
 	const openAssistant = () => {
 
