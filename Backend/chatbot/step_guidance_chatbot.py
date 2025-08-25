@@ -67,7 +67,7 @@ class StepGuidanceChatbot:
         if rel_label == "not_relevant" or rel_score < MIN_RELEVANCE_TO_ANSWER:
             step_title = self._step_title(self.current_step)
             msg = (
-                f"That question doesn’t appear related to the current step "
+                f"That question doesn’t appear related to the project "
                 f"(Step {self.current_step}: {step_title}). "
                 "Ask me about this step, the tools/materials involved, safety, or troubleshooting. "
             )
@@ -113,6 +113,7 @@ class StepGuidanceChatbot:
             "4) Keep answers actionable and compact; use bullets or short numbered lists when helpful.\n"
             "5) If the user seems stuck, propose troubleshooting checks based on the step.\n"
             "Do not introduce new steps or change the step order."
+            "Keep the answer concise and short"
         )
 
     def _build_guide_context_block(self, step) -> str:
