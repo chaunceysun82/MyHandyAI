@@ -153,3 +153,21 @@ def get_project_progress(project_id: str):
         "average_progress": avg,         # 0–100 for the homepage bar
         "steps": steps
     }
+
+@router.put("/projects/{project_id}/complete-all")
+def complete_all_steps(project_id: str):
+    result = steps_collection.update_many(
+        {"projectId": ObjectId(project_id)},
+        {
+            "$set": {
+                "progress": 100,
+                "status": "completed",
+                "completed": True,
+                "updatedAt": datetime.utcnow()
+            }
+        }
+    )
+    return {
+        "message": "All steps marked as completed",
+        "modified_count": result.modified_count
+    }
