@@ -288,6 +288,7 @@ async def generate_steps(project):
                 "instructions": step.get("instructions", []),
 
                 "status": (step.get("status") or "pending").lower(),
+                "progress": 0, 
                 "tools_needed": step.get("tools_needed", []),
                 "safety_warnings": step.get("safety_warnings", []),
                 "tips": step.get("tips", []),

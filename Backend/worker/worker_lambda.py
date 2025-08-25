@@ -107,6 +107,7 @@ def lambda_handler(event, context):
                     "videoTutorialLink": youtube_url,
                     "referenceLinks": [],
                     "status": (step.get("status") or "pending").lower(),
+                    "progress": 0, 
                     "completed": False,
                     "createdAt": datetime.utcnow(),
                     "updatedAt": datetime.utcnow(),

@@ -94,7 +94,12 @@ def delete_project(project_id: str):
 def complete_step(project_id: str, step_number: int):
     result = steps_collection.update_one(
         {"projectId": ObjectId(project_id), "stepNumber": step_number},
-        {"$set": {"completed": True}}
+        {"$set": {
+            "completed": True,
+            "status": "completed",
+            "progress": 100,
+            "updatedAt": datetime.utcnow()
+        }}
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Step not found")
