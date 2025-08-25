@@ -139,6 +139,25 @@ async def generate_tools(project:str):
 
         update_project(str(cursor["_id"]), {"tool_generation":tools_result})
         
+        # FLOW 1: Extract and save tools to tools_collection after generation
+        try:
+            print(f"🔄 FLOW 1: Extracting generated tools to tools_collection")
+            
+            # Import the extraction function
+            from routes.chatbot import extract_and_save_tools_from_project
+            
+            # Extract tools from the project we just updated
+            extraction_result = await extract_and_save_tools_from_project(project)
+            
+            # Add Flow 1 results to response
+            tools_result["flow1_extraction"] = extraction_result
+            
+            print(f"✅ FLOW 1: Completed - tools extracted to collection")
+            
+        except Exception as e:
+            print(f"⚠️ FLOW 1: Failed to extract tools: {e}")
+            tools_result["flow1_extraction"] = {"error": str(e)}
+        
         return {
             "success": True,
             "project_id": project,

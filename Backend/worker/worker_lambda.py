@@ -97,9 +97,106 @@ def lambda_handler(event, context):
                 print("LLM Generation tools failed")
                 return {"message": "LLM Generation tools failed"}
             
+            # FLOW 2: Compare and enhance tools with existing ones
+            if "tools" in tools_result and tools_result["tools"]:
+                print(f"🔄 FLOW 2: Comparing {len(tools_result['tools'])} generated tools with existing tools")
+                
+                try:
+                    # Import comparison functions
+                    from routes.chatbot import find_similar_tools, update_tool_usage
+                    
+                    enhanced_tools = []
+                    reuse_stats = {"reused": 0, "new": 0, "errors": 0}
+                    
+                    for tool in tools_result["tools"]:
+                        try:
+                            # Search for similar existing tools
+                            similar_tools = find_similar_tools(
+                                query=tool.get("name", ""),
+                                limit=3,
+                                similarity_threshold=0.75
+                            )
+                            
+                            if similar_tools and similar_tools[0]["similarity_score"] >= 0.8:
+                                # High similarity - reuse image and amazon link
+                                best_match = similar_tools[0]
+                                tool["image_link"] = best_match["image_link"]
+                                tool["amazon_link"] = best_match["amazon_link"]
+                                tool["reused_from"] = best_match["tool_id"]
+                                tool["similarity_score"] = best_match["similarity_score"]
+                                
+                                # Update usage count
+                                update_tool_usage(best_match["tool_id"])
+                                
+                                reuse_stats["reused"] += 1
+                                print(f"   ✅ Reused image/links for: {tool['name']}")
+                                
+                            else:
+                                # No good match - keep as new tool
+                                reuse_stats["new"] += 1
+                                print(f"   🆕 New tool: {tool['name']}")
+                            
+                            enhanced_tools.append(tool)
+                            
+                        except Exception as e:
+                            print(f"❌ Error processing tool {tool.get('name', 'unknown')}: {e}")
+                            enhanced_tools.append(tool)
+                            reuse_stats["errors"] += 1
+                    
+                    # Update tools_result with enhanced tools
+                    tools_result["tools"] = enhanced_tools
+                    tools_result["reuse_metadata"] = reuse_stats
+                    
+                    print(f"✅ FLOW 2 completed: {reuse_stats['reused']} reused, {reuse_stats['new']} new")
+                    
+                except Exception as e:
+                    print(f"⚠️ FLOW 2 comparison error: {e}")
+                    tools_result["reuse_metadata"] = {"error": str(e)}
+            
             tools_result["status"]="complete"
 
             update_project(str(cursor["_id"]), {"tool_generation":tools_result})
+            
+            # FLOW 1: Extract and save tools to tools_collection
+            try:
+                print(f"🔄 FLOW 1: Extracting generated tools to tools_collection")
+                
+                # Import extraction functions
+                from routes.chatbot import store_tool_in_database, create_and_store_tool_embeddings
+                from db import tools_collection
+                
+                saved_tools = []
+                failed_tools = []
+                
+                if "tools" in tools_result and tools_result["tools"]:
+                    for tool in tools_result["tools"]:
+                        try:
+                            # Check if tool already exists (avoid duplicates)
+                            existing_tool = tools_collection.find_one({"name": tool["name"]})
+                            if existing_tool:
+                                print(f"✅ Tool '{tool['name']}' already exists, skipping")
+                                continue
+                            
+                            # Save new tool
+                            tool_id = store_tool_in_database(tool)
+                            embedding_result = create_and_store_tool_embeddings(tool, tool_id)
+                            
+                            saved_tools.append({
+                                "tool_id": tool_id,
+                                "name": tool["name"],
+                                "status": "saved"
+                            })
+                            
+                            print(f"✅ FLOW 1: Saved tool '{tool['name']}' to tools_collection")
+                            
+                        except Exception as e:
+                            print(f"❌ FLOW 1: Failed to save tool {tool.get('name', 'unknown')}: {e}")
+                            failed_tools.append({"tool": tool.get('name', 'unknown'), "error": str(e)})
+                    
+                    print(f"✅ FLOW 1: Completed - {len(saved_tools)} tools saved to collection")
+                
+            except Exception as e:
+                print(f"⚠️ FLOW 1: Failed to extract tools: {e}")
             
             cursor = project_collection.find_one({"_id": ObjectId(project)})
             

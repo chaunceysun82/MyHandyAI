@@ -351,40 +351,7 @@ def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float =
         print(f"Error searching tools in Qdrant: {e}")
         return []
 
-def process_tools_with_reuse(tools_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Process a list of tools, reusing existing ones when possible and storing new ones.
-    """
-    processed_tools = []
-    
-    for tool in tools_list:
-        # Search for similar existing tools
-        similar_tools = find_similar_tools(tool["name"], limit=3, similarity_threshold=0.8)
-        
-        if similar_tools and similar_tools[0]["similarity_score"] >= 0.8:
-            # Reuse existing tool
-            existing_tool = similar_tools[0]
-            tool["image_link"] = existing_tool["image_link"]
-            tool["amazon_link"] = existing_tool["amazon_link"]
-            tool["reused_from"] = existing_tool["tool_id"]
-            
-            # Update usage count
-            update_tool_usage(existing_tool["tool_id"])
-            
-            print(f"Reused existing tool: {tool['name']} (ID: {existing_tool['tool_id']})")
-        else:
-            # Store new tool
-            tool_id = store_tool_in_database(tool)
-            tool["tool_id"] = tool_id
-            
-            # Store embeddings
-            create_and_store_tool_embeddings(tool, tool_id)
-            
-            print(f"Stored new tool: {tool['name']} (ID: {tool_id})")
-        
-        processed_tools.append(tool)
-    
-    return processed_tools
+
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_bot(chat_message: ChatMessage):
@@ -416,20 +383,6 @@ async def chat_with_bot(chat_message: ChatMessage):
         if getattr(chatbot, "current_state", None) == "complete":
             await save_information(session_id=session_id)
             await qdrant_function(project_id=chat_message.project)
-            
-            # FLOW 1: Extract and save tools from completed project
-            try:
-                print(f"🔄 FLOW 1: Extracting tools from completed project {chat_message.project}")
-                # Check if project has tool_generation data first
-                project = project_collection.find_one({"_id": ObjectId(chat_message.project)})
-                if project and "tool_generation" in project and "tools" in project["tool_generation"]:
-                    await extract_and_save_tools_from_project(chat_message.project)
-                    print(f"✅ FLOW 1: Tools extracted and saved successfully")
-                else:
-                    print(f"ℹ️ FLOW 1: No tool_generation data found, skipping extraction")
-            except Exception as e:
-                print(f"⚠️ FLOW 1: Failed to extract tools: {e}")
-                # Don't fail the main chat response if tool extraction fails
 
         return ChatResponse(
             response=response,
@@ -724,28 +677,7 @@ async def list_tools(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list tools: {str(e)}")
 
-@router.post("/tools/process")
-async def process_tools_for_reuse(tools_data: List[Tool]):
-    """
-    Process a list of tools, reusing existing ones when possible.
-    This endpoint can be called after LLM generates tools to optimize storage and reuse.
-    """
-    try:
-        # Convert Pydantic models to dictionaries
-        tools_list = [tool.model_dump() for tool in tools_data]
-        
-        # Process tools with reuse logic
-        processed_tools = process_tools_with_reuse(tools_list)
-        
-        return {
-            "message": "Tools processed successfully",
-            "total_tools": len(processed_tools),
-            "reused_tools": len([t for t in processed_tools if "reused_from" in t]),
-            "new_tools": len([t for t in processed_tools if "reused_from" not in t]),
-            "tools": processed_tools
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process tools: {str(e)}")
+
 
 @router.delete("/tools/{tool_id}")
 async def delete_tool(tool_id: str):
