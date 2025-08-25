@@ -142,7 +142,7 @@ class StepGuidanceChatbot:
         return "GUIDE OVERVIEW\n" + "\n".join(parts)
 
     def _build_step_context_block(self, step_idx: int) -> str:
-        if step <0:
+        if step_idx <0:
             steps_brief = ""
             try:
                 for step_num, step in self.steps_data.items():
@@ -150,7 +150,7 @@ class StepGuidanceChatbot:
             except Exception:
                 pass
         
-        if step == 0:  
+        if step_idx == 0:  
             pass  
             
         step = self.steps_data.get(step_idx, {})
