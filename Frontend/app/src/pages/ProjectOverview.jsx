@@ -94,7 +94,7 @@ export default function ProjectOverview() {
 	}, [projectId]);
 
 	const displayedSteps = useMemo(
-		() => (loading ? withTools(defaultSteps) : steps),
+		() => (loading ? [] : steps),
 		[loading, steps]
 	);
 	const stats = useMemo(() => {
@@ -132,7 +132,7 @@ export default function ProjectOverview() {
 		return result;
 	}, [estimations, steps]);
 
-	const handleClose = () => navigate(-1);
+	const handleClose = () => navigate("/home");
 
 	const openAssistant = () => {
 
@@ -227,15 +227,27 @@ export default function ProjectOverview() {
 
 				{/* Estimated Breakdown */}
 				<div className="px-4">
-					<EstimatedBreakdown stats={stats} />
+					{loading ? (
+						<div className="animate-pulse">
+							<div className="bg-gray-200 h-20 rounded-lg"></div>
+						</div>
+					) : (
+						<EstimatedBreakdown stats={stats} />
+					)}
 				</div>
 
 				{/* Intro text */}
 				<div className="px-4">
-					<p className="text-[11px] text-gray-500 mt-3">
-						Based on our conversation, here is your {displayedSteps.length} step
-						solution:
-					</p>
+					{loading ? (
+						<div className="animate-pulse mt-3">
+							<div className="bg-gray-200 h-3 w-48 rounded"></div>
+						</div>
+					) : (
+						<p className="text-[11px] text-gray-500 mt-3">
+							Based on our conversation, here is your {displayedSteps.length} step
+							solution:
+						</p>
+					)}
 				</div>
 
 				{/* Error banner */}
@@ -250,28 +262,64 @@ export default function ProjectOverview() {
 				{/* Scrollable Steps list */}
 				<div className="flex-1 overflow-y-auto px-4 mt-3">
 					<div className="space-y-3 pb-4">
-						{displayedSteps.map((s, i) => {
-							console.log("ProjectOverview: Rendering step:", { 
-								title: s.title, 
-								completed: s.completed, 
-								status: s.status,
-								index: i 
-							});
-							return (
-								<StepCard
-									key={s.key || i}
-									index={i}
-									icon={s.icon}
-									title={s.title}
-									subtitle={s.subtitle}
-									time={s.time}
-									status={s.status}
-									imageUrl={s.imageUrl}
-									completed={s.completed}
-									onClick={() => goToStep(i)}
-								/>
-							);
-						})}
+						{loading ? (
+							// Loading state with empty containers
+							<>
+								{[...Array(4)].map((_, i) => (
+									<div key={i} className="animate-pulse">
+										<div className="w-full px-3 py-3 rounded-2xl bg-gray-200 flex items-center gap-3">
+											{/* Step Image Container */}
+											<div className="w-14 h-14 rounded-lg bg-gray-300"></div>
+											
+											{/* Step Text Container */}
+											<div className="flex-1">
+												{/* Time + Status Row */}
+												<div className="flex gap-2 mb-1">
+													<div className="bg-gray-300 h-4 w-16 rounded-md"></div>
+													<div className="bg-gray-300 h-4 w-20 rounded-md"></div>
+												</div>
+												
+												{/* Title */}
+												<div className="bg-gray-300 h-4 w-32 rounded mb-2"></div>
+												
+												{/* Subtitle */}
+												<div className="bg-gray-300 h-3 w-40 rounded"></div>
+											</div>
+											
+											{/* Step Number Container */}
+											<div className="shrink-0">
+												<div className="bg-gray-300 h-6 w-16 rounded-full"></div>
+											</div>
+										</div>
+									</div>
+								))}
+							</>
+						) : (
+							// Actual step cards
+							displayedSteps.map((s, i) => {
+								console.log("ProjectOverview: Rendering step:", { 
+									title: s.title, 
+									completed: s.completed, 
+									status: s.status,
+									index: i 
+								});
+								
+								return (
+									<StepCard
+										key={s.key || i}
+										index={i}
+										icon={s.icon}
+										title={s.title}
+										subtitle={s.subtitle}
+										time={s.time}
+										status={s.status}
+										imageUrl={null}
+										completed={s.completed}
+										onClick={() => goToStep(i)}
+									/>
+								);
+							})
+						)}
 					</div>
 				</div>
 
