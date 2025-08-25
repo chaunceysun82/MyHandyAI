@@ -24,6 +24,9 @@ export default function StepPage() {
 	const [step, setStep] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
+	const location = useLocation();
+
+	const userId = location.state?.userId || null;
 	const [allSteps, setAllSteps] = useState([]);
 	
 	// Get the project video URL from navigation state
@@ -325,6 +328,7 @@ export default function StepPage() {
 					projectVideoUrl={projectVideoUrl}
 					onPrev={handlePrev}
 					onNext={handleNext}
+					userId={userId}
 					isPrevDisabled={false}
 					isNextDisabled={false}
 					isNextFinal={(() => {

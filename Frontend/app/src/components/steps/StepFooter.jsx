@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toggleStepCompletion } from "../../services/steps";
+import ChatWindow2 from "../Chat/ChatWindow2";
 
 export default function StepFooter({ 
 	projectId, 
@@ -11,6 +12,7 @@ export default function StepFooter({
 	projectVideoUrl,
 	onPrev, 
 	onNext,
+	userId,
 	isPrevDisabled = false,
 	isNextDisabled = false,
 	isNextFinal = false,
@@ -21,6 +23,12 @@ export default function StepFooter({
 	const navigate = useNavigate();
 	const [showProjectCompletionModal, setShowProjectCompletionModal] = useState(false);
 	const [isCompleting, setIsCompleting] = useState(false);
+	const [openModal, setOpenModal] = useState(false);
+	const [open, setOpen] = useState(true);
+
+	const URL = process.env.REACT_APP_BASE_URL;
+	
+	console.log("User ID:", userId);
 
 	// Check if all instruction steps are completed (excluding tools step)
 	const checkAllStepsCompleted = () => {
@@ -126,16 +134,16 @@ export default function StepFooter({
 	};
 
 	const handleChatClick = () => {
-		navigate("/chat", { 
-			state: { 
-				projectId, 
-				projectName: projectName || "Project",
-				from: "step",
-				stepNumber: stepNumber,
-				stepTitle: stepTitle,
-				projectVideoUrl: projectVideoUrl
-			}
-		});
+		// navigate("/chat", { 
+		// 	state: { 
+		// 		projectId, 
+		// 		projectName: projectName || "Project",
+		// 		from: "step",
+		// 		stepNumber: stepNumber,
+		// 		stepTitle: stepTitle
+		// 	}
+		// });
+		setOpenModal(true);
 	};
 
 	const handlePrevClick = () => {
@@ -189,6 +197,16 @@ export default function StepFooter({
 						Ask
 					</button>
 				</div>
+
+			{openModal && (
+				<ChatWindow2
+					isOpen={open}
+					projectId={projectId}
+					onClose={() => setOpenModal(false)}
+					URL={URL}
+					stepNumber={stepNumber}
+				/>
+			)}
 
 				{/* Bottom Navigation */}
 				<div className="grid grid-cols-2 gap-3">
