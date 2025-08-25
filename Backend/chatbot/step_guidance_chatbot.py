@@ -25,7 +25,7 @@ class StepGuidanceChatbot:
         self.steps_data: Dict[int, Dict[str, Any]] = {1: {"title": "Step 1", "instructions": []}}
         self.tools_data: Dict[str, Any] = {}
         self.problem_summary: str = ""
-        self.current_step: int = 1  # stays fixed unless your UI sets it via set_current_step()
+        self.current_step: int = -1  # stays fixed unless your UI sets it via set_current_step()
         self.history: List[Dict[str, str]] = []
 
     # ---------- Public API ----------
@@ -112,7 +112,7 @@ class StepGuidanceChatbot:
             "3) Offer practical tips and highlight safety warnings when relevant.\n"
             "4) Keep answers actionable and compact; use bullets or short numbered lists when helpful.\n"
             "5) If the user seems stuck, propose troubleshooting checks based on the step.\n"
-            "Do not introduce new steps or change the step order."
+            "Do not introduce new steps or change the step order.\n"
             "Keep the answer concise and short"
         )
 
@@ -271,7 +271,7 @@ class StepGuidanceChatbot:
             "Given the user's question and the project context, answer with exactly one label:\n"
             "relevant, not_relevant, or uncertain."
         )
-        ctx = self._build_guide_context_block() + "\n" + self._build_step_context_block(self.current_step)
+        ctx = self._build_guide_context_block(self.current_step) + "\n" + self._build_step_context_block(self.current_step)
         messages = [
             {"role": "system", "content": system},
             {"role": "system", "content": ctx},
