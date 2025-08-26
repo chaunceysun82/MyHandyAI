@@ -396,19 +396,53 @@ async def chat_with_bot(chat_message: ChatMessage):
         session_id = chat_message.session_id or uuid.uuid4().hex
         chatbot = get_latest_chatbot(session_id)
 
-        # Decode uploaded image if present
-        uploaded_image = None
-        if chat_message.uploaded_image:
-            image_data = chat_message.uploaded_image
-            if image_data.startswith('data:image'):
-                image_data = image_data.split(',')[1]
-            uploaded_image = base64.b64decode(image_data)
-
         # Log user message
         log_message(session_id, "user", chat_message.message, chatbot, chat_message.user, chat_message.project)
 
-        # Get bot response and log it
-        response = chatbot.process_message(chat_message.message, uploaded_image)
+        # Check if image is provided - use vision-aware OpenAI direct call
+        if chat_message.uploaded_image:
+            # Build user message content with image
+            user_parts = [{"type": "text", "text": chat_message.message}]
+            
+            # Format image data URL
+            image_data = chat_message.uploaded_image
+            if image_data.startswith('data:image'):
+                url = image_data
+            else:
+                url = f"data:image/jpeg;base64,{image_data}"
+            
+            user_parts.append({
+                "type": "image_url", 
+                "image_url": {"url": url}
+            })
+
+            # Call OpenAI with vision
+            system_prompt = "You are MyHandyAI, a helpful DIY assistant. Analyze images and provide helpful guidance for DIY projects, tool identification, and home improvement tasks."
+            
+            resp = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_parts},
+                ],
+                temperature=0.4,
+                max_tokens=600
+            )
+            
+            response = resp.choices[0].message.content
+        else:
+            # Decode uploaded image if present (for AgenticChatbot compatibility)
+            uploaded_image = None
+            if chat_message.uploaded_image:
+                image_data = chat_message.uploaded_image
+                if image_data.startswith('data:image'):
+                    image_data = image_data.split(',')[1]
+                uploaded_image = base64.b64decode(image_data)
+
+            # Get bot response from AgenticChatbot
+            response = chatbot.process_message(chat_message.message, uploaded_image)
+
+        # Log bot response
         log_message(session_id, "assistant", response, chatbot, chat_message.user, chat_message.project)
 
         print(getattr(chatbot, "current_state", None))
