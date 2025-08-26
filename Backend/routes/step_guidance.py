@@ -234,7 +234,7 @@ def start_step_guidance_task(payload: StartTaskRequest):
     return ChatResponse(
         response=welcome,
         session_id=session_id,
-        current_step=1,
+        current_step=-1,
         total_steps=total_steps
     )
 
@@ -261,10 +261,28 @@ def chat_with_step_guidance(payload: ChatMessage):
 
 @router.get("/session/{session_id}/history")
 def get_step_guidance_history(session_id: str):
-    cursor = conversations_step_collection.find(
+    cursor1 = conversations_collection.find(
         {"session_id": session_id}
     ).sort("timestamp", 1)
-    return [{"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]} for doc in cursor]
+    history1 = [
+        {"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]}
+        for doc in cursor1
+    ]
+
+    cursor2 = conversations_step_collection.find(
+        {"session_id": session_id}
+    ).sort("timestamp", 1)
+    history2 = [
+        {"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]}
+        for doc in cursor2
+    ]
+
+    # Merge both lists
+    history = history1 + history2
+
+    # Sort merged list by timestamp
+    history = sorted(history, key=lambda x: x["timestamp"])
+    return history
 
 @router.post("/session/{session_id}/reset")
 def reset_step_guidance_session(session_id: str, project: str, user: str):

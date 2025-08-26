@@ -630,7 +630,7 @@ class StepsAgentJSON:
             payload = {
                 "model": "gpt-5-mini",
                 "messages": messages,
-                "max_completion_tokens": 2500,
+                "max_completion_tokens": 3000,
                 "reasoning_effort": "low"
             }
             

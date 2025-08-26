@@ -370,17 +370,30 @@ export default function ChatWindow2({
                         }
                     }
                 } else {
-                    // No session exists, start new one
-                    const startRes = await axios.post(
-                        `${URL}/step-guidance/start`,
-                        { project: projectId },
-                        { headers: { "Content-Type": "application/json" }}
-                    );
-                    
-                    if (!cancelled) {
-                        console.log("Response from starting session:", startRes.data);
-                        setSessionId(startRes.data.session);
-                        setMessages([{ sender: "bot", content: startRes.data.response }]);
+                    try {
+
+                        // No session exists, start new one
+                        const startRes = await axios.post(
+                            `${URL}/step-guidance/start`,
+                            { project: projectId },
+                            { headers: { "Content-Type": "application/json" }}
+                        );
+                        
+                        if (!cancelled) {
+                            console.log("Response from starting session:", startRes.data);
+                            setSessionId(startRes.data.session_id);
+                            const historyRes = await axios.get(`${URL}/step-guidance/session/${startRes.data.session_id}/history`);
+                            const formattedMessages = historyRes.data.map(({role, message}) => ({
+                                sender: role === "user" ? "user" : "bot",
+                                content: message,
+                            }));
+                            console.log("message: ", formattedMessages)
+                            setMessages(formattedMessages);
+                        }
+                    } catch (historyErr) {
+                        if (!cancelled) {
+                            setMessages([{sender: "bot", content: "Failed to load chat history."}]);
+                        }
                     }
                 }
             } catch (err) {
