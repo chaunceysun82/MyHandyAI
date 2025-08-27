@@ -135,6 +135,8 @@ def complete_all_steps(project_id):
         "_id": ObjectId(project_id)
     })
     if "step_generation" in cursor and "steps" in cursor["step_generation"]:
+        print("there is steps")
+        print(cursor)
         project_collection.update_one
         (   
             {"_id": ObjectId(project_id)},
