@@ -131,7 +131,7 @@ def complete_step(project_id: str, step: int):
 
 @router.put("/project/{project_id}/complete")
 def complete_all_steps(project_id):
-    cursor= project_collection.find({
+    cursor= project_collection.find_one({
         "_id": ObjectId(project_id)
     })
     if "step_generation" in cursor and "steps" in cursor["step_generation"]:
@@ -151,11 +151,10 @@ def complete_all_steps(project_id):
 
 @router.get("/project/{project_id}/progress")
 def steps_progress(project_id):
-    cursor= project_collection.find({
+    cursor= project_collection.find_one({
         "_id": ObjectId(project_id)
     })
 
-    print(cursor["step_generation"])
     if "step_generation" in cursor and "steps" in cursor["step_generation"]:
         steps= list(cursor["step_generation"]["steps"])
 
