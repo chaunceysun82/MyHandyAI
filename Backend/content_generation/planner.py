@@ -14,9 +14,9 @@ load_dotenv()
 # Import utility functions from agents.py
 from chatbot.agents import load_prompt, clean_and_parse_json, minutes_to_human, extract_number_from_maybe_price
 
-tools_prompt_text = load_prompt("generation_tools_prompt.txt")
-steps_prompt_text = load_prompt("generation_steps_prompt.txt")
-fallback_tools_text = load_prompt("generation_fallback_tools_prompt.txt")
+tools_prompt_text = load_prompt("tools_prompt.txt")
+steps_prompt_text = load_prompt("steps_prompt.txt")
+fallback_tools_text = load_prompt("fallback_tools_prompt.txt")
 
 
 class Step(BaseModel):
@@ -80,6 +80,10 @@ Project summary:
         amazon_affiliate_tag: str = "myhandyai-20",
         openai_base_url: str = "https://api.openai.com/v1",
         timeout: int = 90,
+        new_summary: Optional[str] = None,
+        matched_summary: Optional[str] = None,
+        matched_tools: Optional[Any] = None,
+        matched_steps: Optional[Any] = None,
     ) -> None:
         self.serpapi_api_key = serpapi_api_key or os.getenv("SERPAPI_API_KEY")
         self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
@@ -90,6 +94,10 @@ Project summary:
         self.amazon_affiliate_tag = amazon_affiliate_tag
         self.base_url = openai_base_url.rstrip("/")
         self.timeout = timeout
+        self.new_summary = new_summary
+        self.matched_summary = matched_summary
+        self.matched_tools = matched_tools
+        self.matched_steps = matched_steps
         
         self._schema = {
             "type": "object",
@@ -236,8 +244,33 @@ Project summary:
         # Last resort: stringify full response to aid debugging
         return json.dumps(resp)
 
-    def recommend_tools(self, summary: str, include_json: bool = False) -> Dict[str, Any]:
-        prompt = self.PROMPT_TEXT.format(summary=summary)
+    def recommend_tools(self, summary: Optional[str] = None, include_json: bool = False) -> Dict[str, Any]:
+
+        # Use provided summary argument first; fall back to constructor's new_summary if not provided
+        summary_to_use = summary if summary is not None else (self.new_summary or "")
+        prompt = self.PROMPT_TEXT.format(summary=summary_to_use)
+
+        # If matched_tools or matched_summary exists, instruct the model to modify them
+        if self.matched_tools:
+            try:
+                matched_tools_text = json.dumps(self.matched_tools, indent=2)
+            except Exception:
+                matched_tools_text = str(self.matched_tools)
+
+
+        prompt += (
+        "\n\nThe following is an EXISTING set of tools (from a matched project with high similarity). "
+        "Modify or adapt these tools to suit the new project summary above. Keep the exact JSON schema and field names as required.\n\n"
+        f"Existing tools:\n{matched_tools_text}\n"
+        )
+
+
+        if self.matched_summary:
+            prompt+=(
+        "\n\nContext: The following MATCHED SUMMARY was highly similar to the new project. Use it as a reference when adapting tools.\n\n"
+        f"Matched Summary:\n{self.matched_summary}\n"
+        )
+
 
         payload = {
             "model": self.model,
@@ -252,22 +285,22 @@ Project summary:
                     "strict": True,
                     "schema": self._schema,
                 },
-                
             }
         }
+
 
         resp = self._post_openai(payload)
         print(resp)
         raw_text = self._extract_output_text(resp)
         print(raw_text)
-        
+
         try:
             parsed_obj = ToolsLLM(**json.loads(raw_text))
             print(parsed_obj)
-            
         except Exception as e:
-            # Surface what the model returned to help debugging
-            raise ValidationError([e], ToolsLLM)  # or raise RuntimeError(f"Schema parse error: {e}\nRAW: {raw_text}")
+        # Surface what the model returned to help debugging
+            raise ValidationError([e], ToolsLLM) # or raise RuntimeError(f"Schema parse error: {e}\nRAW: {raw_text}")
+
 
         tools_list: List[Dict[str, Any]] = []
         for i in parsed_obj.tools:
@@ -281,32 +314,41 @@ Project summary:
                 "amazon_link": None,
             }
 
+
             try:
                 img = self._get_image_url(i.name)
                 tool["image_link"] = img
             except Exception:
                 tool["image_link"] = None
 
+
             safe = self._sanitize_for_amazon(i.name)
             tool["amazon_link"] = f"https://www.amazon.com/s?k={safe}&tag={self.amazon_affiliate_tag}"
 
+
             tools_list.append(tool)
+
 
         out: Dict[str, Any] = {"tools": tools_list, "raw": parsed_obj.model_dump()}
         if include_json:
             out["json"] = json.dumps(tools_list, indent=4)
 
+
         return out
 
 
 class StepsAgentJSON:
-    def __init__(self):
+    def __init__(self, new_summary: Optional[str] = None, matched_summary: Optional[str] = None, matched_tools: Optional[Any] = None, matched_steps: Optional[Any] = None):
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.api_url = "https://api.openai.com/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        self.new_summary = new_summary
+        self.matched_summary = matched_summary
+        self.matched_tools = matched_tools
+        self.matched_steps = matched_steps
 
     def _parse_list_items(self, text: str) -> List[str]:
         """
@@ -539,7 +581,7 @@ class StepsAgentJSON:
         Returns a dictionary with steps array and time estimation.
         """
         # Prepare enhanced context including user answers and handling skipped questions
-        enhanced_context = summary
+        enhanced_context = summary if summary else (self.new_summary or "")
 
         tools_context = "\n\nTools Context:\n"
 
@@ -551,6 +593,19 @@ class StepsAgentJSON:
                 tools_context += tool["risk_factors"]+"\n"
                 tools_context += tool["safety_measures"]+"\n"
             tools_context +="\n"
+
+        if self.matched_steps:
+            try:
+                matched_steps_text = json.dumps(self.matched_steps, indent=2)
+            except Exception:
+                matched_steps_text = str(self.matched_steps)
+
+
+            enhanced_context += "\n\nMatched project summary and steps (adapt these to the new summary):\n"
+            if self.matched_summary:
+                enhanced_context += f"Matched Summary:\n{self.matched_summary}\n\n"
+            enhanced_context += f"Matched Steps:\n{matched_steps_text}\n\n"
+            enhanced_context += "When adapting, preserve the same structure and output format the system expects (Step No., Step Title, Time, Instructions, Tools Needed, Safety Warnings, Tips).\n"
 
         if user_answers and questions:
             # Add user answers to the context
@@ -576,12 +631,43 @@ class StepsAgentJSON:
             
             enhanced_context += answers_context
             enhanced_context += tools_context
+        else:
+            enhanced_context += tools_context
         
         # Use the prompt from text file
         base_prompt = steps_prompt_text
 
+        adaptation_instructions = ""
+        if self.matched_steps:
+            try:
+                matched_steps_text = json.dumps(self.matched_steps, indent=2)
+            except Exception:
+                matched_steps_text = str(self.matched_steps)
+
+            adaptation_instructions += (
+                "\n\nADAPTATION INSTRUCTIONS:\n"
+                "The user provided an EXISTING set of steps from a matched project below. Modify and adapt those steps so they match the NEW project summary and context above. "
+                "Strictly preserve the exact output structure and field names expected by this system (Step No., Step Title, Time, Instructions, Tools Needed, Safety Warnings, Tips). "
+                "Update time estimates, instructions, tools needed, safety warnings, and tips where appropriate. If a step is no longer relevant, adjust or remove it, but ensure the final output lists steps numbered sequentially starting at 1. "
+                "Maintain practical ordering and clarity. Return the plan as plain text in the exact format.\n\n"
+                f"Existing matched steps:\n{matched_steps_text}\n"
+            )
+
+        if self.matched_summary:
+            adaptation_instructions += f"\n\nMatched Summary:\n{self.matched_summary}\n"
+
+        if self.matched_tools:
+            try:
+                matched_tools_text = json.dumps(self.matched_tools, indent=2)
+            except Exception:
+                matched_tools_text = str(self.matched_tools)
+            adaptation_instructions += f"\n\nMatched Tools (for reference):\n{matched_tools_text}\n"
+
+        # Merge the base prompt with adaptation instructions so the system role contains both.
+        system_content = base_prompt + adaptation_instructions
+
         messages = [
-            {"role": "system", "content": base_prompt},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": enhanced_context + "\n\nReturn the plan as plain text in the exact format."}
         ]
 
@@ -659,7 +745,6 @@ class StepsAgentJSON:
             "estimated_completion": "TBD",
             "project_summary": project_summary
         }
-
 
 class EstimationAgent:
     """Agent for generating cost and time estimations"""

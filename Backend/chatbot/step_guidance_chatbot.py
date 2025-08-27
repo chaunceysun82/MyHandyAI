@@ -7,7 +7,7 @@ import json
 import math
 from typing import Dict, Any, List, Optional
 
-DEFAULT_MODEL = os.getenv("STEP_GUIDANCE_MODEL", "gpt-5-mini") 
+DEFAULT_MODEL = os.getenv("STEP_GUIDANCE_MODEL", "gpt-5-nano") 
 CLASSIFIER_MODEL = os.getenv("STEP_GUIDANCE_CLASSIFIER_MODEL", "gpt-5-nano")
 MAX_TURNS_IN_CONTEXT = int(os.getenv("STEP_GUIDANCE_MAX_TURNS", "10"))
 MIN_RELEVANCE_TO_ANSWER = float(os.getenv("STEP_GUIDANCE_MIN_REL", "0.35"))  # 0..1
@@ -25,7 +25,7 @@ class StepGuidanceChatbot:
         self.steps_data: Dict[int, Dict[str, Any]] = {1: {"title": "Step 1", "instructions": []}}
         self.tools_data: Dict[str, Any] = {}
         self.problem_summary: str = ""
-        self.current_step: int = 1  # stays fixed unless your UI sets it via set_current_step()
+        self.current_step: int = -1  # stays fixed unless your UI sets it via set_current_step()
         self.history: List[Dict[str, str]] = []
 
     # ---------- Public API ----------
@@ -56,8 +56,6 @@ class StepGuidanceChatbot:
         Free-form chat with the LLM using the guide + current step context.
         Before answering, verify relevance; if off-topic, nudge the user.
         """
-        if (step>0):
-            step=step-1
         self.current_step=step
         user_message = (user_message or "").strip()
         self._remember("user", user_message)
@@ -67,9 +65,8 @@ class StepGuidanceChatbot:
         if rel_label == "not_relevant" or rel_score < MIN_RELEVANCE_TO_ANSWER:
             step_title = self._step_title(self.current_step)
             msg = (
-                f"That question doesn’t appear related to the current step "
-                f"(Step {self.current_step}: {step_title}). "
-                "Ask me about this step, the tools/materials involved, safety, or troubleshooting. "
+                f"That question doesn’t appear related to the project "
+                "Ask me about this project, the tools/materials involved, safety, or troubleshooting. "
             )
             self._remember("assistant", msg)
             return msg
@@ -112,7 +109,8 @@ class StepGuidanceChatbot:
             "3) Offer practical tips and highlight safety warnings when relevant.\n"
             "4) Keep answers actionable and compact; use bullets or short numbered lists when helpful.\n"
             "5) If the user seems stuck, propose troubleshooting checks based on the step.\n"
-            "Do not introduce new steps or change the step order."
+            "Do not introduce new steps or change the step order.\n"
+            "Keep the answer concise and short"
         )
 
     def _build_guide_context_block(self, step) -> str:
@@ -141,7 +139,7 @@ class StepGuidanceChatbot:
         return "GUIDE OVERVIEW\n" + "\n".join(parts)
 
     def _build_step_context_block(self, step_idx: int) -> str:
-        if step <0:
+        if step_idx <0:
             steps_brief = ""
             try:
                 for step_num, step in self.steps_data.items():
@@ -149,8 +147,11 @@ class StepGuidanceChatbot:
             except Exception:
                 pass
         
-        if step == 0:  
+        if step_idx == 0:  
             pass  
+        
+        if (step_idx>0):
+            step_idx=step_idx-1
             
         step = self.steps_data.get(step_idx, {})
         title = step.get("title", f"Step {step_idx}")
@@ -270,7 +271,7 @@ class StepGuidanceChatbot:
             "Given the user's question and the project context, answer with exactly one label:\n"
             "relevant, not_relevant, or uncertain."
         )
-        ctx = self._build_guide_context_block() + "\n" + self._build_step_context_block(self.current_step)
+        ctx = self._build_guide_context_block(self.current_step) + "\n" + self._build_step_context_block(self.current_step)
         messages = [
             {"role": "system", "content": system},
             {"role": "system", "content": ctx},
