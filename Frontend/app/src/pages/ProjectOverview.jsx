@@ -5,6 +5,7 @@ import { fetchEstimations, fetchSteps } from "../services/overview";
 import StepCard from "../components/StepCard";
 import EstimatedBreakdown from "../components/EstimationBreakdown";
 import ChatWindow2 from "../components/Chat/ChatWindow2";
+import defaultTools from "../assets/default_tools.svg";
 
 
 export default function ProjectOverview() {
@@ -16,8 +17,6 @@ export default function ProjectOverview() {
 	const { state } = useLocation();
 	const location = useLocation();
 
-
-	const [open, setOpen] = useState(true);
 
 	const {userId} = location.state || {};
 
@@ -236,17 +235,42 @@ export default function ProjectOverview() {
 					)}
 				</div>
 
-				{/* Intro text */}
-				<div className="px-4">
+				{/* Tools and Materials Card */}
+				<div className="px-4 mt-3">
 					{loading ? (
-						<div className="animate-pulse mt-3">
-							<div className="bg-gray-200 h-3 w-48 rounded"></div>
+						<div className="animate-pulse">
+							<div className="bg-gray-200 h-20 rounded-lg"></div>
 						</div>
 					) : (
-						<p className="text-[11px] text-gray-500 mt-3">
-							Based on our conversation, here is your {displayedSteps.length} step
-							solution:
-						</p>
+						<StepCard
+							key="tools-step"
+							index={0}
+							icon="🧰"
+							title="Tools and Materials"
+							subtitle="List of tools needed for this project"
+							time=""
+							status=""
+							imageUrl={defaultTools}
+							completed={false}
+							onClick={() => goToStep(0)}
+						/>
+					)}
+				</div>
+
+				{/* Step-by-step guidance heading and description */}
+				<div className="px-4 mt-2">
+					{loading ? (
+						<div className="animate-pulse">
+							<div className="bg-gray-200 h-4 w-48 rounded mb-2"></div>
+							<div className="bg-gray-200 h-3 w-64 rounded"></div>
+						</div>
+					) : (
+						<>
+							<h2 className="text-md font-bold text-gray-900 mb-1">Step-by-step guidance</h2>
+							<p className="text-[10px] text-gray-600">
+								Based on our conversation, here is your {displayedSteps.length > 0 ? displayedSteps.length - 1 : 0} step solution:
+							</p>
+						</>
 					)}
 				</div>
 
@@ -260,7 +284,7 @@ export default function ProjectOverview() {
 				)}
 
 				{/* Scrollable Steps list */}
-				<div className="flex-1 overflow-y-auto px-4 mt-3">
+				<div className="flex-1 overflow-y-auto px-4 mt-4">
 					<div className="space-y-3 pb-4">
 						{loading ? (
 							// Loading state with empty containers
@@ -295,30 +319,33 @@ export default function ProjectOverview() {
 								))}
 							</>
 						) : (
-							// Actual step cards
-							displayedSteps.map((s, i) => {
-								console.log("ProjectOverview: Rendering step:", { 
-									title: s.title, 
-									completed: s.completed, 
-									status: s.status,
-									index: i 
-								});
-								
-								return (
-									<StepCard
-										key={s.key || i}
-										index={i}
-										icon={s.icon}
-										title={s.title}
-										subtitle={s.subtitle}
-										time={s.time}
-										status={s.status}
-										imageUrl={null}
-										completed={s.completed}
-										onClick={() => goToStep(i)}
-									/>
-								);
-							})
+							// Actual step cards - filter out tools step (index 0)
+							displayedSteps
+								.filter((s, i) => i > 0) // Skip tools step
+								.map((s, i) => {
+									const actualStepIndex = i + 1; // Adjust index since we filtered out tools
+									console.log("ProjectOverview: Rendering instruction step:", { 
+										title: s.title, 
+										completed: s.completed, 
+										status: s.status,
+										index: actualStepIndex 
+									});
+									
+									return (
+										<StepCard
+											key={s.key || actualStepIndex}
+											index={actualStepIndex}
+											icon={s.icon}
+											title={s.title}
+											subtitle={s.subtitle}
+											time={s.time}
+											status={s.status}
+											imageUrl={null}
+											completed={s.completed}
+											onClick={() => goToStep(actualStepIndex)}
+										/>
+									);
+								})
 						)}
 					</div>
 				</div>
@@ -338,7 +365,7 @@ export default function ProjectOverview() {
 					{/* Chat Assistant Modal */}
 					{openModal && (
 						<ChatWindow2
-							isOpen={open}
+							isOpen={openModal}
 							projectId={projectId}
 							onClose={() => setOpenModal(false)}
 							URL={URL}

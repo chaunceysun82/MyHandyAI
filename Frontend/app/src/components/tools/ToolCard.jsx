@@ -1,7 +1,7 @@
 // components/ToolCard.jsx
 import { useMemo, useState } from "react";
 import amazon from "../../assets/amazon.svg";
-import defaultToolImage from "../../assets/default_tool.png";
+import defaultToolImage from "../../assets/default_tools.svg";
 import { truncateWords } from "../../utilities/text"; 
 
 export default function ToolCard({ tool, toolId, isSelected, isSelectionMode, onSelectionToggle }) {
