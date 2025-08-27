@@ -131,31 +131,32 @@ def complete_step(project_id: str, step: int):
 
 @router.put("/project/{project_id}/complete")
 def complete_all_steps(project_id):
-    cursor= project_collection.find({
+    cursor= project_collection.find_one({
         "_id": ObjectId(project_id)
     })
     if "step_generation" in cursor and "steps" in cursor["step_generation"]:
-        project_collection.update_one
-        (   
+        print("there is steps")
+        print(cursor)
+        project_collection.update_one(   
             {"_id": ObjectId(project_id)},
-            {"$set": { "step_generation.steps.$[].completed": True } }
-        )
-
-        project_collection.update_one
-        (   
-            {"_id": ObjectId(project_id)},
-            {"$set": { "completed": True } }
+            {"$set": { "step_generation.steps.$[].completed": True, "completed": True } }
         )
     
-    return {"message": "Project/Steps updated"}
+        return {"message": "Project/Steps updated"}
+
+    return {"message": "No steps found"}
 
 @router.get("/project/{project_id}/progress")
 def steps_progress(project_id):
-    cursor= project_collection.find({
+    cursor= project_collection.find_one({
         "_id": ObjectId(project_id)
     })
+
     if "step_generation" in cursor and "steps" in cursor["step_generation"]:
         steps= list(cursor["step_generation"]["steps"])
+
+        print("there is steps")
+        print(steps)
 
         count=0
         for s in steps:
