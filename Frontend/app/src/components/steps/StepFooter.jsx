@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toggleStepCompletion } from "../../services/steps";
+import { completeProject } from "../../services/projects";
 import ChatWindow2 from "../Chat/ChatWindow2";
 
 export default function StepFooter({ 
@@ -24,7 +25,6 @@ export default function StepFooter({
 	const [showProjectCompletionModal, setShowProjectCompletionModal] = useState(false);
 	const [isCompleting, setIsCompleting] = useState(false);
 	const [openModal, setOpenModal] = useState(false);
-	const [open, setOpen] = useState(true);
 
 	const URL = process.env.REACT_APP_BASE_URL;
 	
@@ -120,6 +120,17 @@ export default function StepFooter({
 				onStepUpdate();
 			}
 			
+			// Call the project completion API to mark entire project as complete
+			console.log("StepFooter: Marking entire project as complete via API...");
+			try {
+				await completeProject(projectId);
+				console.log("StepFooter: Project completion API call successful");
+			} catch (apiError) {
+				console.error("StepFooter: Error calling project completion API:", apiError);
+				// Continue with navigation even if API fails
+				alert('Warning: Project completion API failed, but steps were completed. You may need to refresh the page.');
+			}
+			
 			console.log("StepFooter: All steps completed, navigating to project completion");
 			// Navigate to project completion page
 			navigate(`/projects/${projectId}/completed`);
@@ -200,7 +211,7 @@ export default function StepFooter({
 
 			{openModal && (
 				<ChatWindow2
-					isOpen={open}
+					isOpen={openModal}
 					projectId={projectId}
 					onClose={() => setOpenModal(false)}
 					URL={URL}

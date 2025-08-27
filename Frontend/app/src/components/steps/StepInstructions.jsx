@@ -18,7 +18,7 @@ export default function StepInstructions({ instructions }) {
 			{Array.isArray(instructions) ? (
 				<ol className="space-y-2">
 					{instructions.map((instruction, index) => (
-						<li key={index} className="flex items-start gap-3">
+						<li key={index} className="flex items-center gap-3">
 							<span className="w-6 h-6 bg-gray-200 text-gray-700 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0">
 								{index + 1}
 							</span>

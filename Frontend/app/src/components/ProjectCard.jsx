@@ -12,6 +12,9 @@ export default function ProjectCard({
 }) {
   const [showMenu, setShowMenu] = useState(false);
 
+  console.log("Propject percentage", Number(percentComplete));
+
+
   const formatLastActivity = (dateString) => {
     if (!dateString) return "Just now";
     const date = new Date(dateString);
@@ -56,7 +59,7 @@ export default function ProjectCard({
   };
 
   return (
-    <div className="bg-gray-100 rounded-xl px-2 py-1 flex items-center justify-between relative">
+    <div className="bg-gray-100 rounded-xl flex items-center justify-between relative">
       {/* Left Section - Image and Project Details - Clickable */}
       <div 
         className="flex items-center space-x-4 flex-1 cursor-pointer rounded-lg p-1"

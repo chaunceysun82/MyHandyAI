@@ -31,6 +31,11 @@ export default function Home() {
   const [projectName, setProjectName] = useState("");
   const [creating, setCreating] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
+  // New state for tabs, search, and filtering
+  const [activeTab, setActiveTab] = useState("ongoing"); // "ongoing" or "completed"
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
 
   // Function to get first name with first letter capitalized
   // Extracts first name from "First Last" format and capitalizes first letter
@@ -50,6 +55,49 @@ export default function Home() {
 
   const openSidebar = () => setIsSidebarOpen(true);
   const closeSidebar = () => setIsSidebarOpen(false);
+
+  // Get project counts for tabs
+  const ongoingCount = projects.filter(p => p.percentComplete < 100).length;
+  const completedCount = projects.filter(p => p.percentComplete >= 100).length;
+
+  // Filter projects based on active tab and search query
+  const filteredProjects = projects.filter(project => {
+    // First filter by tab (ongoing vs completed)
+    const isCompleted = project.percentComplete >= 100;
+    const matchesTab = activeTab === "ongoing" ? !isCompleted : isCompleted;
+    
+    // Then filter by search query
+    const matchesSearch = searchQuery === "" || 
+      project.projectTitle.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    return matchesTab && matchesSearch;
+  });
+
+
+  // Simple test - show first project progress
+  if (projects.length > 0) {
+    const firstProject = projects[0];
+    console.log('Home: FIRST PROJECT TEST:', {
+      title: firstProject.projectTitle,
+      progress: firstProject.percentComplete,
+      type: typeof firstProject.percentComplete,
+      converted: Math.round(Number(firstProject.percentComplete) || 0)
+    });
+  }
+
+  // Close filter menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showFilterMenu && !event.target.closest('.filter-menu-container')) {
+        setShowFilterMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showFilterMenu]);
 
   useEffect(() => {
     if (!token) {
@@ -84,6 +132,8 @@ export default function Home() {
 
     fetchProjects(token)
       .then(data => {
+        console.log('Home: fetchProjects result:', data);
+        console.log('Home: First project data:', data[0]);
         setProjects(data);
         setLoading(false);
       })
@@ -191,11 +241,112 @@ export default function Home() {
 
         {/* Content Area - Takes remaining space with max height */}
         <div className="flex-1 px-6 py-6 overflow-hidden">
-          {/* Ongoing Projects Section */}
-          <h2 className="text-lg font-semibold text-gray-900 mb-6">Ongoing Projects</h2>
+          {/* Project Category Tabs */}
+          <div className="flex mb-4">
+            <button
+              onClick={() => setActiveTab("ongoing")}
+              className={`flex-1 py-2 px-4 rounded-l-lg  text-sm font-medium transition-colors ${
+                activeTab === "ongoing"
+                  ? "bg-gray-800 text-white"
+                  : "bg-gray-200 text-gray-800"
+              }`}
+            >
+              Ongoing 
+            </button>
+            <button
+              onClick={() => setActiveTab("completed")}
+              className={`flex-1 py-2 px-4 rounded-r-lg  text-sm font-medium transition-colors ${
+                activeTab === "completed"
+                  ? "bg-gray-800 text-white"
+                  : "bg-gray-200 text-gray-800"
+              }`}
+            >
+              Completed 
+            </button>
+          </div>
+
+          {/* Search and Filter Bar */}
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex-1 relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <input
+                type="text"
+                placeholder="Search for projects"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-gray-100 border-0 rounded-lg text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+              />
+            </div>
+            
+            {/* Filter Button */}
+            <div className="filter-menu-container relative">
+              <button
+                onClick={() => setShowFilterMenu(!showFilterMenu)}
+                className="p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.707A1 1 0 013 7V4z" />
+                </svg>
+              </button>
+              
+              {/* Filter Menu Dropdown */}
+              {showFilterMenu && (
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                  <div className="py-2">
+                    <button
+                      onClick={() => {
+                        setSearchQuery("");
+                        setShowFilterMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      Clear Search
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab("ongoing");
+                        setShowFilterMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      Show Ongoing Only
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab("completed");
+                        setShowFilterMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      Show Completed Only
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab("ongoing");
+                        setSearchQuery("");
+                        setShowFilterMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      Reset All Filters
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Projects Section */}
+          <h2 className="text-lg font-semibold text-gray-900 mb-6">
+            {activeTab === "ongoing" ? "Ongoing Projects" : "Completed Projects"}
+          </h2>
           
-          {projects.length === 0 ? (
-            <div className="mt-24 text-center py-12">
+          {filteredProjects.length === 0 ? (
+            <div className="text-center py-12">
               {/* SVG Illustration */}
               <div className="w-32 h-24 mx-auto mb-6">
                 <img 
@@ -207,7 +358,7 @@ export default function Home() {
               
               {/* Main Heading */}
               <h3 className="text-xl font-bold text-gray-900 mb-3">
-                No Ongoing Project
+                No {activeTab === "ongoing" ? "Ongoing" : "Completed"} Project
               </h3>
               
               {/* Sub-text */}
@@ -217,17 +368,27 @@ export default function Home() {
             </div>
           ) : (
             <div className="space-y-4 overflow-y-auto h-full pr-2">
-              {projects.map((p) => (
-                <ProjectCard
-                  key={p._id}
-                  id={p._id}
-                  projectTitle={p.projectTitle}
-                  lastActivity={p.lastActivity}
-                  percentComplete={p.percentComplete}
-                  onStartChat={() => navigate("/chat", {state: {projectId: p._id, projectName: p.projectTitle, userId: token}})}
-                  onRemove={handleRemoveProject}
-                />
-              ))}
+              {filteredProjects.map((p) => {
+                console.log('Home: Rendering ProjectCard with data:', {
+                  id: p._id,
+                  title: p.projectTitle,
+                  percentComplete: p.percentComplete,
+                  fullProject: p
+                });
+
+                
+                return (
+                  <ProjectCard
+                    key={p._id}
+                    id={p._id}
+                    projectTitle={p.projectTitle}
+                    lastActivity={p.lastActivity}
+                    percentComplete={p.percentComplete}
+                    onStartChat={() => navigate("/chat", {state: {projectId: p._id, projectName: p.projectTitle, userId: token}})}
+                    onRemove={handleRemoveProject}
+                  />
+                );
+              })}
             </div>
           )}
         </div>
@@ -254,6 +415,7 @@ export default function Home() {
         <SideNavbar 
           isOpen={isSidebarOpen} 
           onClose={closeSidebar} 
+          onStartNewProject={openModal}
         />
       </div>
 

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { toggleStepCompletion } from "../../services/steps";
+import { completeProject } from "../../services/projects";
 import StepValidationModal from "./StepValidationModal";
 
 export default function StepCompletionConfirmation({ 
@@ -94,6 +95,17 @@ export default function StepCompletionConfirmation({
 			
 			// Mark current step as completed
 			await toggleStepCompletion(projectId, stepNumber);
+			
+			// Call the project completion API to mark entire project as complete
+			console.log('Marking entire project as complete via API...');
+			try {
+				await completeProject(projectId);
+				console.log('Project completion API call successful');
+			} catch (apiError) {
+				console.error('Error calling project completion API:', apiError);
+				// Continue with navigation even if API fails
+				alert('Warning: Project completion API failed, but steps were completed. You may need to refresh the page.');
+			}
 			
 			// Close modal and update UI
 			setShowValidationModal(false);
@@ -207,14 +219,14 @@ export default function StepCompletionConfirmation({
 			if (allCompleted) {
 				return {
 					title: "Project Completion",
-					message: "All steps are completed! Ready to finish this project?",
+					message: "All steps are completed! Ready to finish this project? This will mark the entire project as complete.",
 					confirmText: "Yes, Complete Project",
 					cancelText: "No, Go Back"
 				};
 			} else {
 				return {
 					title: "Final Step - Complete All Steps",
-					message: "This is the final step! Some previous steps are not completed. Would you like to mark all remaining steps as complete and finish the project?",
+					message: "This is the final step! Some previous steps are not completed. Would you like to mark all remaining steps as complete and finish the project? This will mark the entire project as complete.",
 					confirmText: "Yes, Complete All Steps & Finish",
 					cancelText: "No, Go Back"
 				};
