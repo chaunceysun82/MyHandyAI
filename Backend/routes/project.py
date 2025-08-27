@@ -157,6 +157,8 @@ def steps_progress(project_id):
     if "step_generation" in cursor and "steps" in cursor["step_generation"]:
         steps= list(cursor["step_generation"]["steps"])
 
+        print("there is steps")
+
         count=0
         for s in steps:
             if "completed" in s and s["completed"]==True:
