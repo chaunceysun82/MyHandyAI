@@ -11,12 +11,26 @@ export default function StepCompletionConfirmation({
 	onStepUpdate,
 	onProjectComplete // New prop for navigation to project completion
 }) {
+	// Debug logging for allSteps
+	console.log('StepCompletionConfirmation: allSteps prop:', {
+		allSteps,
+		isArray: Array.isArray(allSteps),
+		length: Array.isArray(allSteps) ? allSteps.length : 'N/A',
+		type: typeof allSteps
+	});
+
 	const [showValidationModal, setShowValidationModal] = useState(false);
 	const [validationType, setValidationType] = useState(null); // 'previous' or 'final'
 	const [pendingAction, setPendingAction] = useState(null);
 
 	// Check if previous steps are completed (excluding tools step)
 	const checkPreviousStepsCompleted = () => {
+		// Ensure allSteps is an array before checking
+		if (!Array.isArray(allSteps) || allSteps.length === 0) {
+			console.warn('allSteps is not an array or is empty:', allSteps);
+			return true; // Default to true to avoid blocking completion
+		}
+		
 		if (currentStepIndex <= 1) return true; // First instruction step (step 1), no previous instruction steps to check
 		
 		// Check only instruction steps (skip tools step at index 0)
@@ -30,6 +44,12 @@ export default function StepCompletionConfirmation({
 
 	// Check if this is the final step (excluding tools step)
 	const isFinalStep = () => {
+		// Ensure allSteps is an array before filtering
+		if (!Array.isArray(allSteps) || allSteps.length === 0) {
+			console.warn('allSteps is not an array or is empty:', allSteps);
+			return false;
+		}
+		
 		// Filter out tools step and check if current step is the last instruction step
 		const instructionSteps = allSteps.filter((step, index) => index > 0); // Skip tools step (index 0)
 		return currentStepIndex === instructionSteps.length;
@@ -37,6 +57,12 @@ export default function StepCompletionConfirmation({
 
 	// Check if all instruction steps are completed
 	const checkAllStepsCompleted = () => {
+		// Ensure allSteps is an array before iterating
+		if (!Array.isArray(allSteps) || allSteps.length === 0) {
+			console.warn('allSteps is not an array or is empty:', allSteps);
+			return false;
+		}
+		
 		// Check all instruction steps (skip tools step at index 0)
 		for (let i = 1; i < allSteps.length; i++) {
 			if (!allSteps[i]?.completed) {
@@ -49,6 +75,16 @@ export default function StepCompletionConfirmation({
 	// Complete all remaining steps and finish project
 	const completeAllStepsAndFinish = async () => {
 		try {
+			// Ensure allSteps is an array before iterating
+			if (!Array.isArray(allSteps) || allSteps.length === 0) {
+				console.warn('allSteps is not an array or is empty:', allSteps);
+				// Just complete the current step if allSteps is invalid
+				await toggleStepCompletion(projectId, stepNumber);
+				if (onStepUpdate) onStepUpdate();
+				if (onProjectComplete) onProjectComplete();
+				return;
+			}
+			
 			// Mark all incomplete instruction steps as completed (skip tools step at index 0)
 			for (let i = 1; i < allSteps.length; i++) {
 				if (!allSteps[i]?.completed) {
@@ -116,6 +152,15 @@ export default function StepCompletionConfirmation({
 	// Complete current step and mark previous incomplete steps as completed (excluding tools step)
 	const completeStepWithPrevious = async () => {
 		try {
+			// Ensure allSteps is an array before iterating
+			if (!Array.isArray(allSteps) || allSteps.length === 0) {
+				console.warn('allSteps is not an array or is empty:', allSteps);
+				// Just complete the current step if allSteps is invalid
+				await toggleStepCompletion(projectId, stepNumber);
+				if (onStepUpdate) onStepUpdate();
+				return;
+			}
+
 			// Mark all previous incomplete instruction steps as completed (skip tools step at index 0)
 			for (let i = 1; i < currentStepIndex; i++) {
 				if (!allSteps[i]?.completed) {
