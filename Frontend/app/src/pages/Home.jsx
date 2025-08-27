@@ -6,7 +6,7 @@ import ProjectCard from "../components/ProjectCard";
 import LoadingPlaceholder from "../components/LoadingPlaceholder";
 import SideNavbar from "../components/SideNavbar";
 import MobileWrapper from "../components/MobileWrapper";
-import { fetchProjects, createProject, deleteProject } from "../services/projects";
+import { fetchProjects, createProject, deleteProject, completeProject } from "../services/projects";
 import { getUserById } from "../services/auth";
 import defaultHome from "../../src/assets/default-home.png";
 
@@ -36,6 +36,11 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState("ongoing"); // "ongoing" or "completed"
   const [searchQuery, setSearchQuery] = useState("");
   const [showFilterMenu, setShowFilterMenu] = useState(false);
+  
+  // New state for completion confirmation
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [projectToComplete, setProjectToComplete] = useState(null);
+  const [isCompleting, setIsCompleting] = useState(false);
 
   // Function to get first name with first letter capitalized
   // Extracts first name from "First Last" format and capitalizes first letter
@@ -191,21 +196,81 @@ export default function Home() {
     }
   }
 
-  async function handleRemoveProject(id) {
+  const handleRemoveProject = async (projectId) => {
     try {
-      // optimistic UI: remove first
-      setProjects(prev => prev.filter(p => p._id !== id));
-      await deleteProject(id);
-    } catch (err) {
-      console.error("deleteProject:", err);
-      // revert if delete failed
-      setProjects(prev => {
-        fetchProjects(token).then(setProjects).catch(() => {});
-        return prev;
-      });
-      setError("Could not delete project: " + err.message);
+      await deleteProject(projectId);
+      setProjects(projects.filter(p => p._id !== projectId));
+    } catch (error) {
+      console.error("Error removing project:", error);
+      setError("Failed to remove project. Please try again.");
     }
-  }
+  };
+
+  const handleCompleteProject = async (projectId) => {
+    try {
+      await completeProject(projectId);
+      // Refresh projects to get updated progress
+      const updatedProjects = await fetchProjects(token);
+      setProjects(updatedProjects);
+    } catch (error) {
+      console.error("Error completing project:", error);
+      setError("Failed to complete project. Please try again.");
+    }
+  };
+
+  // Function to show completion confirmation modal
+  const showCompletionConfirmation = (project) => {
+    setProjectToComplete(project);
+    setShowCompletionModal(true);
+  };
+
+  // Function to confirm project completion
+  const confirmProjectCompletion = async () => {
+    if (!projectToComplete) return;
+    
+    setIsCompleting(true); // Start loading
+    try {
+      await completeProject(projectToComplete._id);
+      // Refresh projects to get updated progress
+      const updatedProjects = await fetchProjects(token);
+      setProjects(updatedProjects);
+      setShowCompletionModal(false);
+      setProjectToComplete(null);
+      
+      // Show success message
+      setError(""); // Clear any previous errors
+      // You could add a success state here if you want to show success messages
+      console.log(`Project "${projectToComplete.projectTitle}" completed successfully!`);
+    } catch (error) {
+      console.error("Error completing project:", error);
+      setError("Failed to complete project. Please try again.");
+    } finally {
+      setIsCompleting(false); // End loading
+    }
+  };
+
+  // Function to check if a project has steps generated
+  const hasProjectSteps = (project) => {
+    // Check if project has any meaningful data beyond just being created
+    // Projects with steps usually have:
+    // 1. Progress > 0 (meaning steps were generated and some were completed)
+    // 2. Last activity (meaning user has interacted with the project)
+    // 3. Or if it's a very new project that might not have steps yet
+    
+    // If project has progress > 0, it definitely has steps
+    if (project.percentComplete > 0) {
+      return true;
+    }
+    
+    // If project has last activity, it likely has steps
+    if (project.lastActivity) {
+      return true;
+    }
+    
+    // For very new projects (created but not yet processed), assume no steps
+    // This prevents users from marking incomplete projects as complete
+    return false;
+  };
 
   if (loading) return <LoadingPlaceholder />;
 
@@ -386,6 +451,8 @@ export default function Home() {
                     percentComplete={p.percentComplete}
                     onStartChat={() => navigate("/chat", {state: {projectId: p._id, projectName: p.projectTitle, userId: token}})}
                     onRemove={handleRemoveProject}
+                    onComplete={() => showCompletionConfirmation(p)}
+                    hasSteps={hasProjectSteps(p)}
                   />
                 );
               })}
@@ -458,6 +525,48 @@ export default function Home() {
                 disabled={!projectName.trim() || creating}
               >
                 {creating ? "Starting…" : "Start"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Project Completion Confirmation Modal */}
+      {showCompletionModal && projectToComplete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-xs p-4 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3 text-center">
+              Complete Project
+            </h3>
+            
+            <div className="text-center mb-4">
+              <p className="text-sm text-gray-600 mb-2">
+                Are you sure you want to mark this project as complete?
+              </p>
+              <p className="text-sm font-medium text-gray-800">
+                "{projectToComplete.projectTitle}"
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                This will mark all steps as completed and move the project to completed status.
+              </p>
+            </div>
+
+            <div className="flex space-x-2">
+              <button
+                className="flex-1 px-3 py-2 rounded-lg bg-gray-200 text-gray-700 font-medium hover:bg-gray-300 transition-colors text-sm"
+                onClick={() => {
+                  setShowCompletionModal(false);
+                  setProjectToComplete(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 px-3 py-2 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 transition-colors text-sm"
+                onClick={confirmProjectCompletion}
+                disabled={isCompleting}
+              >
+                {isCompleting ? "Completing..." : "Complete Project"}
               </button>
             </div>
           </div>
