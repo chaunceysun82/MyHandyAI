@@ -489,7 +489,7 @@ function withTools(steps) {
 		{
 			key: "tools-step",
 			icon: "🧰",
-			title: "Tools Required",
+			title: "Tools and Materials",
 			subtitle: "List of tools needed for this project",
 			time: "",
 			completed: false, // Tools step is never completed

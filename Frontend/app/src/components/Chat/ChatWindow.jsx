@@ -512,7 +512,7 @@ const handleSend = async (text, files = []) => {
             <ChatInput onSend={handleSend} />
           </div>
 
-          <div className="mt-auto grid grid-cols-2 gap-4 px-4 pb-4">
+          {/* <div className="mt-auto grid grid-cols-2 gap-4 px-4 pb-4">
             <button 
               onClick={() => navigate("/home")}
               className="rounded-[8px] font-regular bg-[#D9D9D9] px-4 py-2 text-black-700">
@@ -523,7 +523,7 @@ const handleSend = async (text, files = []) => {
               Next
             </button>
 
-          </div>
+          </div> */}
         </div>
       </div>
     </div>,

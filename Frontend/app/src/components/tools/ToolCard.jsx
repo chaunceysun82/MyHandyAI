@@ -4,10 +4,23 @@ import amazon from "../../assets/amazon.svg";
 import defaultToolImage from "../../assets/default_tool.png";
 import { truncateWords } from "../../utilities/text"; 
 
-export default function ToolCard({ tool }) {
+export default function ToolCard({ tool, toolId, isSelected, isSelectionMode, onSelectionToggle }) {
 	const [showDetails, setShowDetails] = useState(false);
 	const [showModal, setShowModal] = useState(false);
 	
+	console.log("ToolCard rendering:", {
+		name: tool.name,
+		toolId,
+		isSelected,
+		onSelectionToggle: !!onSelectionToggle,
+		priceData: {
+			price: tool.price,
+			priceMin: tool.priceMin,
+			priceMax: tool.priceMax,
+			price_range: tool.price_range
+		}
+	});
+
 	// Handle both transformed and raw API data structures
 	const toolName = tool?.name || "Unknown Tool";
 	const toolDescription = tool?.description || "No description available";
@@ -31,19 +44,20 @@ export default function ToolCard({ tool }) {
 	const rating = Number(tool?.rating ?? 4.0);
 	const fullStars = Math.max(0, Math.min(5, Math.floor(rating)));
 	const emptyStars = 5 - fullStars;
+	const reviewCount = tool?.reviewCount || tool?.review_count || "1K";
 
-	const priceText = toolPrice 
-		? `$${toolPrice.toFixed(2)}`
-		: tool?.priceMin != null && tool?.priceMax != null
-		? `$${tool.priceMin} \u2013 $${tool.priceMax}`
-		: tool?.priceRange || "Price not available";
-
-	// Cut description to half length for display
-	const shortDescription = toolDescription 
-		? toolDescription.length > 50 
-			? toolDescription.substring(0, 30) + "..."
-			: toolDescription
-		: "No description available";
+	const priceText = (() => {
+		// Priority: priceMin/priceMax range, then single price, then fallback
+		if (tool?.priceMin != null && tool?.priceMax != null && tool.priceMin !== tool.priceMax) {
+			return `$${Number(tool.priceMin).toFixed(0)} - $${Number(tool.priceMax).toFixed(0)}`;
+		} else if (tool?.price != null && tool.price > 0) {
+			return `$${Number(tool.price).toFixed(2)}`;
+		} else if (tool?.priceMin != null && tool.priceMin > 0) {
+			return `$${Number(tool.priceMin).toFixed(2)}`;
+		} else {
+			return "Price not available";
+		}
+	})();
 
 	const hasAdditionalInfo = toolRiskFactors || toolSafetyMeasures;
 
@@ -59,13 +73,45 @@ export default function ToolCard({ tool }) {
 		<>
 			<div className="w-full flex flex-col items-center h-full">
 				{/* Card */}
-				<div className="w-full h-full rounded-xl border border-gray-200 bg-gray-50 shadow-sm p-3 flex flex-col items-center justify-between min-h-[140px]">
-					{/* Image tile */}
-					<div className="h-12 w-12 rounded-lg bg-white shadow-inner flex items-center justify-center overflow-hidden">
+				<div className="w-full h-full rounded-xl border border-gray-200 bg-gray-100 shadow-sm p-3 flex flex-col items-center justify-between min-h-[160px] relative">
+					{/* Required Badge - Smaller and positioned towards the left */}
+					<div className="absolute top-2 left-2">
+						<span
+							className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-[10px] shadow-sm ${
+								toolRequired
+									? "bg-[#FCECD6] text-orange-700"
+									: "bg-[#BDF8E3] text-emerald-700"
+							}`}>
+							{toolRequired ? "Required" : "Optional"}
+						</span>
+					</div>
+
+					{/* Selection Checkbox - Top right, only visible in selection mode */}
+					{isSelectionMode && (
+						<div className="absolute top-2 right-2">
+							<button
+								onClick={onSelectionToggle}
+								className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${
+									isSelected
+										? "bg-green-600 border-green-600"
+										: "bg-white border-gray-300 hover:border-green-400"
+								}`}
+							>
+								{isSelected && (
+									<svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+										<path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+									</svg>
+								)}
+							</button>
+						</div>
+					)}
+
+					{/* Image tile - Larger and centered */}
+					<div className="h-20 w-20 rounded-lg bg-white shadow-inner flex items-center justify-center overflow-hidden mb-3 mt-6">
 						<img
 							src={src}
 							alt={toolName}
-							className="h-10 w-10 object-contain"
+							className="h-16 w-16 object-contain"
 							referrerPolicy="no-referrer"
 							onError={() => {
 								if (src !== defaultSrc) setSrc(defaultSrc);
@@ -73,30 +119,22 @@ export default function ToolCard({ tool }) {
 						/>
 					</div>
 
-					{/* Title */}
-					<h3 className="mt-2 text-sm font-semibold text-gray-900 text-center line-clamp-2 leading-tight min-h-[2.5rem] flex items-center justify-center">
-						{truncateWords(toolName, 4)}
+					{/* Title - Optimized spacing */}
+					<h3 className="text-sm font-bold text-gray-900 text-center line-clamp-2 leading-tight min-h-[2rem] flex items-center justify-center mb-2">
+						{toolName}
 					</h3>
 
-					{/* Description */}
-					{/* <p className="mt-2 text-sm text-gray-600 text-center line-clamp-3">
-						{shortDescription}
-					</p> */}
-
-					{/* Price */}
-					<div className="mt-1 text-emerald-600 text-sm font-semibold tracking-tight">
+					{/* Price - Optimized spacing */}
+					<div className="text-emerald-600 text-base font-bold tracking-tight mb-3">
 						{priceText}
 					</div>
 
-					{/* Rating row */}
-					
-
-					{/* Amazon button */}
+					{/* Amazon button - Optimized spacing */}
 					<a
 						href={toolLink}
 						target="_blank"
 						rel="noreferrer"
-						className="mt-2 inline-flex items-center gap-1 rounded-lg bg-blue-100 text-blue-800 px-2 py-1 text-xs font-medium hover:bg-blue-200 transition-colors">
+						className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-blue-100 text-blue-800 px-2 py-1.5 text-xs font-medium hover:bg-blue-200 transition-colors">
 						<img src={amazon} alt="Amazon" className="h-3 w-3" />
 						<span>Amazon</span>
 						<svg
@@ -112,7 +150,7 @@ export default function ToolCard({ tool }) {
 						</svg>
 					</a>
 
-					{/* Show Details Toggle */}
+					{/* Show Details Toggle - Optimized spacing */}
 					{hasAdditionalInfo && (
 						<button
 							onClick={handleShowDetails}
@@ -121,18 +159,6 @@ export default function ToolCard({ tool }) {
 							Show Details
 						</button>
 					)}
-				</div>
-
-				{/* Bottom pill */}
-				<div className="mt-2 mb-1">
-					<span
-						className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs italic shadow-sm ${
-							toolRequired
-								? "bg-orange-100 text-orange-700"
-								: "bg-green-100 text-emerald-700"
-						}`}>
-						{toolRequired ? "Required" : "Optional"}
-					</span>
 				</div>
 			</div>
 

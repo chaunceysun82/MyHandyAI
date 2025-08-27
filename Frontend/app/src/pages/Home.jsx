@@ -8,6 +8,8 @@ import SideNavbar from "../components/SideNavbar";
 import MobileWrapper from "../components/MobileWrapper";
 import { fetchProjects, createProject, deleteProject } from "../services/projects";
 import { getUserById } from "../services/auth";
+import defaultHome from "../../src/assets/default-home.png";
+
 
 export default function Home() {
   const navigate = useNavigate();
@@ -193,13 +195,25 @@ export default function Home() {
           <h2 className="text-lg font-semibold text-gray-900 mb-6">Ongoing Projects</h2>
           
           {projects.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
+            <div className="mt-24 text-center py-12">
+              {/* SVG Illustration */}
+              <div className="w-32 h-24 mx-auto mb-6">
+                <img 
+                  src={defaultHome}
+                  alt="No projects illustration" 
+                  className="w-full h-full object-contain"
+                />
               </div>
-              <p className="text-gray-500 text-sm">You have no ongoing projects.</p>
+              
+              {/* Main Heading */}
+              <h3 className="text-xl font-bold text-gray-900 mb-3">
+                No Ongoing Project
+              </h3>
+              
+              {/* Sub-text */}
+              <p className="text-gray-600 text-sm leading-relaxed max-w-xs mx-auto">
+                All caught up! Let MyHandyAI know if household issues need fixing
+              </p>
             </div>
           ) : (
             <div className="space-y-4 overflow-y-auto h-full pr-2">

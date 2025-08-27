@@ -13,7 +13,7 @@ export default function StepCard({
 	status,
 }) {
 	const short = truncateWords(subtitle, 7);
-	const isToolsStep = title === "Tools Required";
+	const isToolsStep = title === "Tools and Materials";
 
 	// Debug logging
 	console.log("StepCard:", { title, completed, isToolsStep });
@@ -27,7 +27,8 @@ export default function StepCard({
 	return (
 		<button
 			onClick={onClick}
-			className="w-full text-left px-3 py-3 rounded-2xl bg-[#E5E5E5] hover:bg-gray-300 transition-colors p-3 flex items-center gap-3">
+			className="w-full text-left px-3 py-3 rounded-2xl bg-[#E5E5E5] hover:bg-gray-300 transition-colors p-3 flex items-center gap-3 border-l-4"
+			style={{ borderLeftColor: '#10B981' }}>
 			{/* Step Image */}
 			<div className="w-14 h-14 rounded-lg overflow-hidden flex items-center justify-center bg-[#F6F0E0]">
 				{imageUrl ? (
@@ -39,15 +40,52 @@ export default function StepCard({
 
 			{/* Step Text */}
 			<div className="flex-1">
-				{/* Time + Status Row */}
-				<div className="flex gap-2 mb-1 flex-wrap">
-					{time && (
+				{/* Title with Step Number */}
+				<div className="text-sm font-semibold leading-tight text-gray-900 mb-1">
+					{!isToolsStep ? (
+						<div className="group relative">
+							<div className="flex items-start">
+								
+								<span className="pb-0.5 line-clamp-2" title={title}>
+									<span className="text-gray-500 flex-shrink-0">Step {index}: </span>
+									{title}
+								</span>
+							</div>
+							
+							{/* Hover Tooltip */}
+							<div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+								{title}
+								{/* Tooltip arrow */}
+								<div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
+							</div>
+						</div>
+					) : (
+						<div className="group relative">
+							<span className="line-clamp-2" title={title}>{title}</span>
+							
+							{/* Hover Tooltip for tools step */}
+							<div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+								{title}
+								{/* Tooltip arrow */}
+								<div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
+							</div>
+						</div>
+					)}
+				</div>
+				
+				{/* Description */}
+				<div className="text-xs text-gray-600 mb-2">{short}...</div>
+
+				{/* Status Row - Time, Completed, or Tools badge */}
+				<div className="flex gap-2 flex-wrap">
+					{/* Show time only when NOT completed and NOT tools step */}
+					{!isToolsStep && !completed && time && (
 						<div className="inline-flex items-center text-[10px] text-gray-600 bg-[#F6F0E0] px-2 py-0.5 rounded-md">
 							⏱ {truncateUntilChar(time, " ")} min
 						</div>
 					)}
 
-					{/* Show completed status only when completed is true */}
+					{/* Show completed status only when completed is true and NOT tools step */}
 					{!isToolsStep && completed && (
 						<div
 							className={`inline-flex items-center text-[10px] px-2 py-0.5 rounded-md ${completedStatus.classes}`}>
@@ -55,34 +93,21 @@ export default function StepCard({
 						</div>
 					)}
 
+					{/* Show tools badge for tools step */}
 					{isToolsStep && (
 						<div className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-md bg-blue-100 text-blue-800">
 							<span className="mr-1">📋</span> View Tools
 						</div>
 					)}
 				</div>
-
-				<div className="text-sm font-semibold leading-tight">{title}</div>
-				<div className="text-xs text-gray-600">{short}...</div>
 			</div>
 
-			{/* Step Number - Hide for tools step */}
-			{!isToolsStep && (
-				<div className="shrink-0">
-					<span className="inline-flex items-center text-xs px-2 py-1 rounded-full bg-white border border-gray-300">
-						Step {index} <span className="ml-1">›</span>
-					</span>
-				</div>
-			)}
-
-			{/* Tools step shows different indicator */}
-			{isToolsStep && (
-				<div className="shrink-0">
-					<span className="inline-flex items-center text-xs px-2 py-1 rounded-full bg-white border border-gray-300">
-						Tools <span className="ml-1">›</span>
-					</span>
-				</div>
-			)}
+			{/* Navigation Arrow - Right side */}
+			<div className="shrink-0">
+				<span className="inline-flex items-center text-xs px-2 py-1 rounded-full bg-white border border-gray-300">
+					{isToolsStep ? "Tools" : `Step ${index}`} <span className="ml-1">›</span>
+				</span>
+			</div>
 		</button>
 	);
 }
