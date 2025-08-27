@@ -46,6 +46,17 @@ export const transformStepData = (stepData, stepNumber, allStepsData) => {
 	console.log("StepUtils: videoUrl field value:", stepData.videoUrl);
 	console.log("StepUtils: video_url field value:", stepData.video_url);
 	console.log("StepUtils: youtube field value:", stepData.youtube);
+	console.log("StepUtils: image field value:", stepData.image);
+	console.log("StepUtils: imageUrl field value:", stepData.imageUrl);
+	console.log("StepUtils: image_url field value:", stepData.image_url);
+	
+	// Check if image is an array (multiple images)
+	if (stepData.image && Array.isArray(stepData.image)) {
+		console.log("StepUtils: Multiple images detected:", stepData.image.length);
+		stepData.image.forEach((img, index) => {
+			console.log(`StepUtils: Image ${index + 1}:`, { status: img.status, hasUrl: !!img.url });
+		});
+	}
 	
 	const result = {
 		number: stepNumber,
@@ -60,13 +71,16 @@ export const transformStepData = (stepData, stepNumber, allStepsData) => {
 		toolsNeeded: formatToolsNeeded(stepData.tools_needed || stepData.tools || stepData.toolsNeeded || []),
 		safety: formatSafetyWarnings(stepData.safety_warnings || stepData.safety || stepData.safety_warning || []),
 		tips: formatTips(stepData.tips || stepData.tip || []),
-		imageUrl: stepData.imageUrl || stepData.image_url || null,
+		image: stepData.image || null, // Preserve the full image object
+		imageUrl: stepData.imageUrl || stepData.image_url || (stepData.image?.url || null), // Keep for backward compatibility
 		videoUrl: stepData.videoUrl || stepData.video_url || stepData.youtube || null,
 		completed: stepData.completed || false // Add the completed field from API data
 	};
 	
 	console.log("StepUtils: Transformed result:", result);
 	console.log("StepUtils: Final videoUrl value:", result.videoUrl);
+	console.log("StepUtils: Final image value:", result.image);
+	console.log("StepUtils: Final imageUrl value:", result.imageUrl);
 	console.log("StepUtils: Final step object:", { number: result.number, total: result.total, completed: result.completed });
 	return result;
 };
