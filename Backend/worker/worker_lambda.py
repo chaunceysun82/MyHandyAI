@@ -103,7 +103,7 @@ def lambda_handler(event, context):
                 
                 try:
                     # Import comparison functions
-                    from routes.chatbot import find_similar_tools, update_tool_usage
+                    from helper import find_similar_tools, update_tool_usage
                     
                     enhanced_tools = []
                     reuse_stats = {"reused": 0, "new": 0, "errors": 0}
@@ -162,7 +162,7 @@ def lambda_handler(event, context):
                 print(f"🔄 FLOW 1: Extracting generated tools to tools_collection")
                 
                 # Import extraction functions
-                from routes.chatbot import store_tool_in_database, create_and_store_tool_embeddings
+                from helper import store_tool_in_database, create_and_store_tool_embeddings
                 from db import tools_collection
                 
                 saved_tools = []
