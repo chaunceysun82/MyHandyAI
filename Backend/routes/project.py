@@ -158,6 +158,7 @@ def steps_progress(project_id):
         steps= list(cursor["step_generation"]["steps"])
 
         print("there is steps")
+        print(steps)
 
         count=0
         for s in steps:
