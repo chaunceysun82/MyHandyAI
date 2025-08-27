@@ -1,6 +1,4 @@
-/**
- * Text processing utilities for chat messages
- */
+
 
 /**
  * Splits a message into logical parts for better readability

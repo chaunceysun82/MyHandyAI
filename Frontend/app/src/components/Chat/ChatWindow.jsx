@@ -380,7 +380,7 @@ export default function ChatWindow({
       />
 
       <div
-        className={`absolute bottom-0 h-[90svh] md:h-[95vh] left-1/2 w-full max-w-[420px] -translate-x-1/2 px-4 pt-4 pb-0 ${
+        className={`absolute bottom-0 h-screen left-1/2 w-full max-w-[420px] -translate-x-1/2 px-4 pb-0 ${
           isDragging ? "transition-none" : "transition-[transform,opacity] duration-300 ease-out"
         }`}
         style={{
@@ -396,7 +396,7 @@ export default function ChatWindow({
           }
         }}
       >
-        <div className="mx-auto max-w-[380px] rounded-t-3xl bg-white shadow-md flex flex-col h-full overflow-hidden">
+        <div className="mx-auto max-w-[380px] bg-white shadow-md flex flex-col h-full overflow-hidden">
           <ChatHeader onClose={onClose} dragHandleProps={{ onPointerDown: startDrag }} />
 
           {status === false ? (
@@ -435,7 +435,7 @@ export default function ChatWindow({
             </div>
           )}
 
-          <div className="flex-shrink-0 flex flex-col px-4 py-3 gap-2">
+          <div className="flex-shrink-0 flex flex-col px-4 py-3 mb-3 gap-2">
             <hr className="border-t border-gray-200/70" />
             <ChatInput
               onSend={handleSend}
