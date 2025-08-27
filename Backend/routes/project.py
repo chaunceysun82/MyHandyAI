@@ -155,7 +155,7 @@ def steps_progress(project_id):
         "_id": ObjectId(project_id)
     })
 
-    print(cursor)
+    print(cursor["step_generation"])
     if "step_generation" in cursor and "steps" in cursor["step_generation"]:
         steps= list(cursor["step_generation"]["steps"])
 
