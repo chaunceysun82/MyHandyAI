@@ -10,7 +10,7 @@ router = APIRouter()
 class User(BaseModel):
     firstname: str
     lastname: str
-    password: str
+    password: Optional[str]=None
     email: EmailStr
     describe: Optional[str] = None
     experienceLevel: Optional[str] = None
@@ -28,8 +28,6 @@ class LoginData(BaseModel):
 def create_user(user: User):
     if users_collection.find_one({"email": user.email}):
         raise HTTPException(status_code=400, detail="Email already exists")
-    if not user.password:
-        raise HTTPException(status_code=400, detail="invalid password")
     new_user = user.dict()
     new_user["createdAt"] = datetime.utcnow()
     result = users_collection.insert_one(new_user)
