@@ -14,8 +14,8 @@ load_dotenv()
 # Import utility functions from agents.py
 from chatbot.agents import load_prompt, clean_and_parse_json, minutes_to_human, extract_number_from_maybe_price
 
-tools_prompt_text = load_prompt("tools_prompt.txt")
-steps_prompt_text = load_prompt("steps_prompt.txt")
+tools_prompt_text = load_prompt("generation_tools_prompt.txt")
+steps_prompt_text = load_prompt("generation_steps_prompt.txt")
 fallback_tools_text = load_prompt("fallback_tools_prompt.txt")
 
 
