@@ -164,6 +164,7 @@ const Login = () => {
        		const user = await getUserById(res.id);
        		const full = [user.firstname, user.lastname].filter(Boolean).join(" ") || (user.email ?? "User");
        		store.setItem("displayName", full);
+       		store.setItem("userEmail", user.email || "");
        		
        		// Check if user has completed onboarding
        		if (hasCompletedOnboarding(user)) {

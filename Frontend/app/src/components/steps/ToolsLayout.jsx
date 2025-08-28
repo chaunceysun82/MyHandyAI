@@ -5,6 +5,7 @@ export default function ToolsLayout({
 	stepNumber,
 	totalSteps,
 	title,
+	subtitle, // Add subtitle prop
 	children,
 	onBack,
 	onPrev,
@@ -20,6 +21,7 @@ export default function ToolsLayout({
 				stepNumber={stepNumber}
 				totalSteps={totalSteps}
 				title={title}
+				subtitle={subtitle} // Pass subtitle to StepHeader
 				onBack={onBack}
 			/>
 

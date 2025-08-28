@@ -9,8 +9,13 @@ export default function ProjectCard({
   percentComplete,
   onStartChat,
   onRemove,
+  onComplete,
+  hasSteps = false, // New prop to check if project has steps generated
 }) {
   const [showMenu, setShowMenu] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  console.log("Propject percentage", Number(percentComplete));
 
   const formatLastActivity = (dateString) => {
     if (!dateString) return "Just now";
@@ -30,12 +35,24 @@ export default function ProjectCard({
     setShowMenu(!showMenu);
   };
 
-  const handleOptionClick = (option) => {
+  const handleOptionClick = async (option) => {
     setShowMenu(false);
     
     switch (option) {
       case 'chat':
         if (onStartChat) onStartChat();
+        break;
+      case 'complete':
+        if (onComplete && hasSteps) {
+          setIsCompleting(true);
+          try {
+            await onComplete(id);
+          } catch (error) {
+            console.error('Error completing project:', error);
+          } finally {
+            setIsCompleting(false);
+          }
+        }
         break;
       case 'delete':
         if (onRemove) onRemove(id);
@@ -55,15 +72,18 @@ export default function ProjectCard({
     if (onStartChat) onStartChat();
   };
 
+  // Check if project can be completed
+  const canComplete = hasSteps && percentComplete < 100;
+
   return (
-    <div className="bg-gray-100 rounded-xl px-2 py-1 flex items-center justify-between relative">
+    <div className="bg-gray-100 rounded-xl flex items-center justify-between relative">
       {/* Left Section - Image and Project Details - Clickable */}
       <div 
         className="flex items-center space-x-4 flex-1 cursor-pointer rounded-lg p-1"
         onClick={handleCardClick}
       >
         {/* Project Image */}
-        <div className="w-14 h-14 bg-blue-50 rounded-lg flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0">
+        <div className="w-14 h-14 mx-2 bg-blue-50 rounded-lg flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0">
           <img 
             src={defaultProjectImage} 
             alt="Project" 
@@ -110,7 +130,7 @@ export default function ProjectCard({
 
         {/* Dropdown Menu */}
         {showMenu && (
-          <div className="absolute right-0 top-full mt-2 w-32 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+          <div className="absolute right-0 top-full mt-2 w-36 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
             <div className="py-1">
               <button
                 onClick={(e) => {
@@ -121,6 +141,25 @@ export default function ProjectCard({
               >
                 Chat
               </button>
+              
+              {/* Complete option - only show if project has steps and isn't already complete */}
+              {canComplete && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOptionClick('complete');
+                  }}
+                  disabled={isCompleting}
+                  className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                    isCompleting 
+                      ? 'text-gray-400 cursor-not-allowed' 
+                      : 'text-green-600 hover:bg-green-50'
+                  }`}
+                >
+                  {isCompleting ? 'Completing...' : 'Complete'}
+                </button>
+              )}
+              
               <button
                 onClick={(e) => {
                   e.stopPropagation();

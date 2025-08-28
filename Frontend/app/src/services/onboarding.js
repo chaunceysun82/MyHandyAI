@@ -40,6 +40,12 @@ export const submitOnboardingAnswers = async (answers) => {
 			
 			// Store the user ID for authentication
 			localStorage.setItem("authToken", userId);
+			
+			// Store user email for display in SideNavbar
+			if (userData.email) {
+				localStorage.setItem("userEmail", userData.email);
+			}
+			
 			localStorage.removeItem("tempUserData");
 			console.log("User authenticated after onboarding completion");
 			
@@ -73,7 +79,7 @@ export const submitOnboardingAnswers = async (answers) => {
 				
 				// Get user info from localStorage/sessionStorage
 				const displayName = localStorage.getItem("displayName") || sessionStorage.getItem("displayName") || "User";
-				const email = localStorage.getItem("email") || sessionStorage.getItem("email") || "";
+				const email = localStorage.getItem("userEmail") || sessionStorage.getItem("userEmail") || "";
 				
 				// Create user data for Google user
 				const googleUserData = {
@@ -110,6 +116,11 @@ export const submitOnboardingAnswers = async (answers) => {
 				
 				const result = await createResponse.json();
 				console.log("Google user created successfully:", result);
+				
+				// Store user email for display in SideNavbar
+				if (email) {
+					localStorage.setItem("userEmail", email);
+				}
 				
 				return result;
 			}
