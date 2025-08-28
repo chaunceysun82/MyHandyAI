@@ -964,11 +964,11 @@ async def compare_and_enhance_tools(tools_data: List[Dict[str, Any]]):
                 
                 print(f"🔍 Analyzing tool: {tool_name}")
                 
-                # Search for similar existing tools in our tools collection
+                
                 similar_tools = find_similar_tools(
                     query=tool_name,
                     limit=3,
-                    similarity_threshold=0.75  # Lower threshold for broader matching
+                    similarity_threshold=0.75  
                 )
                 
                 if similar_tools:
@@ -1097,7 +1097,7 @@ async def similar_by_project(project_id: str, top_k: int = 2, collection_name: s
     best_hit = None
     best_score = -1.0
 
-    # gather top non-self hits and track best match that has non-empty tools & steps
+   
     for hit in hits:
         payload = hit.payload or {}
         mongo_id_str = payload.get("mongo_id")
@@ -1125,7 +1125,7 @@ async def similar_by_project(project_id: str, top_k: int = 2, collection_name: s
             except Exception:
                 matched_obj = None
 
-        # keep best overall score (even if matched_obj is None) for reporting
+        
         if s > best_score:
             best_score = s
             best_hit = {"hit": hit, "payload": payload, "score": s, "mongo_id": mongo_id_str}
@@ -1201,150 +1201,20 @@ async def similar_by_project(project_id: str, top_k: int = 2, collection_name: s
                 "action": "no_mongo_doc_to_adapt",
                 "matches": results
             }
-
-        base_tools = matched_doc.get("tools") or matched_doc.get("project_tools") or []
         base_steps = matched_doc.get("steps") or matched_doc.get("project_steps") or matched_doc.get("step_list") or []
+        tools_list=matched_doc['tool_generation']['tools']
+        matched_tools=[]
+        
+        for i in tools_list:
+            tool_dict={}
+            tool_dict['name']=i['name']
+            tool_dict['description']=i['description']
+            tool_dict['price']=i['price']
+            tool_dict['risk_factors']=i['risk_factors']
+            tool_dict['safety_measures']=i['safety_measures']
+            matched_tools.append(tool_dict)
+
         matched_summary = matched_doc.get("summary") or matched_doc.get("user_description") or ""
-
-        def _normalize_name(n: Optional[str]):
-            if not n:
-                return ""
-            return re.sub(r'\s+', ' ', n.strip()).lower()
-
-        def _normalize_text(t: Optional[str]):
-            if t is None:
-                return ""
-            return re.sub(r'\s+', ' ', str(t).strip()).lower()
-
-        def _float_eq(a, b, eps=1e-2):
-            try:
-                return abs(float(a) - float(b)) <= eps
-            except Exception:
-                return False
-
-        def _similarity(a: str, b: str) -> float:
-            return SequenceMatcher(None, a, b).ratio()
-
-        def compute_tool_changes(base: List[Dict], new: List[Dict], debug: bool = False):
-            """
-            Improved tool diffing:
-            - normalizes names (fallback to index keys if name missing)
-            - exact-match then fuzzy-match names
-            - detects description rewording using a similarity ratio
-            - tolerant numeric compare for price
-            - returns {"added": [...], "removed":[...], "updated":[...]}
-            """
-            
-            base_map = {}
-            base_keys_index = []
-            for i, t in enumerate(base or []):
-                name = _normalize_name(t.get("name"))
-                key = name or f"__base_idx_{i}"
-                if key in base_map:
-                    key = f"{key}__dup_{i}"
-                base_map[key] = t
-                base_keys_index.append(key)
-
-            new_map = {}
-            new_keys_index = []
-            for i, t in enumerate(new or []):
-                name = _normalize_name(t.get("name"))
-                key = name or f"__new_idx_{i}"
-                if key in new_map:
-                    key = f"{key}__dup_{i}"
-                new_map[key] = t
-                new_keys_index.append(key)
-
-            if debug:
-                print("BASE KEYS:", base_keys_index)
-                print("NEW  KEYS:", new_keys_index)
-                print("BASE SAMPLE:", json.dumps(list(base_map.values())[:2], default=str, indent=2))
-                print("NEW  SAMPLE:", json.dumps(list(new_map.values())[:2], default=str, indent=2))
-
-            added = []
-            removed = []
-            updated = []
-            matched_base_keys = set()
-            matched_new_keys = set()
-
-           
-            for nkey, ntool in new_map.items():
-                if nkey in base_map:
-                    btool = base_map[nkey]
-                    matched_base_keys.add(nkey)
-                    matched_new_keys.add(nkey)
-
-                    
-                    diffs = {}
-                    desc_b = _normalize_text(btool.get("description"))
-                    desc_n = _normalize_text(ntool.get("description"))
-                    desc_sim = _similarity(desc_b, desc_n)
-                    if desc_sim < 0.99:
-                        diffs["description"] = {"old": btool.get("description"), "new": ntool.get("description"), "similarity": round(desc_sim, 3)}
-
-                    if not _float_eq(btool.get("price"), ntool.get("price")):
-                        diffs["price"] = {"old": btool.get("price"), "new": ntool.get("price")}
-
-                    for fld in ("risk_factors", "safety_measures"):
-                        if _normalize_text(btool.get(fld)) != _normalize_text(ntool.get(fld)):
-                            diffs[fld] = {"old": btool.get(fld), "new": ntool.get(fld)}
-
-                    if diffs:
-                        updated.append({"name": ntool.get("name") or btool.get("name"), "diffs": diffs, "old": btool, "new": ntool})
-
-            
-            remaining_new = [k for k in new_keys_index if k not in matched_new_keys]
-            remaining_base = [k for k in base_keys_index if k not in matched_base_keys]
-            base_names = list(remaining_base)
-            for nk in remaining_new:
-                candidates = get_close_matches(nk, base_names, n=1, cutoff=0.75)
-                if candidates:
-                    bk = candidates[0]
-                    btool = base_map[bk]
-                    ntool = new_map[nk]
-                    matched_base_keys.add(bk)
-                    matched_new_keys.add(nk)
-
-                    diffs = {}
-                    desc_b = _normalize_text(btool.get("description"))
-                    desc_n = _normalize_text(ntool.get("description"))
-                    desc_sim = _similarity(desc_b, desc_n)
-                    if desc_sim < 0.99:
-                        diffs["description"] = {"old": btool.get("description"), "new": ntool.get("description"), "similarity": round(desc_sim, 3)}
-
-                    if not _float_eq(btool.get("price"), ntool.get("price")):
-                        diffs["price"] = {"old": btool.get("price"), "new": ntool.get("price")}
-
-                    for fld in ("risk_factors", "safety_measures"):
-                        if _normalize_text(btool.get(fld)) != _normalize_text(ntool.get(fld)):
-                            diffs[fld] = {"old": btool.get(fld), "new": ntool.get(fld)}
-
-                    if diffs:
-                        updated.append({"name": ntool.get("name") or btool.get("name"), "diffs": diffs, "old": btool, "new": ntool})
-                    else:
-                        
-                        pass
-
-            
-            for nk in new_keys_index:
-                if nk not in matched_new_keys:
-                    added.append(new_map[nk])
-
-            
-            for bk in base_keys_index:
-                if bk not in matched_base_keys:
-                    removed.append(base_map[bk])
-
-            if debug:
-                print("TOOL DIFFS -> added:", len(added), "removed:", len(removed), "updated:", len(updated))
-                if added:
-                    print("Added sample:", json.dumps(added[:2], default=str, indent=2))
-                if removed:
-                    print("Removed sample:", json.dumps(removed[:2], default=str, indent=2))
-                if updated:
-                    print("Updated sample:", json.dumps(updated[:2], default=str, indent=2))
-
-            return {"added": added, "removed": removed, "updated": updated}
 
         def compute_step_changes(base: List[Dict], new: List[Dict]):
             
@@ -1402,32 +1272,19 @@ async def similar_by_project(project_id: str, top_k: int = 2, collection_name: s
             return {"added": added, "removed": removed, "updated": updated}
 
         try:
-            tools_agent_instance = ToolsAgent(new_summary=summary, matched_summary=matched_summary, matched_tools=base_tools)
+            tools_agent_instance = ToolsAgent(new_summary=summary, matched_summary=matched_summary, matched_tools=tools_list)
             tools_res = tools_agent_instance.recommend_tools(summary=summary, include_json=True)
             
-            modified_tools = tools_res.get("tools", [])
         except Exception as e:
            
-            modified_tools = base_tools
             tools_res = {"error": str(e)}
 
    
-        for t in modified_tools:
-            if not t.get("image_link"):
-                try:
-                    img = None
-                    if hasattr(tools_agent_instance, "_get_image_url"):
-                        img = tools_agent_instance._get_image_url(t.get("name"))
-                    t["image_link"] = img
-                except Exception:
-                    t["image_link"] = None
-
-        tools_changes = compute_tool_changes(base_tools, modified_tools)
 
         
         try:
-            steps_agent_instance = StepsAgentJSON(new_summary=summary, matched_summary=matched_summary, matched_tools=modified_tools, matched_steps=base_steps)
-            steps_res = steps_agent_instance.generate(tools={"tools": modified_tools, "raw": None}, summary=summary)
+            steps_agent_instance = StepsAgentJSON(new_summary=summary, matched_summary=matched_summary, matched_tools=tools_res, matched_steps=base_steps)
+            steps_res = steps_agent_instance.generate(tools={"tools": tools_res, "raw": None}, summary=summary)
             print(steps_res)
             modified_steps = steps_res.get("steps", []) if isinstance(steps_res, dict) else []
         except Exception as e:
@@ -1439,7 +1296,7 @@ async def similar_by_project(project_id: str, top_k: int = 2, collection_name: s
         project_collection.find_one_and_update(
             {"_id": obj_id},
             {"$set": {
-                "tools": modified_tools,
+                "tools": tools_res,
                 "steps": modified_steps,
                 "rag_debug": {
                     "matched_project_id": matched_mongo_id,
@@ -1458,7 +1315,7 @@ async def similar_by_project(project_id: str, top_k: int = 2, collection_name: s
             "collection": collection_name,
             "best_match": {"mongo_id": matched_mongo_id, "score": best_score},
             "action": "adapted_tools_and_steps",
-            "tools_changes": tools_changes,
+            "tools_changes": tools_res,
             "steps_changes": steps_changes,
             "raw_tools_agent_output": tools_res,
             "raw_steps_agent_output": steps_res,
