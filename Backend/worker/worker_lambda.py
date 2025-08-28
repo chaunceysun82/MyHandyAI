@@ -228,7 +228,7 @@ def lambda_handler(event, context):
             step_meta = {k: v for k, v in steps_result.items() if k != "steps"}
             step_meta["status"] = "complete"
 
-            update_project(str(cursor["_id"]), {"step_generation": step_meta})
+            update_project(str(cursor["_id"]), {"step_generation": steps_result})
 
             for step in steps_result.get("steps", []):
                 step_doc = {
@@ -277,29 +277,11 @@ def lambda_handler(event, context):
             update_project(str(cursor["_id"]), {"estimation_generation":{"status": "in progress"}})
             
             estimation_agent = EstimationAgent()
-            steps_for_est = [
-                {
-                    "order": s.get("order"),
-                    "title": s.get("title", ""),
-                    "est_time_min": s.get("est_time_min", 0),
-                    "time_text": s.get("time_text", "")
-                }
-                for s in steps_result.get("steps", [])
-            ]
-            steps_data_for_est = {
-                "steps": steps_for_est,
-                "total_est_time_min": steps_result.get("total_est_time_min", 0),
-                "total_steps": steps_result.get("total_steps", len(steps_for_est)),
-            }
-
+            
             estimation_result = estimation_agent.generate_estimation(
-                tools_data=tools_result,
-                steps_data=steps_data_for_est
+                tools_data=cursor["tool_generation"],
+                steps_data=cursor["step_generation"]
             )
-            # estimation_result = estimation_agent.generate_estimation(
-            #     tools_data=cursor["tool_generation"],
-            #     steps_data=cursor["step_generation"]
-            # )
             
             if estimation_result is None:
                 print("LLM Generation steps failed")

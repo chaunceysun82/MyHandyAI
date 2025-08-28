@@ -32,47 +32,48 @@ async def get_generated_tools(project_id: str):
         raise HTTPException(status_code=404, detail="Tools not generated yet")
     return {"project_id": project_id, "tools_data": doc["tool_generation"]}
 
-@router.get("/steps/{project_id}")
 async def get_generated_steps(project_id: str):
-    steps_cur = steps_collection.find(
-        {"projectId": ObjectId(project_id)},
-        {"projectId": 0}
-    ).sort("order", 1)
-    steps = []
-    for s in steps_cur:
-        s["_id"] = str(s["_id"])
-        steps.append(s)
+    doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"step_generation": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    steps_payload = doc.get("step_generation")
+    if not steps_payload:
+        raise HTTPException(status_code=404, detail="Steps not generated yet")
+    return {"project_id": project_id, "steps_data": steps_payload}
 
-    if not steps:
-        doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"step_generation": 1})
-        if not doc or not doc.get("step_generation"):
-            raise HTTPException(status_code=404, detail="Steps not generated yet")
-        return {"project_id": project_id, "steps_data": doc["step_generation"]}
-
-    proj = project_collection.find_one(
-        {"_id": ObjectId(project_id)},
-        {"step_generation": 1}
-    )
-    meta = {}
-    if proj and proj.get("step_generation"):
-        meta = {k: v for k, v in proj["step_generation"].items() if k != "steps"}
-
-    return {
-        "project_id": project_id,
-        "steps_data": {
-            "steps": steps,
-            **meta
-        }
-    }
-
+# @router.get("/steps/{project_id}")
 # async def get_generated_steps(project_id: str):
-#     doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"step_generation": 1})
-#     if not doc:
-#         raise HTTPException(status_code=404, detail="Project not found")
-#     steps_payload = doc.get("step_generation")
-#     if not steps_payload:
-#         raise HTTPException(status_code=404, detail="Steps not generated yet")
-#     return {"project_id": project_id, "steps_data": steps_payload}
+#     steps_cur = steps_collection.find(
+#         {"projectId": ObjectId(project_id)},
+#         {"projectId": 0}
+#     ).sort("order", 1)
+#     steps = []
+#     for s in steps_cur:
+#         s["_id"] = str(s["_id"])
+#         steps.append(s)
+
+#     if not steps:
+#         doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"step_generation": 1})
+#         if not doc or not doc.get("step_generation"):
+#             raise HTTPException(status_code=404, detail="Steps not generated yet")
+#         return {"project_id": project_id, "steps_data": doc["step_generation"]}
+
+#     proj = project_collection.find_one(
+#         {"_id": ObjectId(project_id)},
+#         {"step_generation": 1}
+#     )
+#     meta = {}
+#     if proj and proj.get("step_generation"):
+#         meta = {k: v for k, v in proj["step_generation"].items() if k != "steps"}
+
+#     return {
+#         "project_id": project_id,
+#         "steps_data": {
+#             "steps": steps,
+#             **meta
+#         }
+#     }
+
 
 # @router.get("/steps/{project_id}")
 # async def get_generated_steps(project_id: str):
