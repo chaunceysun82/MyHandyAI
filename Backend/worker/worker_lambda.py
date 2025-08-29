@@ -387,13 +387,13 @@ def get_youtube_link(summary):
             {"role": "system", "content": (
                 "You are a summarization agent for youtube searches"
                 "Return one line in based of the text provided to search the most helpfull video"
-                "Provide just a sentence max 12 words for youtube search, dont over extend even if you dont cover all details and avoid putting sords inside parenthesis"
+                "Provide just a sentence max 15 words for youtube search, dont over extend even if you dont cover all details and avoid putting sords inside parenthesis"
             )},
             {"role": "user", "content": json.dumps({
                 "description": summary
             })}
         ],
-        "max_completion_tokens": 500,
+        "max_completion_tokens": 1500,
         "reasoning_effort": "low",
         "verbosity": "low",
     }
@@ -494,7 +494,7 @@ def _build_prompt(step_text: str, guidance="neutral") -> str:
                 {"role": "system", "content": (
                     "You are an image generation agent specializing in DIY/repair steps."
                     "Your task is to create a detailed prompt for an image generation model. based on the input provided."
-                    "Be sure to include all relevant details and context."
+                    "Focus on the CURRENT STEP for the image. Overall summary is just for context."
                 )},
                 {"role": "user", "content": json.dumps({
                     "description": step_text
