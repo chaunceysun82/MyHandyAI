@@ -16,6 +16,7 @@ import requests
 from google import genai
 from google.genai import types
 from PIL import Image
+from helper import similar_by_project
 
 
 SQS_URL = os.getenv("IMAGES_SQS_URL")  
@@ -85,8 +86,6 @@ def lambda_handler(event, context):
                 print("Project not found")
                 return {"message": "Project not found"}
             
-            print(f"🚀 Starting generation for project {project}")
-            from helper import similar_by_project
 
             print("🔍 Searching for similar projects")
             similar_result = similar_by_project(str(cursor["_id"]))
