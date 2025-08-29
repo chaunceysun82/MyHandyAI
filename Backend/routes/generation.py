@@ -32,6 +32,7 @@ async def get_generated_tools(project_id: str):
         raise HTTPException(status_code=404, detail="Tools not generated yet")
     return {"project_id": project_id, "tools_data": doc["tool_generation"]}
 
+@router.get("/steps/{project_id}")
 async def get_generated_steps(project_id: str):
     doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"step_generation": 1})
     if not doc:
