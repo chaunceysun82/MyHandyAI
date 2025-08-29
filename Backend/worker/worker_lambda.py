@@ -1,20 +1,17 @@
 import os, io, time
 import json
-import re, hashlib
+import re
 import traceback
 import boto3
-from openai import OpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from datetime import datetime
 from bson.objectid import ObjectId
 from db import project_collection, steps_collection
 from datetime import datetime
 from planner import ToolsAgent, StepsAgentJSON, EstimationAgent
-from typing import List, Dict, Any, Optional
-from fastapi import HTTPException
+from typing import Optional
 import requests
 from google import genai
-from google.genai import types
 from PIL import Image
 from helper import similar_by_project
 
