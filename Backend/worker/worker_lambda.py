@@ -173,7 +173,15 @@ def lambda_handler(event, context):
                                 # No good match - keep as new tool
                                 reuse_stats["new"] += 1
                                 print(f"   🆕 New tool: {tool['name']}")
-                            
+                                try:
+                                    img = tools_agent._get_image_url(tool["name"])
+                                    tool["image_link"] = img
+                                except Exception:
+                                    tool["image_link"] = None
+
+                                safe = tools_agent._sanitize_for_amazon(tool["name"])
+                                tool["amazon_link"] = f"https://www.amazon.com/s?k={safe}&tag={tools_agent.amazon_affiliate_tag}"
+
                             enhanced_tools.append(tool)
                             
                         except Exception as e:
