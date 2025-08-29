@@ -90,7 +90,7 @@ def lambda_handler(event, context):
             if similar_result:
                 print(f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
 
-            if similar_result and similar_result["best_score"] >= 0.90:
+            if similar_result and similar_result["best_score"] >= 0.85:
                 # If we found a highly similar project, we can use it as a reference
                 print(f"🔗 Using similar project {similar_result['project_id']} as reference"
                       f" (score: {similar_result['best_score']})")
@@ -116,7 +116,7 @@ def lambda_handler(event, context):
 
                 continue
 
-            if similar_result and 0.75 <= similar_result["best_score"] < 0.90:
+            if similar_result and 0.60 <= similar_result["best_score"] < 0.85:
                 print(f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
                 print(f"⚠️ Similarity below threshold for reuse; proceeding with full generation")
 
@@ -247,7 +247,7 @@ def lambda_handler(event, context):
             
             cursor = project_collection.find_one({"_id": ObjectId(project)})
 
-            if similar_result and 0.75 <= similar_result["best_score"] < 0.90:
+            if similar_result and 0.60 <= similar_result["best_score"] < 0.85:
                 print(f"🔍 Steps Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
                 print(f"⚠️ Similarity below threshold for reuse; proceeding with full generation")
                 similar_project = project_collection.find_one({"_id": ObjectId(similar_result["project_id"])})
