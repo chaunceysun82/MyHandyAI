@@ -388,7 +388,7 @@ def get_youtube_link(summary):
             {"role": "system", "content": (
                 "You are a summarization agent for youtube searches"
                 "Return one line in based of the text provided to search the most helpfull video"
-                "Provide just a sentence max 15 words for youtube search, dont over extend even if you dont cover all details and avoid putting sords inside parenthesis"
+                "Provide just a sentence max 10 words for youtube search, dont over extend and dont put measures"
             )},
             {"role": "user", "content": json.dumps({
                 "description": summary
