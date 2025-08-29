@@ -85,6 +85,7 @@ def lambda_handler(event, context):
                 print("Project not found")
                 return {"message": "Project not found"}
             
+            print(f"🚀 Starting generation for project {project}")
             from helper import similar_by_project
 
             print("🔍 Searching for similar projects")
