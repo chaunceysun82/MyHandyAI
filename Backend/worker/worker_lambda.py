@@ -383,12 +383,12 @@ def get_youtube_link(summary):
     OPENAI_KEY   = os.getenv("OPENAI_API_KEY")
     
     payload = {
-        "model": "gpt-5-nano",  # or the model you prefer
+        "model": "gpt-5-mini",  # or the model you prefer
         "messages": [
             {"role": "system", "content": (
                 "You are a summarization agent for youtube searches"
                 "Return one line in based of the text provided to search the most helpfull video"
-                "Provide just a sentence max 10 words for youtube search, dont over extend and dont put measures"
+                "Provide just a sentence max 8 words for youtube search, DONT INCLUNDE MEASURES"
             )},
             {"role": "user", "content": json.dumps({
                 "description": summary
