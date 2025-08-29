@@ -85,14 +85,51 @@ def lambda_handler(event, context):
                 print("Project not found")
                 return {"message": "Project not found"}
             
-            update_project(str(cursor["_id"]), {"tool_generation":{"status": "in progress"}})
-            
-            # Generate tools using the independent agent
-            tools_agent = ToolsAgent()
+            from helper import similar_by_project
+
+            similar_result = similar_by_project(str(cursor["_id"]))
+            if similar_result:
+                print(f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
+
+            if similar_result and similar_result["best_score"] >= 0.90:
+                # If we found a highly similar project, we can use it as a reference
+                print(f"🔗 Using similar project {similar_result['project_id']} as reference"
+                      f" (score: {similar_result['best_score']})")
+                
+                matched_project = project_collection.find_one({"_id": ObjectId(similar_result["project_id"])})
+
+                tools_result = matched_project.get("tool_generation", {})
+
+                steps_result = matched_project.get("step_generation", {})
+
+                estimation_result = matched_project.get("estimation_generation", {})
+
+                update_project(str(cursor["_id"]), {
+                    "tool_generation": tools_result,
+                    "step_generation": steps_result,
+                    "estimation_generation": estimation_result
+                })
+                print("✅ Copied tools, steps, and estimation from matched project")
+
+                update_project(str(cursor["_id"]), {"generation_status":"complete"})
+
+                print("✅ project generation complete via RAG")
+
+                continue
+
+            if similar_result and 0.75 <= similar_result["best_score"] < 0.90:
+                print(f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
+                print(f"⚠️ Similarity below threshold for reuse; proceeding with full generation")
+                tools_agent = ToolsAgent(new_summary=cursor["summary"], matched_summary=similar_result["summary"], matched_tools=similar_result["tool_generation"]["tools"])
+            else:
+                tools_agent = ToolsAgent()
+
             tools_result = tools_agent.recommend_tools(
-                summary=cursor["summary"],
-                include_json=True
-            )
+                    summary=cursor["summary"],
+                    include_json=True
+                )
+
+            # Generate tools using the independent agent
             if tools_result is None:
                 print("LLM Generation tools failed")
                 return {"message": "LLM Generation tools failed"}
@@ -199,7 +236,14 @@ def lambda_handler(event, context):
                 print(f"⚠️ FLOW 1: Failed to extract tools: {e}")
             
             cursor = project_collection.find_one({"_id": ObjectId(project)})
-            
+
+            if similar_result and 0.75 <= similar_result["best_score"] < 0.90:
+                print(f"🔍 Steps Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
+                print(f"⚠️ Similarity below threshold for reuse; proceeding with full generation")
+                steps_agent = StepsAgentJSON(new_summary=cursor["summary"], matched_summary=similar_result["summary"], matched_steps=similar_result["step_generation"]["steps"])
+            else:
+                steps_agent = StepsAgentJSON()
+
             update_project(str(cursor["_id"]), {"step_generation":{"status": "in progress"}})
             
             steps_agent = StepsAgentJSON()
@@ -434,12 +478,35 @@ class ImageRequest(BaseModel):
     project_id: str
     
 def _build_prompt(step_text: str, guidance="neutral") -> str:
+        payload = {
+            "model": "gpt-5-nano",  # or the model you prefer
+            "messages": [
+                {"role": "system", "content": (
+                    "You are an image generation agent specializing in DIY/repair steps."
+                    "Your task is to create a detailed prompt for an image generation model. based on the input provided."
+                    "Be sure to include all relevant details and context."
+                )},
+                {"role": "user", "content": json.dumps({
+                    "description": step_text
+                })}
+            ],
+            "max_completion_tokens": 500,
+            "reasoning_effort": "low",
+            "verbosity": "low",
+        }
+        r = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {OPENAI_KEY}"},
+            json=payload, timeout=30
+        )
+        data = r.json()
+        print(r.json())
+        content = data["choices"][0]["message"]["content"]
         lines = [
-            "Create an instructional image that faithfully depicts the CURRENT STEP.",
+            "Create an instructional image that faithfully depicts the context provided.",
             "No text overlays, no logos, no watermarks.",
             "DONT GENERATE ANY WORD OR WRITTEN INSTRUCTION,DONT WRITE ANYTHING",
-            f"Context: \n{step_text}",
-            "DONT GENERATE ANY WORD OR WRITTEN INSTRUCTION,DONT WRITE ANYTHING"
+            f"Context: \n{content}"
         ]
         # ... keep your optional lines ...
         if guidance == "neutral":
