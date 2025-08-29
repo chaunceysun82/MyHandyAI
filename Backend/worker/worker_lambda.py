@@ -500,7 +500,7 @@ def _build_prompt(step_text: str, guidance="neutral") -> str:
                     "description": step_text
                 })}
             ],
-            "max_completion_tokens": 500,
+            "max_completion_tokens": 2000,
             "reasoning_effort": "low",
             "verbosity": "low",
         }
