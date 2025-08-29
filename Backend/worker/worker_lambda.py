@@ -613,7 +613,7 @@ def generate_step_image(step_id: str, payload: ImageRequest | dict):
                 "step_id": step_id,
                 "project_id": payload.project_id or "",
                 "size": payload.size,
-                "model": "imagen-4.0-generate-001"
+                "model": "imagen-3.0-generate-002"
             },
         )
     except Exception as e:
@@ -628,7 +628,7 @@ def generate_step_image(step_id: str, payload: ImageRequest | dict):
         "s3_key": key,
         "url": url,
         "size": payload.size,
-        "model": "imagen-4.0-generate-001",
+        "model": "imagen-3.0-generate-002",
         "prompt_preview": prompt[:180],
     }
     
