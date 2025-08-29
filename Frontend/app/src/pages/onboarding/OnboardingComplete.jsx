@@ -47,8 +47,21 @@ const OnboardingComplete = () => {
 
 	const handleFinish = () => {
 		console.log("Onboarding completed, navigating to home");
+		
 		// Set flag to indicate user is coming from onboarding
 		localStorage.setItem("fromOnboarding", "true");
+		
+		// For Google users, ensure proper token is set
+		const tempGoogleAuthToken = localStorage.getItem("tempGoogleAuthToken");
+		if (tempGoogleAuthToken) {
+			// Update authToken with the final backend user ID
+			const finalAuthToken = localStorage.getItem("authToken");
+			if (finalAuthToken && finalAuthToken !== tempGoogleAuthToken) {
+				localStorage.setItem("authToken", finalAuthToken);
+			}
+			localStorage.removeItem("tempGoogleAuthToken");
+		}
+		
 		navigate("/home");
 	};
 
