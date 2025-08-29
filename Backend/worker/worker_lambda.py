@@ -435,7 +435,7 @@ def get_youtube_link(summary):
         "model": "gpt-5-mini",  # or the model you prefer
         "messages": [
             {"role": "system", "content": (
-                "You are a strict evaluator for DIY/repair steps. "
+                "You are a video selection assistant."
                 "Pick ONE video that best matches the given project "
                 "The video MUST be RELATED to the main project topic."
                 "Return pure JSON with keys: best_videoId, reason."
