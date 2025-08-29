@@ -31,13 +31,14 @@ def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x10
         print("⚠️ IMAGES_SQS_URL not set; skipping enqueue")
         return
     for i, step in enumerate(steps, start=1):
-        step_text = "Overall summary: " +summary+"\n"
-        step_text +="CURRENT STEP: "+ ", ".join(s for s in step.get("instructions", []) if s and s.strip())
+        sum_text = "Overall summary: " +summary+"\n"
+        step_text ="CURRENT STEP: "+ ", ".join(s for s in step.get("instructions", []) if s and s.strip())
         body = {
             "task": "image_step",
             "project": project_id,
             "step_id": str(i),
             "step_text": step_text,
+            "summary_text": sum_text,
             "size": size
         }
         project_collection.update_one({"_id": ObjectId(project_id)}, {"$set": {f"step_generation.steps.{int(i)-1}.image.status": "in-progress"}})
@@ -483,19 +484,21 @@ class SceneSpec(BaseModel):
     
 class ImageRequest(BaseModel):
     step_text: str
+    summary_text: Optional[str] = None
     scene: Optional[SceneSpec] = None
     size: str = "1024x1024" 
     n: int = 1             
     project_id: str
-    
-def _build_prompt(step_text: str, guidance="neutral") -> str:
+
+def _build_prompt(step_text: str, summary_text: Optional[str] = None, guidance="neutral") -> str:
         payload = {
             "model": "gpt-5-nano",  # or the model you prefer
             "messages": [
                 {"role": "system", "content": (
                     "You are an image generation agent specializing in DIY/repair steps."
-                    "Your task is to create a detailed prompt for an image generation model. based on the input provided."
-                    "Focus on the CURRENT STEP for the image. Overall summary is just for context."
+                    "Your task is to create a detailed prompt for an image generation model. based on the user input provided."
+                    f"Context summary of the overall project: {summary_text}"
+                    "Focus on depicting the CURRENT STEP for the image. Overall summary is just for context."
                 )},
                 {"role": "user", "content": json.dumps({
                     "description": step_text
@@ -596,7 +599,7 @@ def generate_step_image(step_id: str, payload: ImageRequest | dict):
     try:
         if isinstance(payload, dict):
             payload = ImageRequest(**payload)
-        prompt = _build_prompt(payload.step_text)
+        prompt = _build_prompt(payload.step_text, payload.summary_text)
         raw_png = _generate_png(prompt=prompt, size=payload.size)
         png_bytes = _png_to_bytes_ensure_rgba(raw_png)
     except Exception as e:
