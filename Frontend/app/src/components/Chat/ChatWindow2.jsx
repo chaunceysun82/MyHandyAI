@@ -46,15 +46,9 @@ export default function ChatWindow2({
   const THRESHOLD = 120;
   const messagesEndRef = useRef(null);
 
-  const STORAGE_MESSAGES_KEY = `messages_${projectId}`;
-
   const navigate = useNavigate();
   
-  const [messages, setMessages] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_MESSAGES_KEY);
-    return saved ? JSON.parse(saved) : [];
-  });
-
+  const [messages, setMessages] = useState([]);
   const [sessionId, setSessionId] = useState(null);
 
   useEffect(() => {
@@ -66,6 +60,75 @@ export default function ChatWindow2({
       });
     }
   }, [messages]);
+
+  // Load or start session
+  useEffect(() => {
+    let cancelled = false;
+
+    const initializeSession = async () => {
+      if (cancelled) return;
+
+      try {
+        // First, try to get existing session
+        const sessionRes = await axios.get(`${URL}/step-guidance/session/${projectId}`);
+
+        if (cancelled) return;
+
+        if (sessionRes.data?.session) {
+          // Session exists, load history
+          setSessionId(sessionRes.data.session);
+
+          try {
+            const historyRes = await axios.get(`${URL}/step-guidance/session/${sessionRes.data.session}/history`);
+            if (!cancelled) {
+              const formattedMessages = historyRes.data.map(({role, message}) => ({
+                sender: role === "user" ? "user" : "bot",
+                content: message,
+              }));
+              setMessages(formattedMessages);
+            }
+          } catch (historyErr) {
+            if (!cancelled) {
+              setMessages([{sender: "bot", content: "Failed to load chat history."}]);
+            }
+          }
+        } else {
+          try {
+            // No session exists, start new one
+            const startRes = await axios.post(
+              `${URL}/step-guidance/start`,
+              { project: projectId },
+              { headers: { "Content-Type": "application/json" }}
+            );
+
+            if (!cancelled) {
+              console.log("Response from starting session:", startRes.data);
+              setSessionId(startRes.data.session_id);
+              const historyRes = await axios.get(`${URL}/step-guidance/session/${startRes.data.session_id}/history`);
+              const formattedMessages = historyRes.data.map(({role, message}) => ({
+                sender: role === "user" ? "user" : "bot",
+                content: message,
+              }));
+              console.log("message: ", formattedMessages);
+              setMessages(formattedMessages);
+            }
+          } catch (historyErr) {
+            if (!cancelled) {
+              setMessages([{sender: "bot", content: "Failed to load chat history."}]);
+            }
+          }
+        }
+      } catch (err) {
+        console.log("Error during session initialization:", err);
+      }
+    };
+
+    initializeSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, URL]);
 
   // Handle close with animation
   const handleClose = () => {
@@ -159,43 +222,73 @@ export default function ChatWindow2({
         }
   }, [status2, navigate]);
 
-  // Persist messages locally
-  useEffect(() => {
-      localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messages));
-  }, [messages, STORAGE_MESSAGES_KEY]);
 
-  const handleSend = async (message, files = []) => {
-    setLoading(true);
-    
+
+  const handleSend = async (text, files = []) => {
+    if (!text.trim() && files.length === 0) return;
+
+    let messageContent = text.trim();
+
     try {
-      const formData = new FormData();
-      formData.append("message", message);
-      formData.append("project_id", projectId);
-      
-      if (stepNumber) {
-        formData.append("step_number", stepNumber);
-      }
-      
       if (files.length > 0) {
-        files.forEach((file) => {
-          formData.append("files", file);
-        });
+        const fileNames = files.map(f => f.name).join('\n');
+        if (messageContent) {
+          messageContent = `${messageContent}\nFiles:\n${fileNames}`;
+        } else {
+          messageContent = `Files: ${fileNames}`;
+        }
       }
 
-      const response = await axios.post(`${URL}/step-guidance/chat`, formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
+      const userMsg = { 
+        sender: "user", 
+        content: messageContent 
+      };
 
-      if (response.data) {
-        const botMessage = response.data.message || response.data.response || "I'm here to help!";
-        
-        setMessages((prev) => [
-          ...prev,
-          { sender: "bot", content: botMessage },
-        ]);
+      setMessages((prev) => [...prev, userMsg]);
+
+      // Prepare payload for backend (combine text and first image)
+      const currInput = text;
+      let uploadedimage = null;
+
+      const currFile = files[0];
+      if(currFile && currFile.type.startsWith('image/')) {
+        uploadedimage = await toBase64(currFile);
       }
+
+      const payload = {
+        message: currInput,      
+        project: projectId,    
+        uploaded_image: uploadedimage, 
+        step: stepNumber || -1
+      };
+
+      setLoading(true);
+
+      const res = await axios.post(
+        `${URL}/step-guidance/chat`,
+        payload,
+        { 
+          headers: 
+            { "Content-Type": "application/json" } 
+        }
+      );
+
+      const botMsg = { sender: "bot", content: res.data.response };
+
+      setLoading(false);
+
+      setMessages((prev) => [...prev, botMsg]);
+
+      // check for the current_state of the response:
+      console.log("Current State:", res.data.current_state);
+      
+      if(res.data.current_state === 'complete') {
+        // Wait a bit for the user to read the final message, then show loading
+        setTimeout(() => {
+          setStatus(true);
+        }, 1500);
+      }
+
     } catch (err) {
       setLoading(false);
       console.error("Chat error", err);
@@ -204,14 +297,6 @@ export default function ChatWindow2({
         ...prev,
         { sender: "bot", content: "Oops! Something went wrong." },
       ]);
-    }
-    
-    setLoading(false);
-    
-    if (status === false) {
-      setTimeout(() => {
-        setStatus(true);
-      }, 1500);
     }
   };
 

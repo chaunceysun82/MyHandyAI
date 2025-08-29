@@ -76,10 +76,10 @@ export default function ProjectCard({
   const canComplete = hasSteps && percentComplete < 100;
 
   return (
-    <div className="bg-gray-100 rounded-xl flex items-center justify-between relative">
+    <div className="bg-gray-100 rounded-xl flex items-center justify-between relative select-none">
       {/* Left Section - Image and Project Details - Clickable */}
       <div 
-        className="flex items-center space-x-4 flex-1 cursor-pointer rounded-lg p-1"
+        className="flex items-center space-x-4 flex-1 rounded-lg p-1 hover:bg-transparent"
         onClick={handleCardClick}
       >
         {/* Project Image */}
@@ -102,7 +102,7 @@ export default function ProjectCard({
         {/* Project Details - Three lines as shown in image */}
         <div className="flex flex-col space-y-1">
           {/* Project Title - First line */}
-          <h3 className="text-base font-semibold text-gray-900">
+          <h3 className="text-base font-semibold text-gray-900 hover:no-underline">
             {projectTitle}
           </h3>
           {/* Last Activity - Second line */}

@@ -40,38 +40,19 @@ export default function StepCard({
 
 			{/* Step Text */}
 			<div className="flex-1">
-				{/* Title with Step Number */}
-				<div className="text-sm font-semibold leading-tight text-gray-900 mb-1">
+							{/* Title with Step Number */}
+			<div className="text-sm font-semibold leading-tight text-gray-900 mb-1">
+				<span className="pb-0.5 line-clamp-2">
 					{!isToolsStep ? (
-						<div className="group relative">
-							<div className="flex items-start">
-								
-								<span className="pb-0.5 line-clamp-2" title={title}>
-									<span className="text-gray-500 flex-shrink-0">Step {index}: </span>
-									{title}
-								</span>
-							</div>
-							
-							{/* Hover Tooltip */}
-							<div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
-								{title}
-								{/* Tooltip arrow */}
-								<div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
-							</div>
-						</div>
+						<>
+							<span className="text-gray-500 flex-shrink-0">Step {index}: </span>
+							{title}
+						</>
 					) : (
-						<div className="group relative">
-							<span className="line-clamp-2" title={title}>{title}</span>
-							
-							{/* Hover Tooltip for tools step */}
-							<div className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
-								{title}
-								{/* Tooltip arrow */}
-								<div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
-							</div>
-						</div>
+						title
 					)}
-				</div>
+				</span>
+			</div>
 				
 				{/* Description */}
 				<div className="text-xs text-gray-600 mb-2">{short}...</div>
