@@ -1,21 +1,19 @@
 import os, io, time
 import json
-import re, hashlib
+import re
 import traceback
 import boto3
-from openai import OpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from datetime import datetime
 from bson.objectid import ObjectId
 from db import project_collection, steps_collection
 from datetime import datetime
 from planner import ToolsAgent, StepsAgentJSON, EstimationAgent
-from typing import List, Dict, Any, Optional
-from fastapi import HTTPException
+from typing import Optional
 import requests
 from google import genai
-from google.genai import types
 from PIL import Image
+from helper import similar_by_project
 
 
 SQS_URL = os.getenv("IMAGES_SQS_URL")  
@@ -85,14 +83,54 @@ def lambda_handler(event, context):
                 print("Project not found")
                 return {"message": "Project not found"}
             
-            update_project(str(cursor["_id"]), {"tool_generation":{"status": "in progress"}})
-            
-            # Generate tools using the independent agent
-            tools_agent = ToolsAgent()
+
+            print("🔍 Searching for similar projects")
+            similar_result = similar_by_project(str(cursor["_id"]))
+            if similar_result:
+                print(f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
+
+            if similar_result and similar_result["best_score"] >= 0.90:
+                # If we found a highly similar project, we can use it as a reference
+                print(f"🔗 Using similar project {similar_result['project_id']} as reference"
+                      f" (score: {similar_result['best_score']})")
+                
+                matched_project = project_collection.find_one({"_id": ObjectId(similar_result["project_id"])})
+
+                tools_result = matched_project.get("tool_generation", {})
+
+                steps_result = matched_project.get("step_generation", {})
+
+                estimation_result = matched_project.get("estimation_generation", {})
+
+                update_project(str(cursor["_id"]), {
+                    "tool_generation": tools_result,
+                    "step_generation": steps_result,
+                    "estimation_generation": estimation_result
+                })
+                print("✅ Copied tools, steps, and estimation from matched project")
+
+                update_project(str(cursor["_id"]), {"generation_status":"complete"})
+
+                print("✅ project generation complete via RAG")
+
+                continue
+
+            if similar_result and 0.75 <= similar_result["best_score"] < 0.90:
+                print(f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
+                print(f"⚠️ Similarity below threshold for reuse; proceeding with full generation")
+
+                similar_project = project_collection.find_one({"_id": ObjectId(similar_result["project_id"])})
+
+                tools_agent = ToolsAgent(new_summary=cursor["summary"], matched_summary=similar_project["summary"], matched_tools=similar_project["tool_generation"]["tools"])
+            else:
+                tools_agent = ToolsAgent()
+
             tools_result = tools_agent.recommend_tools(
-                summary=cursor["summary"],
-                include_json=True
-            )
+                    summary=cursor["summary"],
+                    include_json=True
+                )
+
+            # Generate tools using the independent agent
             if tools_result is None:
                 print("LLM Generation tools failed")
                 return {"message": "LLM Generation tools failed"}
@@ -103,7 +141,7 @@ def lambda_handler(event, context):
                 
                 try:
                     # Import comparison functions
-                    from routes.chatbot import find_similar_tools, update_tool_usage
+                    from helper import find_similar_tools, update_tool_usage
                     
                     enhanced_tools = []
                     reuse_stats = {"reused": 0, "new": 0, "errors": 0}
@@ -162,7 +200,7 @@ def lambda_handler(event, context):
                 print(f"🔄 FLOW 1: Extracting generated tools to tools_collection")
                 
                 # Import extraction functions
-                from routes.chatbot import store_tool_in_database, create_and_store_tool_embeddings
+                from helper import store_tool_in_database, create_and_store_tool_embeddings
                 from db import tools_collection
                 
                 saved_tools = []
@@ -199,7 +237,15 @@ def lambda_handler(event, context):
                 print(f"⚠️ FLOW 1: Failed to extract tools: {e}")
             
             cursor = project_collection.find_one({"_id": ObjectId(project)})
-            
+
+            if similar_result and 0.75 <= similar_result["best_score"] < 0.90:
+                print(f"🔍 Steps Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
+                print(f"⚠️ Similarity below threshold for reuse; proceeding with full generation")
+                similar_project = project_collection.find_one({"_id": ObjectId(similar_result["project_id"])})
+                steps_agent = StepsAgentJSON(new_summary=cursor["summary"], matched_summary=similar_project["summary"], matched_steps=similar_project["step_generation"]["steps"])
+            else:
+                steps_agent = StepsAgentJSON()
+
             update_project(str(cursor["_id"]), {"step_generation":{"status": "in progress"}})
             
             steps_agent = StepsAgentJSON()
@@ -214,8 +260,8 @@ def lambda_handler(event, context):
                 print("LLM Generation steps failed")
                 return {"message": "LLM Generation steps failed"}
             
-            
-            steps_result["youtube"]= get_youtube_link(cursor["summary"])
+            youtube_url = get_youtube_link(cursor["summary"])
+            steps_result["youtube"]= youtube_url
             
             enqueue_image_tasks(project, steps_result["steps"], size="1536x1024",summary=cursor["summary"])
             # i = 1
@@ -225,25 +271,50 @@ def lambda_handler(event, context):
             #     step["image"] = generate_step_image(str(i), {"step_text": step_text, "project_id": project})
             #     i += 1
             
-            steps_result["status"]="complete"
+            step_meta = {k: v for k, v in steps_result.items() if k != "steps"}
+            step_meta["status"] = "complete"
 
-            update_project(str(cursor["_id"]), {"step_generation":steps_result})
+            update_project(str(cursor["_id"]), {"step_generation": steps_result})
 
-            for idx, step in enumerate(steps_result.get("steps", []), start=1):
+            for step in steps_result.get("steps", []):
                 step_doc = {
-                    "projectId": ObjectId(str(cursor["_id"])),
-                    "stepNumber": step.get("order", idx),
-                    "title": step.get("title", f"Step {idx}"),
+                    "projectId": ObjectId(project),
+                    "order": step.get("order"),
+                    "stepNumber": step.get("order"),  # keep for backward compatibility
+                    "title": step.get("title", f"Step {step.get('order', 0)}"),
+                    "instructions": step.get("instructions", []),
                     "description": " ".join(step.get("instructions", [])),
-                    "tools": [],
-                    "materials": [],
-                    "images": [],
-                    "videoTutorialLink": None,
+                    "est_time_min": step.get("est_time_min", 0),
+                    "time_text": step.get("time_text", ""),
+                    "tools_needed": step.get("tools_needed", []),
+                    "safety_warnings": step.get("safety_warnings", []),
+                    "tips": step.get("tips", []),
+                    "image_url": step.get("image_url"),
+                    "videoTutorialLink": youtube_url,
                     "referenceLinks": [],
+                    "status": (step.get("status") or "pending").lower(),
+                    "progress": 0, 
                     "completed": False,
                     "createdAt": datetime.utcnow(),
+                    "updatedAt": datetime.utcnow(),
                 }
                 steps_collection.insert_one(step_doc)
+
+            # for idx, step in enumerate(steps_result.get("steps", []), start=1):
+            #     step_doc = {
+            #         "projectId": ObjectId(str(cursor["_id"])),
+            #         "stepNumber": step.get("order", idx),
+            #         "title": step.get("title", f"Step {idx}"),
+            #         "description": " ".join(step.get("instructions", [])),
+            #         "tools": [],
+            #         "materials": [],
+            #         "images": [],
+            #         "videoTutorialLink": None,
+            #         "referenceLinks": [],
+            #         "completed": False,
+            #         "createdAt": datetime.utcnow(),
+            #     }
+            #     steps_collection.insert_one(step_doc)
             
             print("Steps Generated")
             
@@ -252,6 +323,7 @@ def lambda_handler(event, context):
             update_project(str(cursor["_id"]), {"estimation_generation":{"status": "in progress"}})
             
             estimation_agent = EstimationAgent()
+            
             estimation_result = estimation_agent.generate_estimation(
                 tools_data=cursor["tool_generation"],
                 steps_data=cursor["step_generation"]
@@ -408,12 +480,35 @@ class ImageRequest(BaseModel):
     project_id: str
     
 def _build_prompt(step_text: str, guidance="neutral") -> str:
+        payload = {
+            "model": "gpt-5-nano",  # or the model you prefer
+            "messages": [
+                {"role": "system", "content": (
+                    "You are an image generation agent specializing in DIY/repair steps."
+                    "Your task is to create a detailed prompt for an image generation model. based on the input provided."
+                    "Be sure to include all relevant details and context."
+                )},
+                {"role": "user", "content": json.dumps({
+                    "description": step_text
+                })}
+            ],
+            "max_completion_tokens": 500,
+            "reasoning_effort": "low",
+            "verbosity": "low",
+        }
+        r = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {OPENAI_KEY}"},
+            json=payload, timeout=30
+        )
+        data = r.json()
+        print(r.json())
+        content = data["choices"][0]["message"]["content"]
         lines = [
-            "Create an instructional image that faithfully depicts the CURRENT STEP.",
+            "Create an instructional image that faithfully depicts the context provided.",
             "No text overlays, no logos, no watermarks.",
             "DONT GENERATE ANY WORD OR WRITTEN INSTRUCTION,DONT WRITE ANYTHING",
-            f"Context: \n{step_text}",
-            "DONT GENERATE ANY WORD OR WRITTEN INSTRUCTION,DONT WRITE ANYTHING"
+            f"Context: \n{content}"
         ]
         # ... keep your optional lines ...
         if guidance == "neutral":
