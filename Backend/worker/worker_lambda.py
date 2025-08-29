@@ -87,6 +87,7 @@ def lambda_handler(event, context):
             
             from helper import similar_by_project
 
+            print("🔍 Searching for similar projects")
             similar_result = similar_by_project(str(cursor["_id"]))
             if similar_result:
                 print(f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")

@@ -220,7 +220,7 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
         raise HTTPException(status_code=404, detail="Project not found")
 
  
-    summary = project.get("summary") or project.get("user_description")
+    summary = project.get("summary")
     if not summary or not str(summary).strip():
         raise HTTPException(status_code=400, detail="Project has no summary or user_description to embed")
 
@@ -231,17 +231,21 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Embedding creation failed: {str(e)}")
 
+    print(f"🔍 Created embedding for project {project_id} using model {model_name}")
     if not embeddings:
         raise HTTPException(status_code=500, detail="Embedding API returned no embedding")
     query_vec = embeddings[0]
 
+    print(f"🔍 Querying Qdrant for similar projects to {project_id} in collection {collection_name}")
     # qdrant client
     qdrant_url = os.getenv("QDRANT_URL")
     qdrant_api_key = os.getenv("QDRANT_API_KEY")
     if not qdrant_url or not qdrant_api_key:
+        print(f"❌ QDRANT config missing in environment")
         raise HTTPException(status_code=500, detail="QDRANT config missing in environment")
     qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
 
+    print(f"🔍 Ensuring Qdrant collection {collection_name} exists")
     # ensure collection exists
     try:
         qclient.get_collection(collection_name=collection_name)
@@ -249,19 +253,22 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
         if getattr(ex, "status_code", None) == 404:
             return {"query_project_id": project_id, "collection": collection_name, "matches": []}
         else:
-            raise HTTPException(status_code=500, detail=f"Qdrant error: {str(ex)}")
+            print(f"❌ Qdrant error: {str(ex)}")
+            raise Exception(status_code=500, detail=f"Qdrant error: {str(ex)}")
 
     # search (request a few extra to allow skipping self-matches)
     limit = top_k + 5
     try:
         hits = qclient.search(collection_name=collection_name, query_vector=query_vec, limit=limit, with_payload=True)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Qdrant search failed: {str(e)}")
+        print(f"❌ Qdrant search error: {str(e)}")
+        raise Exception(status_code=500, detail=f"Qdrant search failed: {str(e)}")
 
     results = []
     best_hit = None
     best_score = -1.0
 
+    print(f"🔍 Found {len(hits)} hits in Qdrant for project {project_id}")
    
     for hit in hits:
         payload = hit.payload or {}
@@ -279,6 +286,7 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
         except Exception:
             s = -1.0
 
+        print(f"🔍 Hit: mongo_id={mongo_id_str} score={s} text_preview={text_preview}")
         
         matched_obj = None
         matched_project_id = None
@@ -315,7 +323,7 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
         if len(results) >= top_k:
             break
 
-    
+    print(f"🔍 Best score for project {project_id} is {best_score}")
     if not best_hit:
         return None
 
