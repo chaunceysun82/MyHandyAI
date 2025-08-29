@@ -546,7 +546,7 @@ def _generate_png(prompt: str, size: str, seed: int | None = None) -> bytes:
     aspect = _map_size_to_aspect(size)
 
     resp = client.models.generate_images(
-        model=os.getenv("GEMINI_IMAGE_MODEL", "imagen-4.0-generate-001"),
+        model=os.getenv("GEMINI_IMAGE_MODEL", "imagen-3.0-generate-002"),
         prompt=prompt,
         config={
             "numberOfImages": 1,
