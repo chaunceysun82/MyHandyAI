@@ -436,9 +436,8 @@ def get_youtube_link(summary):
         "messages": [
             {"role": "system", "content": (
                 "You are a strict evaluator for DIY/repair steps. "
+                "Pick ONE video that best matches the given project "
                 "The video MUST be RELATED to the main project topic."
-                "Pick ONE video that best teaches the given step. "
-                "Prefer safety, clarity, step-by-step, and recency. "
                 "Return pure JSON with keys: best_videoId, reason."
             )},
             {"role": "user", "content": json.dumps({
