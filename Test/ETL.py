@@ -14,8 +14,8 @@ output_folder = './downloaded_files'
 
 def download_files_from_drive(folder_url):
     file_ids = [
-        "1eggaqD6FBM31NXn9LnwrNutrPXOrxKdM",  # Replace with actual file IDs
-        "1DXADCU_pj3BZn8_1_EjkVBcMo5Nzrjjg"   # Replace with actual file IDs
+        "1qJdfnqShY6oKDaiwXRFzh_8XlUelUNj2",  # Replace with actual file IDs
+        "1vtfKG8agockbMbkxmCK2LNSxImnN_F0s"   # Replace with actual file IDs
     ]
     
     if not os.path.exists(output_folder):
@@ -39,7 +39,7 @@ try:
     logging.info("Connecting to MongoDB Atlas...")
     client = MongoClient(mongo_uri)
     db = client['']  
-    collection = db[''] 
+    collection = db['Cases'] 
     logging.info("Connected to MongoDB Atlas successfully.")
 except Exception as e:
     logging.error(f"Error connecting to MongoDB: {e}")
@@ -105,6 +105,24 @@ def process_and_insert_to_mongo():
                     else:
                         logging.warning("No safety precautions section found.")
 
+                    # Extract project-level tools
+                    tools_match = re.search(r"Tools Required:\s*(.*?)(?=\n\s*Materials Required:)", file_content, re.DOTALL)
+                    if tools_match:
+                        project["tools_required"] = [
+                            clean_text(line) for line in tools_match.group(1).splitlines() if line.strip()
+                        ]
+                    else:
+                        logging.warning("No tools required section found.")
+
+                    # Extract project-level materials
+                    materials_match = re.search(r"Materials Required:\s*(.*?)(?=\n\s*Steps:)", file_content, re.DOTALL)
+                    if materials_match:
+                        project["materials_required"] = [
+                            clean_text(line) for line in materials_match.group(1).splitlines() if line.strip()
+                        ]
+                    else:
+                        logging.warning("No materials required section found.")
+
                     # Extract tools and materials for each step
                     step_start = re.search(r"Steps:", file_content)
                     if step_start:
@@ -133,10 +151,10 @@ def process_and_insert_to_mongo():
                                 current_step["tools"] = [clean_text(item.strip()) for item in step_line.split(":")[1].split(",")]
                             elif "Materials:" in step_line:
                                 current_step["materials"] = [clean_text(item.strip()) for item in step_line.split(":")[1].split(",")]
-                            else:
-                                
+                            elif current_step and "step_number" in current_step and step_line.strip() \
+                                and not step_line.strip().lstrip("- ").startswith("Image:"):
+                                # Only append free text to the description of an active step.
                                 current_step["description"] += clean_text(step_line.strip()) + " "
-
                         
                         if current_step["description"]:  
                             project["steps"].append(current_step)
@@ -191,3 +209,5 @@ def process_and_insert_to_mongo():
                 logging.error(f"Error processing file {filename}: {e}")
 
 process_and_insert_to_mongo()
+
+
