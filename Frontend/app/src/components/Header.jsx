@@ -5,6 +5,21 @@ import { ReactComponent as Gear } from "../assets/gear.svg";
 
 export default function Header({ userName, onSignOut }) {
   const navigate = useNavigate();
+  
+  // Helper function to extract first name
+  const getFirstName = (fullName) => {
+    if (!fullName || fullName === "User") return "User";
+    
+    // Handle cases where there might be extra spaces or single name
+    const trimmedName = fullName.trim();
+    if (!trimmedName) return "User";
+    
+    const firstName = trimmedName.split(" ")[0];
+    if (!firstName) return "User";
+    
+    // Capitalize first letter and make rest lowercase
+    return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+  };
 
   return (
     <div className="flex items-center justify-between mb-6">
@@ -17,7 +32,7 @@ export default function Header({ userName, onSignOut }) {
         />
         <div>
           <p className="text-lg text-gray-600">Welcome back</p>
-          <p className="font-bold text-xl">{userName}</p>
+          <p className="font-bold text-xl">{getFirstName(userName)}</p>
         </div>
       </div>
 

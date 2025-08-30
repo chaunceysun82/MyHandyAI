@@ -6,7 +6,7 @@ import ProjectCard from "../components/ProjectCard";
 import LoadingPlaceholder from "../components/LoadingPlaceholder";
 import SideNavbar from "../components/SideNavbar";
 import MobileWrapper from "../components/MobileWrapper";
-import { fetchProjects, createProject, deleteProject, completeProject } from "../services/projects";
+import { fetchProjects, createProject, deleteProject, completeProject, updateProject } from "../services/projects";
 import { getUserById } from "../services/auth";
 import defaultHome from "../../src/assets/default-home.png";
 
@@ -41,6 +41,12 @@ export default function Home() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [projectToComplete, setProjectToComplete] = useState(null);
   const [isCompleting, setIsCompleting] = useState(false);
+  
+  // New state for rename functionality
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [projectToRename, setProjectToRename] = useState(null);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
 
   // Function to get first name with first letter capitalized
   // Extracts first name from "First Last" format and capitalizes first letter
@@ -216,6 +222,49 @@ export default function Home() {
       console.error("Error completing project:", error);
       setError("Failed to complete project. Please try again.");
     }
+  };
+
+  // Function to show rename modal
+  const showRenameConfirmation = (project) => {
+    setProjectToRename(project);
+    setNewProjectName(project.projectTitle);
+    setShowRenameModal(true);
+  };
+
+  // Function to handle project rename
+  const handleRenameProject = async () => {
+    if (!projectToRename || !newProjectName.trim()) {
+      setError("Please enter a valid project name.");
+      return;
+    }
+
+    setIsRenaming(true);
+    try {
+      await updateProject(projectToRename._id, { projectTitle: newProjectName.trim() });
+      
+      // Update the project in the local state
+      setProjects(projects.map(p => 
+        p._id === projectToRename._id 
+          ? { ...p, projectTitle: newProjectName.trim() }
+          : p
+      ));
+      
+      setShowRenameModal(false);
+      setProjectToRename(null);
+      setNewProjectName("");
+    } catch (error) {
+      console.error("Error renaming project:", error);
+      setError("Failed to rename project. Please try again.");
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
+  // Function to close rename modal
+  const closeRenameModal = () => {
+    setShowRenameModal(false);
+    setProjectToRename(null);
+    setNewProjectName("");
   };
 
   // Function to show completion confirmation modal
@@ -449,9 +498,10 @@ export default function Home() {
                     projectTitle={p.projectTitle}
                     lastActivity={p.lastActivity}
                     percentComplete={p.percentComplete}
-                    onStartChat={() => navigate("/chat", {state: {projectId: p._id, projectName: p.projectTitle, userId: token}})}
+                    							onStartChat={() => navigate("/chat", {state: {projectId: p._id, projectName: p.projectTitle, userId: token, userName: userName}})}
                     onRemove={handleRemoveProject}
                     onComplete={() => showCompletionConfirmation(p)}
+                    onRename={() => showRenameConfirmation(p)}
                     hasSteps={hasProjectSteps(p)}
                   />
                 );
@@ -567,6 +617,59 @@ export default function Home() {
                 disabled={isCompleting}
               >
                 {isCompleting ? "Completing..." : "Complete Project"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Project Rename Modal */}
+      {showRenameModal && projectToRename && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-xs p-4 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3 text-center">
+              Rename Project
+            </h3>
+            
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-3">
+                Enter a new name for your project:
+              </p>
+              <input
+                type="text"
+                className="w-full border-2 border-blue-500 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors text-sm"
+                placeholder="Enter new project name"
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                disabled={isRenaming}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newProjectName.trim() && !isRenaming) {
+                    handleRenameProject();
+                  }
+                }}
+              />
+            </div>
+
+            <div className="flex space-x-2">
+              <button
+                className="flex-1 px-3 py-2 rounded-lg bg-gray-200 text-gray-700 font-medium hover:bg-gray-300 transition-colors text-sm"
+                onClick={closeRenameModal}
+                disabled={isRenaming}
+              >
+                Cancel
+              </button>
+              <button
+                className={`flex-1 px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
+                  newProjectName.trim()
+                    ? isRenaming
+                      ? "bg-blue-300 text-white cursor-wait"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                    : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                }`}
+                onClick={handleRenameProject}
+                disabled={!newProjectName.trim() || isRenaming}
+              >
+                {isRenaming ? "Renaming..." : "Rename"}
               </button>
             </div>
           </div>

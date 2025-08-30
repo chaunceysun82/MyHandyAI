@@ -23,6 +23,8 @@ export default function StepCompletionConfirmation({
 	const [showValidationModal, setShowValidationModal] = useState(false);
 	const [validationType, setValidationType] = useState(null); // 'previous' or 'final'
 	const [pendingAction, setPendingAction] = useState(null);
+	const [showCongratulatoryCard, setShowCongratulatoryCard] = useState(false);
+	const [completedStepData, setCompletedStepData] = useState(null);
 
 	// Check if previous steps are completed (excluding tools step)
 	const checkPreviousStepsCompleted = () => {
@@ -73,6 +75,56 @@ export default function StepCompletionConfirmation({
 		return true;
 	};
 
+	// Calculate remaining steps for congratulatory message
+	const getRemainingStepsInfo = () => {
+		if (!Array.isArray(allSteps) || allSteps.length === 0) {
+			return { remaining: 0, total: 0 };
+		}
+		
+		// Count remaining instruction steps (skip tools step at index 0)
+		let remaining = 0;
+		let total = 0;
+		
+		for (let i = 1; i < allSteps.length; i++) {
+			total++;
+			if (!allSteps[i]?.completed) {
+				remaining++;
+			}
+		}
+		
+		return { remaining, total };
+	};
+
+	// Show congratulatory card when step is completed
+	const showCongratulatoryMessage = (stepTitle) => {
+		const { remaining, total } = getRemainingStepsInfo();
+		const isFinalStepCompleted = remaining === 0;
+		const currentStepNumber = total - remaining;
+		
+		// Get next step title
+		let nextStepTitle = null;
+		if (!isFinalStepCompleted && Array.isArray(allSteps)) {
+			const nextStepIndex = currentStepIndex + 1;
+			if (nextStepIndex < allSteps.length) {
+				nextStepTitle = allSteps[nextStepIndex]?.title || `Step ${nextStepIndex + 1}`;
+			}
+		}
+		
+		setCompletedStepData({
+			stepTitle,
+			stepNumber: currentStepNumber,
+			total,
+			nextStepTitle,
+			isFinalStep: isFinalStepCompleted
+		});
+		setShowCongratulatoryCard(true);
+		
+		// Auto-hide after 6 seconds
+		setTimeout(() => {
+			setShowCongratulatoryCard(false);
+		}, 6000);
+	};
+
 	// Complete all remaining steps and finish project
 	const completeAllStepsAndFinish = async () => {
 		try {
@@ -111,10 +163,16 @@ export default function StepCompletionConfirmation({
 			setShowValidationModal(false);
 			if (onStepUpdate) onStepUpdate();
 			
-			// Navigate to project completion page
-			if (onProjectComplete) {
-				onProjectComplete();
-			}
+			// Show congratulatory message for final step completion
+			const stepTitle = allSteps[currentStepIndex]?.title || `Step ${stepNumber}`;
+			showCongratulatoryMessage(stepTitle);
+			
+			// Navigate to project completion page after a short delay
+			setTimeout(() => {
+				if (onProjectComplete) {
+					onProjectComplete();
+				}
+			}, 3000); // Show congratulatory card for 3 seconds before navigating
 			
 		} catch (error) {
 			console.error('Error completing all steps:', error);
@@ -154,6 +212,10 @@ export default function StepCompletionConfirmation({
 				// Normal step completion
 				await toggleStepCompletion(projectId, stepNumber);
 				if (onStepUpdate) onStepUpdate();
+				
+				// Show congratulatory message
+				const stepTitle = allSteps[currentStepIndex]?.title || `Step ${stepNumber}`;
+				showCongratulatoryMessage(stepTitle);
 			}
 		} catch (error) {
 			console.error('Error toggling step completion:', error);
@@ -186,6 +248,10 @@ export default function StepCompletionConfirmation({
 			// Close modal and update UI
 			setShowValidationModal(false);
 			if (onStepUpdate) onStepUpdate();
+			
+			// Show congratulatory message
+			const stepTitle = allSteps[currentStepIndex]?.title || `Step ${stepNumber}`;
+			showCongratulatoryMessage(stepTitle);
 			
 		} catch (error) {
 			console.error('Error completing steps:', error);
@@ -265,6 +331,55 @@ export default function StepCompletionConfirmation({
 				onConfirm={handleModalConfirm}
 				{...getModalContent()}
 			/>
+
+			{/* Congratulatory Card */}
+			{showCongratulatoryCard && completedStepData && (
+				<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+					<div className="bg-white rounded-2xl p-6 max-w-xs w-full mx-4 text-center shadow-2xl">
+						{/* Celebration Icon */}
+						<div className="w-12 h-12 flex items-center justify-center mx-auto mb-4">
+							<span className="text-4xl">🎉</span>
+						</div>
+						
+						{/* Congratulations Message */}
+						<h3 className="text-lg font-bold text-gray-900 mb-3">
+							{completedStepData.isFinalStep ? 'Congratulations!' : 'Well Done!'}
+						</h3>
+						
+						{/* Step Completion Info */}
+						<p className="text-sm text-gray-700 mb-4 leading-relaxed">
+							{completedStepData.isFinalStep ? (
+								<>You are done with your DIY project! All steps have been completed successfully.</>
+							) : (
+								<>
+									Step {completedStepData.stepNumber}/{completedStepData.total} ({completedStepData.stepTitle}) is complete!
+									{completedStepData.nextStepTitle && (
+										<> You can continue with {completedStepData.nextStepTitle}.</>
+									)}
+								</>
+							)}
+						</p>
+						
+						{/* Close Button */}
+						<button
+							onClick={() => {
+								setShowCongratulatoryCard(false);
+								// If this is the final step, navigate to project completion
+								if (completedStepData.isFinalStep && onProjectComplete) {
+									onProjectComplete();
+								}
+							}}
+							className={`w-full py-2 px-4 font-medium rounded-lg transition-colors ${
+								completedStepData.isFinalStep 
+									? 'bg-green-500 text-white hover:bg-green-600'
+									: 'bg-blue-500 text-white hover:bg-blue-600'
+							}`}
+						>
+							{completedStepData.isFinalStep ? 'Finish Project' : 'Continue'}
+						</button>
+					</div>
+				</div>
+			)}
 		</>
 	);
 }
