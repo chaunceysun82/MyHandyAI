@@ -3,7 +3,7 @@ import React from "react";
 const QuickReplyButtons = ({ onQuickReply }) => {
   // Predefined array of quick reply options
   const quickReplies = [
-    "Can you skip this question?",
+    "Skip this question?",
     "How do I answer this question",
     "Is this a required question",
     "I don't know how to answer this",
