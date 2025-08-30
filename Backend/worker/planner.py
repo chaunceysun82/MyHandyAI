@@ -342,15 +342,6 @@ Project summary:
                 "amazon_link": None,
             }
 
-            try:
-                img = self._get_image_url(i.name)
-                tool["image_link"] = img
-            except Exception:
-                tool["image_link"] = None
-
-            safe = self._sanitize_for_amazon(i.name)
-            tool["amazon_link"] = f"https://www.amazon.com/s?k={safe}&tag={self.amazon_affiliate_tag}"
-
             tools_list.append(tool)
 
         out: Dict[str, Any] = {"tools": tools_list, "raw": parsed_obj.model_dump()}

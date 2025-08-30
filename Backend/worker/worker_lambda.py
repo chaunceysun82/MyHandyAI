@@ -31,13 +31,14 @@ def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x10
         print("⚠️ IMAGES_SQS_URL not set; skipping enqueue")
         return
     for i, step in enumerate(steps, start=1):
-        step_text = "Overall summary: " +summary+"\n"
-        step_text +="CURRENT STEP: "+ ", ".join(s for s in step.get("instructions", []) if s and s.strip())
+        sum_text = "Overall summary: " +summary+"\n"
+        step_text ="CURRENT STEP: "+ ", ".join(s for s in step.get("instructions", []) if s and s.strip())
         body = {
             "task": "image_step",
             "project": project_id,
             "step_id": str(i),
             "step_text": step_text,
+            "summary_text": sum_text,
             "size": size
         }
         project_collection.update_one({"_id": ObjectId(project_id)}, {"$set": {f"step_generation.steps.{int(i)-1}.image.status": "in-progress"}})
@@ -89,7 +90,7 @@ def lambda_handler(event, context):
             if similar_result:
                 print(f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
 
-            if similar_result and similar_result["best_score"] >= 0.90:
+            if similar_result and similar_result["best_score"] >= 0.85:
                 # If we found a highly similar project, we can use it as a reference
                 print(f"🔗 Using similar project {similar_result['project_id']} as reference"
                       f" (score: {similar_result['best_score']})")
@@ -115,7 +116,7 @@ def lambda_handler(event, context):
 
                 continue
 
-            if similar_result and 0.75 <= similar_result["best_score"] < 0.90:
+            if similar_result and 0.60 <= similar_result["best_score"] < 0.85:
                 print(f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
                 print(f"⚠️ Similarity below threshold for reuse; proceeding with full generation")
 
@@ -173,7 +174,15 @@ def lambda_handler(event, context):
                                 # No good match - keep as new tool
                                 reuse_stats["new"] += 1
                                 print(f"   🆕 New tool: {tool['name']}")
-                            
+                                try:
+                                    img = tools_agent._get_image_url(tool["name"])
+                                    tool["image_link"] = img
+                                except Exception:
+                                    tool["image_link"] = None
+
+                                safe = tools_agent._sanitize_for_amazon(tool["name"])
+                                tool["amazon_link"] = f"https://www.amazon.com/s?k={safe}&tag={tools_agent.amazon_affiliate_tag}"
+
                             enhanced_tools.append(tool)
                             
                         except Exception as e:
@@ -238,7 +247,7 @@ def lambda_handler(event, context):
             
             cursor = project_collection.find_one({"_id": ObjectId(project)})
 
-            if similar_result and 0.75 <= similar_result["best_score"] < 0.90:
+            if similar_result and 0.60 <= similar_result["best_score"] < 0.85:
                 print(f"🔍 Steps Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
                 print(f"⚠️ Similarity below threshold for reuse; proceeding with full generation")
                 similar_project = project_collection.find_one({"_id": ObjectId(similar_result["project_id"])})
@@ -374,18 +383,18 @@ def get_youtube_link(summary):
     OPENAI_KEY   = os.getenv("OPENAI_API_KEY")
     
     payload = {
-        "model": "gpt-5-nano",  # or the model you prefer
+        "model": "gpt-5-mini",  # or the model you prefer
         "messages": [
             {"role": "system", "content": (
                 "You are a summarization agent for youtube searches"
                 "Return one line in based of the text provided to search the most helpfull video"
-                "Provide just a sentence max 12 words for youtube search, dont over extend even if you dont cover all details and avoid putting sords inside parenthesis"
+                "Provide just a sentence max 8 words for youtube search, DONT INCLUNDE MEASURES"
             )},
             {"role": "user", "content": json.dumps({
                 "description": summary
             })}
         ],
-        "max_completion_tokens": 500,
+        "max_completion_tokens": 1500,
         "reasoning_effort": "low",
         "verbosity": "low",
     }
@@ -426,9 +435,9 @@ def get_youtube_link(summary):
         "model": "gpt-5-mini",  # or the model you prefer
         "messages": [
             {"role": "system", "content": (
-                "You are a strict evaluator for DIY/repair steps. "
-                "Pick ONE video that best teaches the given step. "
-                "Prefer safety, clarity, step-by-step, and recency. "
+                "You are a video selection assistant."
+                "Pick ONE video that best matches the given project "
+                "The video MUST be RELATED to the main project topic."
                 "Return pure JSON with keys: best_videoId, reason."
             )},
             {"role": "user", "content": json.dumps({
@@ -474,25 +483,27 @@ class SceneSpec(BaseModel):
     
 class ImageRequest(BaseModel):
     step_text: str
+    summary_text: Optional[str] = None
     scene: Optional[SceneSpec] = None
     size: str = "1024x1024" 
     n: int = 1             
     project_id: str
-    
-def _build_prompt(step_text: str, guidance="neutral") -> str:
+
+def _build_prompt(step_text: str, summary_text: Optional[str] = None, guidance="neutral") -> str:
         payload = {
             "model": "gpt-5-nano",  # or the model you prefer
             "messages": [
                 {"role": "system", "content": (
                     "You are an image generation agent specializing in DIY/repair steps."
-                    "Your task is to create a detailed prompt for an image generation model. based on the input provided."
-                    "Be sure to include all relevant details and context."
+                    "Your task is to create a detailed prompt for an image generation model. based on the user input provided."
+                    f"Context summary of the overall project: {summary_text}"
+                    "Focus on depicting the CURRENT STEP for the image. Overall summary is just for context."
                 )},
                 {"role": "user", "content": json.dumps({
                     "description": step_text
                 })}
             ],
-            "max_completion_tokens": 500,
+            "max_completion_tokens": 2000,
             "reasoning_effort": "low",
             "verbosity": "low",
         }
@@ -538,7 +549,7 @@ def _generate_png(prompt: str, size: str, seed: int | None = None) -> bytes:
     aspect = _map_size_to_aspect(size)
 
     resp = client.models.generate_images(
-        model=os.getenv("GEMINI_IMAGE_MODEL", "imagen-4.0-generate-001"),
+        model=os.getenv("GEMINI_IMAGE_MODEL", "imagen-3.0-generate-002"),
         prompt=prompt,
         config={
             "numberOfImages": 1,
@@ -587,7 +598,7 @@ def generate_step_image(step_id: str, payload: ImageRequest | dict):
     try:
         if isinstance(payload, dict):
             payload = ImageRequest(**payload)
-        prompt = _build_prompt(payload.step_text)
+        prompt = _build_prompt(payload.step_text, payload.summary_text)
         raw_png = _generate_png(prompt=prompt, size=payload.size)
         png_bytes = _png_to_bytes_ensure_rgba(raw_png)
     except Exception as e:
@@ -605,7 +616,7 @@ def generate_step_image(step_id: str, payload: ImageRequest | dict):
                 "step_id": step_id,
                 "project_id": payload.project_id or "",
                 "size": payload.size,
-                "model": "imagen-4.0-generate-001"
+                "model": "imagen-3.0-generate-002"
             },
         )
     except Exception as e:
@@ -620,7 +631,7 @@ def generate_step_image(step_id: str, payload: ImageRequest | dict):
         "s3_key": key,
         "url": url,
         "size": payload.size,
-        "model": "imagen-4.0-generate-001",
+        "model": "imagen-3.0-generate-002",
         "prompt_preview": prompt[:180],
     }
     
