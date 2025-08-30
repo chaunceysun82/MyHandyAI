@@ -151,6 +151,30 @@ export async function deleteProject(id) {
   }
 }
 
+/** PUT /projects/{project_id} -> Update project */
+export async function updateProject(projectId, updateData) {
+  try {
+    const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+    
+    if (!res.ok) {
+      let msg = res.statusText;
+      try { msg = (await res.json()).detail || msg; } catch {}
+      throw new Error(msg);
+    }
+    
+    const data = await res.json();
+    console.log('Project updated successfully:', data);
+    return data;
+  } catch (error) {
+    console.error('Error updating project:', error);
+    throw error;
+  }
+}
+
 /** GET /project/{project_id}/progress -> { progress: number } */
 export async function fetchProjectProgress(projectId) {
   try {
