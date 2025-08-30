@@ -9,12 +9,7 @@ export default function StepMediaGuide({ videoUrl, imageData, title = "Step Guid
 	useEffect(() => {
 		const items = [];
 		
-		// Add video if available
-		if (videoUrl) {
-			items.push({ type: 'video', url: videoUrl });
-		}
-		
-		// Handle multiple images or single image
+		// Handle multiple images or single image FIRST
 		if (imageData) {
 			if (Array.isArray(imageData)) {
 				// Multiple images - add each complete image
@@ -27,6 +22,11 @@ export default function StepMediaGuide({ videoUrl, imageData, title = "Step Guid
 				// Single image
 				items.push({ type: 'image', url: imageData.url, index: 0, originalData: imageData });
 			}
+		}
+		
+		// Add video SECOND (after images)
+		if (videoUrl) {
+			items.push({ type: 'video', url: videoUrl });
 		}
 		
 		setMediaItems(items);

@@ -13,6 +13,7 @@ export default function ChatWindow({
   projectId,
   projectName,
   userId,
+  userName, // Add userName prop
   URL,
   secondChatStatus,
   stepNumber
@@ -170,7 +171,7 @@ export default function ChatWindow({
             const message = response.data.message;
             if (message === "generation completed") {
               clearInterval(interval);
-              navigate(`/projects/${projectId}/overview`);
+              navigate(`/projects/${projectId}/overview`, { state: { userId, userName } });
             }
           }
         } catch (err) {

@@ -20,7 +20,22 @@ export default function ProjectOverview() {
 
 	const {userId} = location.state || {};
 
-	const userName = state?.userName || "User";
+	const userName = state?.userName || localStorage.getItem("displayName") || sessionStorage.getItem("displayName") || "User";
+	
+	// Helper function to extract first name
+	const getFirstName = (fullName) => {
+		if (!fullName || fullName === "User") return "User";
+		
+		// Handle cases where there might be extra spaces or single name
+		const trimmedName = fullName.trim();
+		if (!trimmedName) return "User";
+		
+		const firstName = trimmedName.split(" ")[0];
+		if (!firstName) return "User";
+		
+		// Capitalize first letter and make rest lowercase
+		return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+	};
 
 	const [openModal, setOpenModal] = useState(false);
 
@@ -146,7 +161,8 @@ export default function ProjectOverview() {
 				state: { 
 					projectId, 
 					stepIndex: 0,
-					projectVideoUrl: projectVideoUrl // Add this line to pass video URL
+					projectVideoUrl: projectVideoUrl, // Add this line to pass video URL
+					userName: userName // Pass userName to tools page
 				}
 			});
 		}
@@ -159,7 +175,8 @@ export default function ProjectOverview() {
 				state: { 
 					projectId, 
 					stepIndex: 0,
-					projectVideoUrl: projectVideoUrl // Pass video URL
+					projectVideoUrl: projectVideoUrl, // Pass video URL
+					userName: userName // Pass userName to tools page
 				}
 			});
 		} else {
@@ -174,7 +191,8 @@ export default function ProjectOverview() {
 				state: { 
 					projectId,
 					projectName: state?.projectName || "Project",
-					projectVideoUrl: projectVideoUrl // Pass video URL
+					projectVideoUrl: projectVideoUrl, // Pass video URL
+					userName: userName // Pass userName to step page
 				}
 			});
 		}
@@ -325,7 +343,7 @@ export default function ProjectOverview() {
 				<div className="px-4 pb-4 space-y-3">
 					{/* Assistant prompt pill */}
 					<div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-600 flex items-center justify-between">
-						<span>Hi "{userName}", Need MyHandyAI Assistant?</span>
+						<span>Hi {getFirstName(userName)}, Need MyHandyAI Assistant?</span>
 						<button
 							onClick={openAssistant}
 							className="ml-3 px-3 py-1 rounded-lg bg-[#6FCBAE] text-white text-[12px] font-semibold">
@@ -341,6 +359,7 @@ export default function ProjectOverview() {
 							onClose={() => setOpenModal(false)}
 							URL={URL}
 							stepNumber={null}
+							userName={userName}
 						/>
 					)}
 
@@ -400,6 +419,36 @@ const defaultSteps = [
 	},
 ];
 
+// Helper function to round minutes to nearest 10
+function roundMinutesToNearestTen(minutes) {
+	if (!minutes || minutes <= 0) return 10; // Minimum 10 minutes
+	return Math.round(minutes / 10) * 10;
+}
+
+// Helper function to round cost to nearest 10
+function roundCostToNearestTen(amount) {
+	if (!amount || amount <= 0) return 10; // Minimum $10
+	return Math.round(amount / 10) * 10;
+}
+
+// Helper function to format rounded duration
+function formatRoundedDuration(minutes) {
+	const roundedMinutes = roundMinutesToNearestTen(minutes);
+	
+	if (roundedMinutes >= 60) {
+		const hours = Math.floor(roundedMinutes / 60);
+		const remainingMinutes = roundedMinutes % 60;
+		
+		if (remainingMinutes === 0) {
+			return `${hours}hr`;
+		} else {
+			return `${hours}hr ${remainingMinutes}min`;
+		}
+	} else {
+		return `${roundedMinutes}min`;
+	}
+}
+
 function normEstimations(api) {
 	
 	if (!api) {
@@ -421,20 +470,21 @@ function normEstimations(api) {
 	const s = ed.summary || {};
 
 	const minutes = t.minutes ?? ed.total_est_time_min ?? api.total_est_time_min;
-	const duration =
-		t.human_readable || (minutes ? `${minutes} Minutes` : undefined);
+	const roundedMinutes = roundMinutesToNearestTen(minutes);
+	const duration = formatRoundedDuration(roundedMinutes);
 
 	let cost = "";
 	if (typeof c.amount === "number") {
+		const roundedAmount = roundCostToNearestTen(c.amount);
 		const currency = (c.currency || "USD").toUpperCase();
 		try {
 			cost = new Intl.NumberFormat("en-US", {
 				style: "currency",
 				currency,
-				maximumFractionDigits: 2,
-			}).format(c.amount);
+				maximumFractionDigits: 0, // No decimal places for rounded values
+			}).format(roundedAmount);
 		} catch {
-			cost = `$${c.amount.toFixed(2)}`;
+			cost = `$${roundedAmount}`;
 		}
 	}
 
@@ -493,10 +543,18 @@ function extractMinutes(text) {
 	if (!text || typeof text !== "string") return 0;
 	const m = text.match(/(\d+)\s*(?:–|-)?\s*(\d+)?\s*min|(\d+)\s*Minutes/i);
 	if (!m) return 0;
-	if (m[3]) return parseInt(m[3], 10) || 0;
-	if (m[1] && m[2]) return Math.round((+m[1] + +m[2]) / 2);
-	if (m[1]) return +m[1];
-	return 0;
+	
+	let result = 0;
+	if (m[3]) {
+		result = parseInt(m[3], 10) || 0;
+	} else if (m[1] && m[2]) {
+		result = Math.round((+m[1] + +m[2]) / 2);
+	} else if (m[1]) {
+		result = +m[1];
+	}
+	
+	// Round to nearest 10 minutes
+	return roundMinutesToNearestTen(result);
 }
 
 function pickIcon(i) {

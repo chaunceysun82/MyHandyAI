@@ -457,7 +457,7 @@ const Signup = () => {
 					</button>
 					
 
-					<button className="rounded-[20px] text-[14px] text-white flex items-center justify-center gap-3 font-bold mb-3 p-2 w-[350px] bg-[#1877F2] hover:text-blue-600 hover:bg-gray-100 transition duration-200">
+					<button className="rounded-[20px] text-[14px] flex items-center justify-center gap-3 font-bold mb-3 p-2 w-[350px] bg-[#F2F2F5] hover:text-blue-600 hover:bg-gray-100 transition duration-200">
 						<Facebook width={28} height={28} />
 						Continue with Facebook
 					</button>

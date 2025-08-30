@@ -14,6 +14,7 @@ export default function StepFooter({
 	onPrev, 
 	onNext,
 	userId,
+	userName, // Add userName prop
 	isPrevDisabled = false,
 	isNextDisabled = false,
 	isNextFinal = false,
@@ -21,6 +22,20 @@ export default function StepFooter({
 	currentStepIndex = 0, // Add this prop to know current step position
 	onStepUpdate = null // Add this prop to refresh step data after completion
 }) {
+	// Helper function to extract first name
+	const getFirstName = (fullName) => {
+		if (!fullName || fullName === "User") return "User";
+		
+		// Handle cases where there might be extra spaces or single name
+		const trimmedName = fullName.trim();
+		if (!trimmedName) return "User";
+		
+		const firstName = trimmedName.split(" ")[0];
+		if (!firstName) return "User";
+		
+		// Capitalize first letter and make rest lowercase
+		return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+	};
 	const navigate = useNavigate();
 	const [showProjectCompletionModal, setShowProjectCompletionModal] = useState(false);
 	const [isCompleting, setIsCompleting] = useState(false);
@@ -201,7 +216,7 @@ export default function StepFooter({
 			<div className="px-4 pb-4 space-y-3">
 				{/* Assistant prompt pill */}
 				<div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-600 flex items-center justify-between">
-					<span>Hi "User", Need MyHandyAI Assistant?</span>
+					<span>Hi {getFirstName(userName)}, Need MyHandyAI Assistant?</span>
 					<button
 						onClick={handleChatClick}
 						className="ml-3 px-3 py-1 rounded-lg bg-[#6FCBAE] text-white text-[12px] font-semibold">
@@ -216,6 +231,7 @@ export default function StepFooter({
 					onClose={() => setOpenModal(false)}
 					URL={URL}
 					stepNumber={stepNumber}
+					userName={userName}
 				/>
 			)}
 

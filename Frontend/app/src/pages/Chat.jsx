@@ -34,7 +34,7 @@ const Chat = () => {
   
   // const [statusCheck, setStatusCheck] = useState(false);
 
-  const { projectId, projectName, userId } = location.state || {};
+  const { projectId, projectName, userId, userName } = location.state || {};
 
   // Redirect if no projectId
   useEffect(() => {
@@ -68,7 +68,7 @@ const Chat = () => {
         setLoading(false);
         if(statusCheck)
         {
-          navigate(`/projects/${projectId}/overview`, {state: {userId}});
+          navigate(`/projects/${projectId}/overview`, {state: {userId, userName}});
         }
       }, 800);
     }
@@ -114,6 +114,7 @@ const Chat = () => {
           projectId={projectId}
           projectName={projectName}
           userId={userId}
+          userName={userName}
           URL={URL}
         />
       )}

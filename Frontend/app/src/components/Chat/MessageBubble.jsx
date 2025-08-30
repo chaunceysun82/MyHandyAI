@@ -1,6 +1,20 @@
 import React from "react";
 import { splitMessageIntoParts, forceSplitLongContent } from "../../utilities/textProcessing";
 
+// Custom CSS for text wrapping - ensures long words break properly
+// wordBreak: 'break-word' - breaks long words at any character if necessary
+// overflowWrap: 'break-word' - modern CSS property for word breaking
+// hyphens: 'auto' - adds hyphens when breaking words
+// wordWrap: 'break-word' - legacy support for older browsers
+// maxWidth: '100%' - ensures content doesn't exceed container width
+const textWrapStyles = {
+	wordBreak: 'break-word',
+	overflowWrap: 'break-word',
+	hyphens: 'auto',
+	wordWrap: 'break-word',
+	maxWidth: '100%'
+};
+
 // Function to format content with proper line breaks and lists
 const formatContent = (content) => {
 	if (!content) return content;
@@ -14,14 +28,14 @@ const formatContent = (content) => {
 	return lines.map((line, index) => {
 		const trimmedLine = line.trim();
 		
-		// Handle numbered lists
+				// Handle numbered lists
 		if (trimmedLine.match(/^\d+\./)) {
 			return (
 				<div key={index} className="ml-2 mb-2 flex items-start">
 					<span className="text-gray-600 font-medium mr-2 flex-shrink-0">
 						{trimmedLine.match(/^\d+\./)[0]}
 					</span>
-					<span className="text-gray-700">
+					<span className="text-gray-700 break-words overflow-wrap-anywhere flex-1">
 						{renderFormattedText(trimmedLine.replace(/^\d+\.\s*/, ''))}
 					</span>
 				</div>
@@ -33,7 +47,7 @@ const formatContent = (content) => {
 			return (
 				<div key={index} className="ml-2 mb-2 flex items-start">
 					<span className="text-gray-600 mr-2 flex-shrink-0">•</span>
-					<span className="text-gray-700">
+					<span className="text-gray-700 break-words overflow-wrap-anywhere flex-1">
 						{renderFormattedText(trimmedLine.substring(1).trim())}
 					</span>
 				</div>
@@ -42,7 +56,7 @@ const formatContent = (content) => {
 		
 		// Handle regular lines
 		return (
-			<div key={index} className="mb-2 text-gray-700">
+			<div key={index} className="mb-2 text-gray-700 break-words overflow-wrap-anywhere">
 				{renderFormattedText(trimmedLine)}
 			</div>
 		);
@@ -103,13 +117,19 @@ const MessagePart = ({ type, content, icon, isFirst = false, showIcon = false })
 			) : (
 				<div className="h-7 w-7 shrink-0"></div>
 			)}
-			<div className={`max-w-[78%] text-[15px] rounded-xl px-3.5 py-2.5 leading-snug text-gray-800 ${getBubbleStyle()}`}>
-				{formatContent(content)}
+			<div className={`max-w-[78%] text-[15px] rounded-xl px-3.5 py-2.5 leading-snug text-gray-800 break-words overflow-hidden ${getBubbleStyle()}`}>
+				<div className="break-words overflow-wrap-anywhere hyphens-auto" style={textWrapStyles}>
+					{formatContent(content)}
+				</div>
 			</div>
 		</div>
 	);
 };
 
+/**
+ * MessageBubble component that intelligently splits long messages
+ * to improve readability while preserving sentence boundaries
+ */
 export default function MessageBubble({ role = "bot", children, images = [], isImageOnly = false }) {
 	// If this is an image-only message, render just the image without bubble background
 	if (isImageOnly && images && images.length > 0) {
@@ -140,6 +160,7 @@ export default function MessageBubble({ role = "bot", children, images = [], isI
 		const parts = splitMessageIntoParts(children);
 		
 		// Force split if content is very long and still not split
+		// This will prioritize sentence boundaries and natural breaks
 		if (parts.length === 1 && children && children.length > 200) {
 			const forcedParts = forceSplitLongContent(children);
 			if (forcedParts) {
@@ -200,8 +221,10 @@ export default function MessageBubble({ role = "bot", children, images = [], isI
 	// User message
 	return (
 		<div className="mt-3 flex justify-end">
-			<div className="max-w-[78%] bg-blue-500 text-white text-[15px] rounded-xl px-3.5 py-2.5 leading-snug">
-				{children}
+			<div className="max-w-[78%] bg-blue-500 text-white text-[15px] rounded-xl px-3.5 py-2.5 leading-snug break-words overflow-hidden">
+				<div className="break-words overflow-wrap-anywhere hyphens-auto" style={textWrapStyles}>
+					{children}
+				</div>
 			</div>
 		</div>
 	);
