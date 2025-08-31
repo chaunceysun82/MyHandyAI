@@ -12,7 +12,8 @@ export default function ChatWindow2({
   onClose,
   projectId,
   URL,
-  stepNumber
+  stepNumber,
+  userName // Add userName prop
 }) {
 
   console.log("Project ID:", projectId);
@@ -209,7 +210,7 @@ export default function ChatWindow2({
                   if(message === "generation completed")
                   {
                     clearInterval(interval);
-                    navigate(`/projects/${projectId}/overview`);
+                    navigate(`/projects/${projectId}/overview`, { state: { userName } });
                   }
                 }
               } 

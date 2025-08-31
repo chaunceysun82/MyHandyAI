@@ -28,6 +28,9 @@ export default function ToolsPage() {
 	
 	// Get the project video URL from navigation state
 	const projectVideoUrl = location.state?.projectVideoUrl;
+	
+	// Get userName from navigation state or localStorage
+	const userName = location.state?.userName || localStorage.getItem("displayName") || sessionStorage.getItem("displayName") || "User";
 
 	// const userId = location.state?.userId;
 	// console.log("User ID:", userId);
@@ -108,7 +111,8 @@ export default function ToolsPage() {
 			state: {
 				projectId,
 				projectName: location.state?.projectName || "Project",
-				projectVideoUrl: projectVideoUrl
+				projectVideoUrl: projectVideoUrl,
+				userName: userName // Pass userName back to overview
 			}
 		});
 	};
@@ -119,14 +123,20 @@ export default function ToolsPage() {
 			state: {
 				projectId,
 				projectName: location.state?.projectName || "Project",
-				projectVideoUrl: projectVideoUrl
+				projectVideoUrl: projectVideoUrl,
+				userName: userName // Pass userName back to overview
 			}
 		});
 	};
 
 	const handleNext = () => {
 		// Navigate to the first actual step (step 1, since tools is step 0)
-		navigate(`/projects/${projectId}/steps/1`, { state: { projectVideoUrl } });
+		navigate(`/projects/${projectId}/steps/1`, { 
+			state: { 
+				projectVideoUrl,
+				userName: userName // Pass userName to next step
+			} 
+		});
 	};
 
 	// Filter tools based on active filter
@@ -274,6 +284,7 @@ export default function ToolsPage() {
 				projectId={projectId}
 				projectName={location.state?.projectName || "Project"}
 				projectVideoUrl={projectVideoUrl}
+				userName={userName} // Pass userName prop
 			>
 				<div className="space-y-4">
 					{/* Sticky Cost Estimation Section - Only the selection banner */}

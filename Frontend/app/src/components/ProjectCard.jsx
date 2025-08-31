@@ -10,6 +10,7 @@ export default function ProjectCard({
   onStartChat,
   onRemove,
   onComplete,
+  onRename, // New prop for rename functionality
   hasSteps = false, // New prop to check if project has steps generated
 }) {
   const [showMenu, setShowMenu] = useState(false);
@@ -58,7 +59,7 @@ export default function ProjectCard({
         if (onRemove) onRemove(id);
         break;
       case 'rename':
-        console.log('Rename functionality not implemented');
+        if (onRename) onRename();
         break;
       case 'archive':
         console.log('Archive functionality not implemented');
@@ -139,7 +140,7 @@ export default function ProjectCard({
                 }}
                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
               >
-                Chat
+                Resume
               </button>
               
               {/* Complete option - only show if project has steps and isn't already complete */}
@@ -165,12 +166,11 @@ export default function ProjectCard({
                   e.stopPropagation();
                   handleOptionClick('rename');
                 }}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors cursor-not-allowed opacity-50"
-                disabled
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
               >
                 Rename
               </button>
-              <button
+              {/* <button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleOptionClick('archive');
@@ -179,7 +179,7 @@ export default function ProjectCard({
                 disabled
               >
                 Archive
-              </button>
+              </button> */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
