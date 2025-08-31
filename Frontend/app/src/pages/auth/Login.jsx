@@ -164,6 +164,7 @@ const Login = () => {
        		const user = await getUserById(res.id);
        		const full = [user.firstname, user.lastname].filter(Boolean).join(" ") || (user.email ?? "User");
        		store.setItem("displayName", full);
+       		store.setItem("userEmail", user.email || "");
        		
        		// Check if user has completed onboarding
        		if (hasCompletedOnboarding(user)) {
@@ -259,7 +260,7 @@ const Login = () => {
 					<label className="block mb-2 text-sm font-medium text-gray-700">
 						Email <span className="text-red-500">*</span>
 					</label>
-					<div className="relative">
+					<div className={`relative w-full ${errors.email ? 'mb-0' : 'mb-5'}`}>
 						<input
 							type="email"
 							value={email}
@@ -268,20 +269,20 @@ const Login = () => {
 								clearFieldError('email');
 							}}
 							style={{backgroundColor: '#F7F7F7'}}
-							className={`w-full p-2 mb-7 border text-[12px] rounded-[20px] transition-colors ${
+							className={`w-full p-2 border text-[12px] rounded-[20px] transition-colors ${
 								errors.email 
 									? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
 									: 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
 							}`}
 							placeholder="hello@example.com"
 						/>
-						{errors.email && (
+						{/* {errors.email && (
 							<div className="absolute inset-y-0 right-3 flex items-center">
 								<div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
 									<span className="text-white text-xs font-bold">!</span>
 								</div>
 							</div>
-						)}
+						)} */}
 					</div>
 				</FieldError>
 
@@ -289,7 +290,7 @@ const Login = () => {
 					<label className="block mb-2 text-sm font-medium text-gray-700">
 						Password <span className="text-red-500">*</span>
 					</label>
-					<div className="relative w-full mb-5">
+					<div className={`relative w-full ${errors.email ? 'mb-0' : 'mb-5'}`}>
 						<input
 							value={password}
 							onChange={(e) => {
@@ -306,11 +307,11 @@ const Login = () => {
 							}`}
 						/>
 						<div className="absolute inset-y-0 right-3 flex items-center gap-2">
-							{errors.password && (
+							{/* {errors.password && (
 								<div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
 									<span className="text-white text-xs font-bold">!</span>
 								</div>
-							)}
+							)} */}
 							<div
 								className="cursor-pointer text-gray-500"
 								onClick={() => setShowPassword((prev) => !prev)}>
@@ -365,13 +366,9 @@ const Login = () => {
 					</button>
 					
 
-					<button className="rounded-[20px] text-[14px] text-white flex items-center justify-center gap-3 font-bold mb-3 p-2 w-[350px] bg-[#1877F2] hover:text-blue-600 hover:bg-gray-100 transition duration-200">
+					<button className="rounded-[20px] text-[14px] flex items-center justify-center gap-3 font-bold mb-3 p-2 w-[350px] bg-[#F2F2F5] hover:text-blue-600 hover:bg-gray-100 transition duration-200">
 						<Facebook width={28} height={28} />
 						Continue with Facebook
-					</button>
-
-					<button className="rounded-[20px] text-[14px] font-bold mb-3 p-2 w-[350px] bg-[#F2F2F5] hover:bg-gray-200 transition duration-200">
-						Use Face ID
 					</button>
 			</div>
 			
