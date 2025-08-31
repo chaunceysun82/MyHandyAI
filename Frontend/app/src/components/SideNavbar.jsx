@@ -1,9 +1,13 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-export default function SideNavbar({ isOpen, onClose }) {
+export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
   const navigate = useNavigate();
   const [showSignoutConfirm, setShowSignoutConfirm] = useState(false);
+
+  // Get user data from localStorage
+  const userName = localStorage.getItem("displayName") || sessionStorage.getItem("displayName") || "User";
+  const userEmail = localStorage.getItem("userEmail") || sessionStorage.getItem("userEmail") || "example@email.com";
 
   const handleSignOut = () => {
     setShowSignoutConfirm(true);
@@ -26,32 +30,43 @@ export default function SideNavbar({ isOpen, onClose }) {
     setShowSignoutConfirm(false);
   };
 
-  const handleHomeClick = () => {
-    navigate("/home");
-    onClose(); // Close the sidebar
+  const handleStartNewProject = () => {
+    // Close the sidebar first
+    onClose();
+    
+    // Then trigger the start new project modal from parent component
+    if (onStartNewProject) {
+      onStartNewProject();
+    }
   };
 
-  const handleProfileClick = () => {
-    // Demo profile action
-    console.log("Profile clicked");
+  const handleMyProjects = () => {
+    navigate("/home");
     onClose();
   };
 
-  const handleSettingsClick = () => {
-    // Demo settings action
+  const handleSettings = () => {
     console.log("Settings clicked");
     onClose();
   };
 
-  const handleHelpClick = () => {
-    // Demo help action
-    console.log("Help clicked");
+  const handleBilling = () => {
+    console.log("Billing clicked");
     onClose();
   };
 
-  const handleAboutClick = () => {
-    // Demo about action
+  const handleAbout = () => {
     console.log("About clicked");
+    onClose();
+  };
+
+  const handleAskAPro = () => {
+    console.log("Ask A Pro clicked");
+    onClose();
+  };
+
+  const handleTerms = () => {
+    console.log("Terms clicked");
     onClose();
   };
 
@@ -67,100 +82,122 @@ export default function SideNavbar({ isOpen, onClose }) {
 
       {/* Sidebar */}
       <div 
-        className={`absolute top-0 right-0 h-full w-64 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out z-50 ${
+        className={`absolute top-0 right-0 h-full w-72 bg-white rounded-l-2xl shadow-2xl transform transition-transform duration-300 ease-in-out z-50 flex flex-col ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
         style={{ height: '100%' }}
       >
-        {/* Header */}
-        <div className="px-4 py-4 border-b border-gray-100">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Menu</h2>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        {/* User Profile Section */}
+        <div className="px-4 py-4 border-b border-gray-100 flex-shrink-0">
+          <div className="flex items-center space-x-3">
+            {/* Profile Picture */}
+            <div className="w-12 h-12 bg-gray-300 rounded-full flex items-center justify-center">
+              <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
-            </button>
+            </div>
+            
+            {/* User Info */}
+            <div className="flex flex-col">
+              <h3 className="text-base font-semibold text-gray-900">{userName}</h3>
+              <p className="text-xs text-gray-600">{userEmail}</p>
+            </div>
           </div>
         </div>
 
-        {/* Navigation Items */}
-        <div className="flex-1 px-4 py-4 overflow-y-auto">
-          <nav className="space-y-2">
-            {/* Home Button */}
+        {/* Start New Project Button */}
+        <div className="px-4 py-3 flex-shrink-0">
+          <button
+            onClick={handleStartNewProject}
+            className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium text-sm"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            <span>Start New Project</span>
+          </button>
+        </div>
+
+        {/* Navigation Links */}
+        <div className="flex-1 px-4 py-3 overflow-y-auto">
+          <nav className="space-y-1">
+            {/* My Projects */}
             <button
-              onClick={handleHomeClick}
+              onClick={handleMyProjects}
               className="w-full flex items-center space-x-3 px-3 py-2.5 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
             >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
               </svg>
-              <span className="font-medium text-sm">Home</span>
-            </button>
-
-            {/* Profile */}
-            <button
-              onClick={handleProfileClick}
-              className="w-full flex items-center space-x-3 px-3 py-2.5 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-            >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-              <span className="font-medium text-sm">Profile</span>
+              <span className="font-medium text-sm">My Projects</span>
             </button>
 
             {/* Settings */}
             <button
-              onClick={handleSettingsClick}
+              onClick={handleSettings}
               className="w-full flex items-center space-x-3 px-3 py-2.5 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
             >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
               <span className="font-medium text-sm">Settings</span>
             </button>
 
-            {/* Help & Support */}
+            {/* Billing & Subscriptions */}
             <button
-              onClick={handleHelpClick}
+              onClick={handleBilling}
               className="w-full flex items-center space-x-3 px-3 py-2.5 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
             >
               <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
               </svg>
-              <span className="font-medium text-sm">Help & Support</span>
+              <span className="font-medium text-sm">Billing & Subscriptions</span>
             </button>
 
-            {/* About */}
+            {/* About MyHandyAI */}
             <button
-              onClick={handleAboutClick}
-              className="w-full flex items-center space-x-3 px-3 py-2.5 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+              onClick={handleAbout}
+              className="w-full flex items-center space-x-3 px-2 py-2.5 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
             >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="font-medium text-sm">About</span>
+              <span className="font-medium text-sm">About MyHandyAI</span>
+            </button>
+
+            {/* Ask A Pro */}
+            <button
+              onClick={handleAskAPro}
+              className="w-full flex items-center space-x-3 px-2 py-2.5 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+            >
+              <span className="font-medium text-sm">Ask A Pro</span>
+            </button>
+
+            {/* Terms & Conditions */}
+            <button
+              onClick={handleTerms}
+              className="w-full flex items-center space-x-3 px-2 py-2.5 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+            >
+              <span className="font-medium text-sm">Terms & Conditions</span>
             </button>
           </nav>
-
-         
         </div>
 
-        {/* Footer - Sign Out Button (Sticky to Bottom) */}
-        <div className="mt-auto px-4 py-4 border-t border-gray-100 bg-gray-50">
+        {/* Footer - Logout Button and Disclaimer - Fixed at bottom */}
+        <div className="px-4 py-3 border-t border-gray-100 flex-shrink-0">
+          {/* Logout Button */}
           <button
             onClick={handleSignOut}
-            className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm"
+            className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm mb-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
-            <span>Sign Out</span>
+            <span>Log-Out</span>
           </button>
+
+          {/* Disclaimer */}
+          <p className="text-xs text-gray-500 text-center">
+            MyHandyAI may not be fully accurate. Please verify important information!
+          </p>
         </div>
       </div>
 

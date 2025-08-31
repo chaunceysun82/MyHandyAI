@@ -132,7 +132,7 @@ const Signup = () => {
 			console.log("New user signing up, redirecting to onboarding");
 			localStorage.setItem("authToken", user.uid);
 			localStorage.setItem("displayName", user.displayName || user.email?.split("@")[0] || "User");
-			localStorage.setItem("email", user.email || "");
+			localStorage.setItem("userEmail", user.email || "");
 			navigate("/onboarding/1");
 		} catch (error) {
 			console.error("An error occurred during Google signup:", error);

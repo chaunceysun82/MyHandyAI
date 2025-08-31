@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toggleStepCompletion } from "../../services/steps";
+import { completeProject } from "../../services/projects";
 import ChatWindow2 from "../Chat/ChatWindow2";
 
 export default function StepFooter({ 
@@ -13,6 +14,7 @@ export default function StepFooter({
 	onPrev, 
 	onNext,
 	userId,
+	userName, // Add userName prop
 	isPrevDisabled = false,
 	isNextDisabled = false,
 	isNextFinal = false,
@@ -20,11 +22,24 @@ export default function StepFooter({
 	currentStepIndex = 0, // Add this prop to know current step position
 	onStepUpdate = null // Add this prop to refresh step data after completion
 }) {
+	// Helper function to extract first name
+	const getFirstName = (fullName) => {
+		if (!fullName || fullName === "User") return "User";
+		
+		// Handle cases where there might be extra spaces or single name
+		const trimmedName = fullName.trim();
+		if (!trimmedName) return "User";
+		
+		const firstName = trimmedName.split(" ")[0];
+		if (!firstName) return "User";
+		
+		// Capitalize first letter and make rest lowercase
+		return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+	};
 	const navigate = useNavigate();
 	const [showProjectCompletionModal, setShowProjectCompletionModal] = useState(false);
 	const [isCompleting, setIsCompleting] = useState(false);
 	const [openModal, setOpenModal] = useState(false);
-	const [open, setOpen] = useState(true);
 
 	const URL = process.env.REACT_APP_BASE_URL;
 	
@@ -120,6 +135,17 @@ export default function StepFooter({
 				onStepUpdate();
 			}
 			
+			// Call the project completion API to mark entire project as complete
+			console.log("StepFooter: Marking entire project as complete via API...");
+			try {
+				await completeProject(projectId);
+				console.log("StepFooter: Project completion API call successful");
+			} catch (apiError) {
+				console.error("StepFooter: Error calling project completion API:", apiError);
+				// Continue with navigation even if API fails
+				alert('Warning: Project completion API failed, but steps were completed. You may need to refresh the page.');
+			}
+			
 			console.log("StepFooter: All steps completed, navigating to project completion");
 			// Navigate to project completion page
 			navigate(`/projects/${projectId}/completed`);
@@ -190,7 +216,7 @@ export default function StepFooter({
 			<div className="px-4 pb-4 space-y-3">
 				{/* Assistant prompt pill */}
 				<div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-600 flex items-center justify-between">
-					<span>Hi "User", Need MyHandyAI Assistant?</span>
+					<span>Hi {getFirstName(userName)}, Need MyHandyAI Assistant?</span>
 					<button
 						onClick={handleChatClick}
 						className="ml-3 px-3 py-1 rounded-lg bg-[#6FCBAE] text-white text-[12px] font-semibold">
@@ -200,11 +226,12 @@ export default function StepFooter({
 
 			{openModal && (
 				<ChatWindow2
-					isOpen={open}
+					isOpen={openModal}
 					projectId={projectId}
 					onClose={() => setOpenModal(false)}
 					URL={URL}
 					stepNumber={stepNumber}
+					userName={userName}
 				/>
 			)}
 

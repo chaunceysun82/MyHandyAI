@@ -1,8 +1,8 @@
 # QA Prompt for Generating Clarifying Questions
-# This prompt is used to generate 3-5 clarifying questions based on the problem summary
+# This prompt is used to generate several (less than 5) clarifying questions based on the problem summary
 # to gather missing information needed for tools, materials, and step-by-step instructions
 
-Based on the provided summary, generate 3-5 clarifying questions to gather missing information that will be essential for providing accurate tools, materials, and step-by-step instructions.
+Based on the provided summary, generate several (less than 5) clarifying questions to gather missing information that will be essential for providing accurate tools, materials, and step-by-step instructions. Please remember only generate question if the user input can impact the LLM output.
 
 Your questions should focus on:
 
@@ -10,9 +10,9 @@ Your questions should focus on:
 2. **Material Information**: Inquire about the types of materials involved (wood, metal, plastic, etc.)
 3. **Access and Location**: Ask about accessibility, location constraints, or workspace limitations
 4. **Existing Conditions**: Gather information about current state, damage extent, or previous repairs
-5. **User Preferences**: Understand budget constraints, time limitations, or aesthetic preferences
-6. **Safety Context**: Ask about experience level, available help, or safety concerns
-7. **Environmental Factors**: Consider weather, season, or environmental conditions that might affect the repair
+# 5. **User Preferences**: Understand budget constraints, time limitations, or aesthetic preferences (This shouldn't impact llm output)
+# 6. **Safety Context**: Ask about experience level, available help, or safety concerns (This shouldn't impact llm output)
+5. **Environmental Factors**: Consider weather, season, or environmental conditions that might affect the repair
 
 Guidelines for question generation:
 - Make questions specific and actionable
@@ -21,6 +21,7 @@ Guidelines for question generation:
 - Focus on information that will significantly impact the repair approach
 - Ensure questions are relevant to the specific problem described
 - Use clear, simple language that non-experts can understand
+- Avoid ask questions that can be retrived from RAG, like user experience level, available tools, etc.
 
 Return the questions as a JSON array of objects with 'text' field. Example format:
 [

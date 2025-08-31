@@ -19,7 +19,25 @@ export const submitOnboardingAnswers = async (answers) => {
 	
 	// Check if this is a new signup with onboarding data
 	const tempUserData = localStorage.getItem("tempUserData");
+	const tempGoogleAuthToken = localStorage.getItem("tempGoogleAuthToken");
 	const authToken = localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
+	
+	console.log("Onboarding submission - checking user data:", {
+		hasTempUserData: !!tempUserData,
+		hasTempGoogleAuthToken: !!tempGoogleAuthToken,
+		hasAuthToken: !!authToken,
+		tempUserData: tempUserData ? "Present" : "Not present",
+		tempGoogleAuthToken: tempGoogleAuthToken ? "Present" : "Not present",
+		authToken: authToken ? "Present" : "Not present"
+	});
+	
+	// Log the actual values for debugging (without sensitive data)
+	if (tempGoogleAuthToken) {
+		console.log("Google auth token found:", tempGoogleAuthToken.substring(0, 10) + "...");
+	}
+	if (tempUserData) {
+		console.log("Temp user data found:", JSON.parse(tempUserData));
+	}
 	
 	if (tempUserData) {
 		// This is a new signup - user already exists in DB, just update with onboarding data
@@ -40,6 +58,12 @@ export const submitOnboardingAnswers = async (answers) => {
 			
 			// Store the user ID for authentication
 			localStorage.setItem("authToken", userId);
+			
+			// Store user email for display in SideNavbar
+			if (userData.email) {
+				localStorage.setItem("userEmail", userData.email);
+			}
+			
 			localStorage.removeItem("tempUserData");
 			console.log("User authenticated after onboarding completion");
 			
@@ -48,8 +72,67 @@ export const submitOnboardingAnswers = async (answers) => {
 			console.error("Error updating user with onboarding data:", error);
 			throw error;
 		}
+	} else if (tempGoogleAuthToken) {
+		// This is a Google user completing onboarding - create new user in backend
+		console.log("Google user completing onboarding, creating new user in backend");
+		
+		try {
+			// Get user info from localStorage/sessionStorage
+			const displayName = localStorage.getItem("displayName") || sessionStorage.getItem("displayName") || "User";
+			const email = localStorage.getItem("userEmail") || sessionStorage.getItem("userEmail") || "";
+			
+			if (!email) {
+				throw new Error("Email not found for Google user");
+			}
+			
+			// Create user data for Google user
+			const googleUserData = {
+				firstname: displayName.split(" ")[0] || displayName,
+				lastname: displayName.split(" ").slice(1).join(" ") || "",
+				email: email,
+				googleId: tempGoogleAuthToken // Use Firebase UID as Google ID
+			};
+			
+			// Transform onboarding answers
+			const transformedOnboardingData = transformOnboardingAnswers(answers);
+			
+			// Combine user data with onboarding data
+			const completeUserData = {
+				...googleUserData,
+				...transformedOnboardingData
+			};
+			
+			console.log("Complete Google user data for creation:", completeUserData);
+			
+			// Create user in backend
+			const createResponse = await fetch(`${BASE_URL}/users`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(completeUserData),
+			});
+			
+			if (!createResponse.ok) {
+				const error = await createResponse.json();
+				console.error("Backend error creating Google user:", error);
+				throw new Error(error.detail || "Failed to create Google user");
+			}
+			
+			const result = await createResponse.json();
+			console.log("Google user created successfully:", result);
+			
+			// Store the backend user ID as authToken
+			localStorage.setItem("authToken", result.id || result._id || tempGoogleAuthToken);
+			localStorage.setItem("userEmail", email);
+			
+			return result;
+		} catch (error) {
+			console.error("Error creating Google user:", error);
+			throw error;
+		}
 	} else if (authToken) {
-		// This could be a Google user or existing user updating their onboarding data
+		// This is an existing user updating their onboarding data
 		try {
 			// First, check if user exists in backend
 			const userResponse = await fetch(`${BASE_URL}/users/${authToken}`);
@@ -68,53 +151,11 @@ export const submitOnboardingAnswers = async (answers) => {
 				
 				return result;
 			} else {
-				// User doesn't exist in backend, create new user with Google data
-				console.log("Google user not found in backend, creating new user with onboarding data");
-				
-				// Get user info from localStorage/sessionStorage
-				const displayName = localStorage.getItem("displayName") || sessionStorage.getItem("displayName") || "User";
-				const email = localStorage.getItem("email") || sessionStorage.getItem("email") || "";
-				
-				// Create user data for Google user
-				const googleUserData = {
-					firstname: displayName.split(" ")[0] || displayName,
-					lastname: displayName.split(" ").slice(1).join(" ") || "",
-					email: email,
-					googleId: authToken // Use Firebase UID as Google ID
-				};
-				
-				// Transform onboarding answers
-				const transformedOnboardingData = transformOnboardingAnswers(answers);
-				
-				// Combine user data with onboarding data
-				const completeUserData = {
-					...googleUserData,
-					...transformedOnboardingData
-				};
-				
-				console.log("Complete Google user data for creation:", completeUserData);
-				
-				// Create user in backend
-				const createResponse = await fetch(`${BASE_URL}/users`, {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify(completeUserData),
-				});
-				
-				if (!createResponse.ok) {
-					const error = await createResponse.json();
-					throw new Error(error.detail || "Failed to create Google user");
-				}
-				
-				const result = await createResponse.json();
-				console.log("Google user created successfully:", result);
-				
-				return result;
+				// User doesn't exist in backend - this shouldn't happen for existing users
+				throw new Error("User not found in backend");
 			}
 		} catch (error) {
-			console.error("Error handling Google user onboarding:", error);
+			console.error("Error updating existing user with onboarding data:", error);
 			throw error;
 		}
 	} else {

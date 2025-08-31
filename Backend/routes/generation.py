@@ -37,9 +37,44 @@ async def get_generated_steps(project_id: str):
     doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"step_generation": 1})
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found")
-    if "step_generation" not in doc or doc["step_generation"] is None:
+    steps_payload = doc.get("step_generation")
+    if not steps_payload:
         raise HTTPException(status_code=404, detail="Steps not generated yet")
-    return {"project_id": project_id, "steps_data": doc["step_generation"]}
+    return {"project_id": project_id, "steps_data": steps_payload}
+
+# @router.get("/steps/{project_id}")
+# async def get_generated_steps(project_id: str):
+#     steps_cur = steps_collection.find(
+#         {"projectId": ObjectId(project_id)},
+#         {"projectId": 0}
+#     ).sort("order", 1)
+#     steps = []
+#     for s in steps_cur:
+#         s["_id"] = str(s["_id"])
+#         steps.append(s)
+
+#     if not steps:
+#         doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"step_generation": 1})
+#         if not doc or not doc.get("step_generation"):
+#             raise HTTPException(status_code=404, detail="Steps not generated yet")
+#         return {"project_id": project_id, "steps_data": doc["step_generation"]}
+
+#     proj = project_collection.find_one(
+#         {"_id": ObjectId(project_id)},
+#         {"step_generation": 1}
+#     )
+#     meta = {}
+#     if proj and proj.get("step_generation"):
+#         meta = {k: v for k, v in proj["step_generation"].items() if k != "steps"}
+
+#     return {
+#         "project_id": project_id,
+#         "steps_data": {
+#             "steps": steps,
+#             **meta
+#         }
+#     }
+
 
 # @router.get("/steps/{project_id}")
 # async def get_generated_steps(project_id: str):
@@ -256,21 +291,32 @@ async def generate_steps(project):
 
         print("Steps Generated")
 
-        update_project(str(cursor["_id"]), {"step_generation":steps_result})
+        step_meta = {k: v for k, v in steps_result.items() if k != "steps"}
+        step_meta["status"] = "complete"
+        update_project(str(cursor["_id"]), {"step_generation": step_meta})
+        # update_project(str(cursor["_id"]), {"step_generation":steps_result})
         
-        for idx, step in enumerate(steps_result["steps"], start=1):
+        for step in steps_result["steps"]:
             step_doc = {
                 "projectId": ObjectId(project),
+
                 "stepNumber": step["order"],
+
+                "order": step["order"],
                 "title": step["title"],
-                "description": " ".join(step.get("instructions", [])),
-                "tools": [], #update
-                "materials": [],
-                "images": [],
-                "videoTutorialLink": None,
-                "referenceLinks": [],
+                "est_time_min": step.get("est_time_min", 0),
+                "time_text": step.get("time_text", ""),
+                "instructions": step.get("instructions", []),
+
+                "status": (step.get("status") or "pending").lower(),
+                "progress": 0, 
+                "tools_needed": step.get("tools_needed", []),
+                "safety_warnings": step.get("safety_warnings", []),
+                "tips": step.get("tips", []),
+
                 "completed": False,
-                "createdAt": datetime.utcnow()
+                "createdAt": datetime.utcnow(),
+                "updatedAt": datetime.utcnow(),
             }
             steps_collection.insert_one(step_doc)
 
@@ -298,10 +344,31 @@ async def generate_estimation(project):
         
         # Generate estimation using the independent agent
         estimation_agent = EstimationAgent()
+
+        meta = cursor.get("step_generation") or {}
+
+        cur = steps_collection.find({"projectId": ObjectId(project)}).sort("order", 1)
+        steps_for_est = [{
+            "order": s.get("order"),
+            "title": s.get("title", ""),
+            "estimated_time_min": s.get("est_time_min", 0),
+            "time_text": s.get("time_text", "")
+        } for s in cur]
+
+        steps_data_for_est = {
+            "steps": steps_for_est,
+            "total_est_time_min": meta.get("total_est_time_min", 0),
+            "total_steps": meta.get("total_steps", len(steps_for_est)),
+        }
+
         estimation_result = estimation_agent.generate_estimation(
             tools_data=cursor["tool_generation"],
-            steps_data=cursor["step_generation"]
+            steps_data=steps_data_for_est
         )
+        # estimation_result = estimation_agent.generate_estimation(
+        #     tools_data=cursor["tool_generation"],
+        #     steps_data=cursor["step_generation"]
+        # )
 
         update_project(str(cursor["_id"]), {"estimation_generation": estimation_result})
         

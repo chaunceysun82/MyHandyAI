@@ -61,7 +61,7 @@ class ToolsAgent:
 
     PROMPT_TEXT = """You are an expert Tools & Materials recommender.
 
-Given the project summary below, return ONLY a JSON object that matches the schema exactly.
+Given the project summary below, return ONLY a JSON object (or array — see instructions) that matches the schema exactly.
 Rules:
 - `tools` is an array of recommended tools/materials (LLM decides length).
 - Each tool must include: name, description (1–2 sentences), price (numeric USD), risk_factors, safety_measures.
@@ -80,6 +80,10 @@ Project summary:
         amazon_affiliate_tag: str = "myhandyai-20",
         openai_base_url: str = "https://api.openai.com/v1",
         timeout: int = 90,
+        new_summary: Optional[str] = None,
+        matched_summary: Optional[str] = None,
+        matched_tools: Optional[Any] = None,
+        matched_steps: Optional[Any] = None,
     ) -> None:
         self.serpapi_api_key = serpapi_api_key or os.getenv("SERPAPI_API_KEY")
         self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
@@ -90,41 +94,49 @@ Project summary:
         self.amazon_affiliate_tag = amazon_affiliate_tag
         self.base_url = openai_base_url.rstrip("/")
         self.timeout = timeout
-        
+        self.new_summary = new_summary
+        self.matched_summary = matched_summary
+        self.matched_tools = matched_tools
+        self.matched_steps = matched_steps
+
+        # Tool item schema used for validation/normalization (used programmatically below)
+        self._tool_required_keys = {"name", "description", "price", "risk_factors", "safety_measures"}
+
+        # JSON schema that accepts either:
+        #  - an object with "tools": [ ... ]
+        #  - OR a top-level array [ {...}, {...} ]
+        # (We won't rely on external jsonschema validation library here, but keep this for reference.)
         self._schema = {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "tools": {
-                    "type": "array",
-                    "items": {
                         "type": "object",
                         "additionalProperties": False,
                         "properties": {
-                            "name": {"type": "string"},
-                            "description": {"type": "string"},
-                            "price": {"type": "number"},
-                            "risk_factors": {"type": "string"},
-                            "safety_measures": {"type": "string"},
+                            "tools": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": False,
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "description": {"type": "string"},
+                                        "price": {"type": "number"},
+                                        "risk_factors": {"type": "string"},
+                                        "safety_measures": {"type": "string"},
+                                    },
+                                    "required": [
+                                        "name",
+                                        "description",
+                                        "price",
+                                        "risk_factors",
+                                        "safety_measures",
+                                    ],
+                                },
+                            }
                         },
-                        "required": [
-                            "name",
-                            "description",
-                            "price",
-                            "risk_factors",
-                            "safety_measures",
-                        ],
-                    },
-                }
-            },
-            "required": ["tools"],
-        }
+                        "required": ["tools"],
+                    }
 
     def _get_image_url(self, query: str, retries: int = 2, pause: float = 0.3) -> Optional[str]:
-        """Query SerpAPI Google Images and return the top thumbnail URL (or None).
-
-        Uses the serpapi key provided to the constructor or environment.
-        """
+        """Query SerpAPI Google Images and return the top thumbnail URL (or None)."""
         if not self.serpapi_api_key:
             return None
 
@@ -137,6 +149,7 @@ Project summary:
 
         for attempt in range(1, retries + 1):
             try:
+                from serpapi import GoogleSearch  # local import to avoid hard dependency unless used
                 search = GoogleSearch(params)
                 results = search.get_dict()
                 images = results.get("images_results") or []
@@ -155,7 +168,7 @@ Project summary:
         s = re.sub(r"[^A-Za-z0-9\s+\-]", "", s)
         s = s.strip().replace(" ", "+")
         return s
-    
+
     def _post_openai(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         url = f"{self.base_url}/responses"
         headers = {
@@ -171,12 +184,6 @@ Project summary:
     def _extract_output_text(resp: Dict[str, Any]) -> str:
         """
         Robustly extract text from an OpenAI Responses API payload.
-
-        Priority:
-        1) Responses API: scan `output` for the first completed "message"
-        2) Legacy chat-style: `choices[0].message.content` (string or list of text parts)
-        3) Top-level "text"
-        4) Deep fallback: search any nested "text" fields
         """
         # 1) Newer Responses API shape
         try:
@@ -189,7 +196,6 @@ Project summary:
                         for c in content:
                             if not isinstance(c, dict):
                                 continue
-                            # Preferred keys/types
                             if c.get("type") in ("output_text", "text") and isinstance(c.get("text"), str):
                                 texts.append(c["text"])
                             elif isinstance(c.get("text"), str):
@@ -233,11 +239,94 @@ Project summary:
         if texts:
             return "".join(texts).strip()
 
-        # Last resort: stringify full response to aid debugging
         return json.dumps(resp)
 
-    def recommend_tools(self, summary: str, include_json: bool = False) -> Dict[str, Any]:
-        prompt = self.PROMPT_TEXT.format(summary=summary)
+    def _normalize_and_validate_tools(self, parsed_json: Any) -> List[Dict[str, Any]]:
+        """
+        Accept either:
+          - a list of tool dicts
+          - or an object with {"tools": [tool dicts]}
+        Return a normalized list of tool dicts and validate required keys/types.
+        """
+        if isinstance(parsed_json, list):
+            tools = parsed_json
+        elif isinstance(parsed_json, dict) and "tools" in parsed_json and isinstance(parsed_json["tools"], list):
+            tools = parsed_json["tools"]
+        else:
+            raise RuntimeError("Model output JSON must be either an array of tools or an object with a 'tools' array.")
+
+        if not isinstance(tools, list):
+            raise RuntimeError("Parsed tools is not a list.")
+
+        normalized = []
+        for idx, t in enumerate(tools, start=1):
+            if not isinstance(t, dict):
+                raise RuntimeError(f"Tool at index {idx} is not an object.")
+            missing = self._tool_required_keys - set(t.keys())
+            if missing:
+                raise RuntimeError(f"Tool at index {idx} is missing required fields: {missing}")
+            # Basic type checks
+            if not isinstance(t["name"], str):
+                raise RuntimeError(f"Tool {idx} 'name' must be a string.")
+            if not isinstance(t["description"], str):
+                raise RuntimeError(f"Tool {idx} 'description' must be a string.")
+            # price should be numeric (int/float) — try to coerce if string numeric
+            price = t["price"]
+            if isinstance(price, str):
+                try:
+                    price = float(price)
+                except Exception:
+                    raise RuntimeError(f"Tool {idx} 'price' must be numeric.")
+            elif not isinstance(price, (int, float)):
+                raise RuntimeError(f"Tool {idx} 'price' must be numeric.")
+            # risk_factors and safety_measures strings
+            if not isinstance(t["risk_factors"], str):
+                raise RuntimeError(f"Tool {idx} 'risk_factors' must be a string.")
+            if not isinstance(t["safety_measures"], str):
+                raise RuntimeError(f"Tool {idx} 'safety_measures' must be a string.")
+            normalized.append({
+                "name": t["name"].strip(),
+                "description": t["description"].strip(),
+                "price": float(price),
+                "risk_factors": t["risk_factors"].strip(),
+                "safety_measures": t["safety_measures"].strip(),
+            })
+        return normalized
+
+    def recommend_tools(self, summary: Optional[str] = None, include_json: bool = False) -> Dict[str, Any]:
+        # Use provided summary argument first; fall back to constructor's new_summary if not provided
+        summary_to_use = summary if summary is not None else (self.new_summary or "")
+        prompt = self.PROMPT_TEXT.format(summary=summary_to_use)
+
+        # If matched_tools or matched_summary exists, instruct the model to modify them
+        matched_tools_text = None
+        if self.matched_tools:
+            try:
+                matched_tools_text = json.dumps(self.matched_tools, indent=2)
+            except Exception:
+                matched_tools_text = str(self.matched_tools)
+
+            # If user provided matched_tools as a list-of-dicts (the new format):
+            prompt += (
+                "\n\nThe following is an EXISTING list of tools (from a matched project with high similarity). "
+                "Modify or adapt these tool objects to suit the new project summary above. Keep the exact field names "
+                "(name, description, price, risk_factors, safety_measures). Return ONLY a JSON ARRAY (top-level array) "
+                "of tool objects in the same format as provided (i.e., [{name:..., description:..., price:..., ...}, ...]).\n\n"
+                f"Existing tools:\n{matched_tools_text}\n"
+            )
+        elif self.matched_summary:
+            # If only matched_summary is present but not matched_tools, include it as context (do not force array output)
+            prompt += (
+                "\n\nContext: The following MATCHED SUMMARY was highly similar to the new project. Use it as a reference when adapting tools.\n\n"
+                f"Matched Summary:\n{self.matched_summary}\n"
+            )
+
+        # Always include matched_summary if present (even when matched_tools is present)
+        if self.matched_summary and not self.matched_tools:
+            prompt += (
+                "\n\nContext: The following MATCHED SUMMARY was highly similar to the new project. Use it as a reference when adapting tools.\n\n"
+                f"Matched Summary:\n{self.matched_summary}\n"
+            )
 
         payload = {
             "model": self.model,
@@ -252,61 +341,145 @@ Project summary:
                     "strict": True,
                     "schema": self._schema,
                 },
-                
             }
         }
 
         resp = self._post_openai(payload)
-        print(resp)
         raw_text = self._extract_output_text(resp)
-        print(raw_text)
-        
-        try:
-            parsed_obj = ToolsLLM(**json.loads(raw_text))
-            print(parsed_obj)
-            
-        except Exception as e:
-            # Surface what the model returned to help debugging
-            raise ValidationError([e], ToolsLLM)  # or raise RuntimeError(f"Schema parse error: {e}\nRAW: {raw_text}")
 
+        # Attempt to parse JSON from model output (expecting either array or {"tools": [...]})
+        try:
+            parsed = json.loads(raw_text)
+        except Exception as e:
+            # Last-resort: try to locate the first JSON array/object in the text
+            try:
+                import re as _re
+                m = _re.search(r"(\[.*\]|\{.*\})", raw_text, _re.S)
+                if m:
+                    parsed = json.loads(m.group(1))
+                else:
+                    raise RuntimeError(f"Failed to parse JSON from model output. RAW: {raw_text}") from e
+            except Exception as e2:
+                raise RuntimeError(f"Failed to parse JSON from model output. RAW: {raw_text}") from e2
+
+        # Normalize and validate into list of tool dicts
+        normalized_tools = self._normalize_and_validate_tools(parsed)
+
+        # Build output tools_list (and augment with image_link and amazon link)
         tools_list: List[Dict[str, Any]] = []
-        for i in parsed_obj.tools:
+        for i in normalized_tools:
             tool: Dict[str, Any] = {
-                "name": i.name,
-                "description": i.description,
-                "price": i.price,
-                "risk_factors": i.risk_factors,
-                "safety_measures": i.safety_measures,
+                "name": i["name"],
+                "description": i["description"],
+                "price": i["price"],
+                "risk_factors": i["risk_factors"],
+                "safety_measures": i["safety_measures"],
                 "image_link": None,
                 "amazon_link": None,
             }
 
+            # Try to fetch an image (best-effort)
             try:
-                img = self._get_image_url(i.name)
+                img = self._get_image_url(i["name"])
                 tool["image_link"] = img
             except Exception:
                 tool["image_link"] = None
 
-            safe = self._sanitize_for_amazon(i.name)
+            safe = self._sanitize_for_amazon(i["name"])
             tool["amazon_link"] = f"https://www.amazon.com/s?k={safe}&tag={self.amazon_affiliate_tag}"
 
             tools_list.append(tool)
 
-        out: Dict[str, Any] = {"tools": tools_list, "raw": parsed_obj.model_dump()}
+        out: Dict[str, Any] = {"tools": tools_list, "raw": parsed}
         if include_json:
             out["json"] = json.dumps(tools_list, indent=4)
-
         return out
 
 
 class StepsAgentJSON:
-    def __init__(self):
+    def __init__(self, new_summary: Optional[str] = None, matched_summary: Optional[str] = None, matched_tools: Optional[Any] = None, matched_steps: Optional[Any] = None):
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.api_url = "https://api.openai.com/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        self.new_summary = new_summary
+        self.matched_summary = matched_summary
+        self.matched_tools = matched_tools
+        self.matched_steps = matched_steps
+
+    # --- New helper: normalize the various possible tools input shapes ---
+    def _normalize_tools_input(self, tools_input: Any) -> List[Dict[str, Any]]:
+        """
+        Accepts:
+          - None
+          - A dict from ToolsAgent output: {"tools": [...], "raw": ..., "json": ...}
+          - A dict with "tools" key only
+          - A raw list of tool dicts: [{name:..., description:..., price:...}, ...]
+        Returns a list of tool dicts with guaranteed keys (some may be empty strings).
+        """
+        if not tools_input:
+            return []
+
+        # If it's a dict and has a "tools" key, prefer that
+        if isinstance(tools_input, dict):
+            if "tools" in tools_input and isinstance(tools_input["tools"], list):
+                tools_list = tools_input["tools"]
+            else:
+                # Maybe the user passed the raw ToolsAgent 'raw' itself or similar; try to interpret
+                # If dict looks like a single tool, wrap it
+                # If dict looks like {'name':..., ...} assume single tool
+                if all(k in tools_input for k in ("name", "description")):
+                    tools_list = [tools_input]
+                else:
+                    # Fallback: try to find any list value in dict that looks like tools
+                    found = None
+                    for v in tools_input.values():
+                        if isinstance(v, list):
+                            # check if list items look like tools
+                            candidate = v
+                            if candidate and isinstance(candidate[0], dict) and "name" in candidate[0]:
+                                found = candidate
+                                break
+                    tools_list = found or []
+        elif isinstance(tools_input, list):
+            tools_list = tools_input
+        else:
+            # Unknown type; return empty list
+            return []
+
+        normalized = []
+        for idx, t in enumerate(tools_list, start=1):
+            if not isinstance(t, dict):
+                continue
+            name = str(t.get("name") or "").strip()
+            description = str(t.get("description") or "").strip()
+            # price can be numeric or string — coerce to float if possible, else 0.0
+            price_raw = t.get("price", 0)
+            try:
+                price = float(price_raw)
+            except Exception:
+                # try to extract numeric part from string
+                try:
+                    price = float(re.sub(r"[^\d\.]", "", str(price_raw) or "0") or 0)
+                except Exception:
+                    price = 0.0
+            risk_factors = str(t.get("risk_factors") or "").strip()
+            safety_measures = str(t.get("safety_measures") or "").strip()
+            image_link = t.get("image_link") or t.get("image") or None
+            amazon_link = t.get("amazon_link") or t.get("amazon") or None
+
+            normalized.append({
+                "name": name,
+                "description": description,
+                "price": price,
+                "risk_factors": risk_factors,
+                "safety_measures": safety_measures,
+                "image_link": image_link,
+                "amazon_link": amazon_link
+            })
+        return normalized
 
     def _parse_list_items(self, text: str) -> List[str]:
         """
@@ -539,18 +712,41 @@ class StepsAgentJSON:
         Returns a dictionary with steps array and time estimation.
         """
         # Prepare enhanced context including user answers and handling skipped questions
-        enhanced_context = summary
+        enhanced_context = summary if summary else (self.new_summary or "")
 
+        # Normalize tools input (accept ToolsAgent output or raw list/dict)
+        normalized_tools = self._normalize_tools_input(tools)
+
+        # Build tools context robustly
         tools_context = "\n\nTools Context:\n"
+        if normalized_tools:
+            for t in normalized_tools:
+                tools_context += f"Name: {t.get('name','')}\n"
+                tools_context += f"Description: {t.get('description','')}\n"
+                tools_context += f"Price (USD): {t.get('price',0.0)}\n"
+                tools_context += f"Risk Factors: {t.get('risk_factors','')}\n"
+                tools_context += f"Safety Measures: {t.get('safety_measures','')}\n"
+                # include any helpful links if present
+                if t.get("image_link"):
+                    tools_context += f"Image: {t.get('image_link')}\n"
+                if t.get("amazon_link"):
+                    tools_context += f"Buy Link: {t.get('amazon_link')}\n"
+                tools_context += "\n"
+        else:
+            tools_context += "No specific tools provided.\n"
 
-        if tools:
-            for tool in tools["tools"]:
-                tools_context += tool["name"]+"\n"
-                tools_context += tool["description"]+"\n"
-                tools_context += tool["image_link"]+"\n"
-                tools_context += tool["risk_factors"]+"\n"
-                tools_context += tool["safety_measures"]+"\n"
-            tools_context +="\n"
+        if self.matched_steps:
+            try:
+                matched_steps_text = json.dumps(self.matched_steps, indent=2)
+            except Exception:
+                matched_steps_text = str(self.matched_steps)
+
+
+            enhanced_context += "\n\nMatched project summary and steps (adapt these to the new summary):\n"
+            if self.matched_summary:
+                enhanced_context += f"Matched Summary:\n{self.matched_summary}\n\n"
+            enhanced_context += f"Matched Steps:\n{matched_steps_text}\n\n"
+            enhanced_context += "When adapting, preserve the same structure and output format the system expects (Step No., Step Title, Time, Instructions, Tools Needed, Safety Warnings, Tips).\n"
 
         if user_answers and questions:
             # Add user answers to the context
@@ -576,12 +772,45 @@ class StepsAgentJSON:
             
             enhanced_context += answers_context
             enhanced_context += tools_context
+        else:
+            enhanced_context += tools_context
         
         # Use the prompt from text file
         base_prompt = steps_prompt_text
 
+        adaptation_instructions = ""
+        if self.matched_steps:
+            try:
+                matched_steps_text = json.dumps(self.matched_steps, indent=2)
+            except Exception:
+                matched_steps_text = str(self.matched_steps)
+
+            adaptation_instructions += (
+                "\n\nADAPTATION INSTRUCTIONS:\n"
+                "The user provided an EXISTING set of steps from a matched project below. Modify and adapt those steps so they match the NEW project summary and context above. "
+                "Strictly preserve the exact output structure and field names expected by this system (Step No., Step Title, Time, Instructions, Tools Needed, Safety Warnings, Tips). "
+                "Update time estimates, instructions, tools needed, safety warnings, and tips where appropriate. If a step is no longer relevant, adjust or remove it, but ensure the final output lists steps numbered sequentially starting at 1. "
+                "Also if some steps are common to both projects, you can keep them with minor adjustments. "
+                "Overall, ensure the final plan is coherent, practical, and tailored to the new project summary and any user answers provided with atleast 6 steps for the whole summary. "
+                "Maintain practical ordering and clarity. Return the plan as plain text in the exact format.\n\n"
+                f"Existing matched steps:\n{matched_steps_text}\n"
+            )
+
+        if self.matched_summary:
+            adaptation_instructions += f"\n\nMatched Summary:\n{self.matched_summary}\n"
+
+        if self.matched_tools:
+            try:
+                matched_tools_text = json.dumps(self.matched_tools, indent=2)
+            except Exception:
+                matched_tools_text = str(self.matched_tools)
+            adaptation_instructions += f"\n\nMatched Tools (for reference):\n{matched_tools_text}\n"
+
+        # Merge the base prompt with adaptation instructions so the system role contains both.
+        system_content = base_prompt + adaptation_instructions
+
         messages = [
-            {"role": "system", "content": base_prompt},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": enhanced_context + "\n\nReturn the plan as plain text in the exact format."}
         ]
 
@@ -659,8 +888,6 @@ class StepsAgentJSON:
             "estimated_completion": "TBD",
             "project_summary": project_summary
         }
-
-
 class EstimationAgent:
     """Agent for generating cost and time estimations"""
     

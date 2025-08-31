@@ -85,28 +85,35 @@ export function transformToolsData(backendData) {
 		return [];
 	}
 
-	return backendData.tools_data.tools.map(tool => ({
+	return backendData.tools_data.tools.map((tool, index) => ({
+		_id: tool._id || tool.id || `tool-${index}`, // Ensure unique ID
+		id: tool._id || tool.id || `tool-${index}`, // Also add as id for compatibility
 		name: tool.name || "Unknown Tool",
 		description: tool.description || "",
 		price: tool.price || 0,
-		priceMin: tool.price || 0,
-		priceMax: tool.price || 0,
+		priceMin: tool.priceMin || tool.price_min || tool.price || 0,
+		priceMax: tool.priceMax || tool.price_max || tool.price || 0,
+		price_range: tool.price_range || (tool.price ? `$${tool.price}` : ""),
 		rating: 4.0, // Default rating since backend doesn't provide it
-		reviews: 0, // Default reviews since backend doesn't provide it
-		link: tool.amazon_link || "https://www.amazon.com",
-		required: true, // Default to required since backend doesn't specify
-		image: tool.image_link || "",
-		riskFactors: tool.risk_factors || "",
-		safetyMeasures: tool.safety_measures || ""
+		reviews: 0, // Default reviews since backend doesn't specify
+		link: tool.amazon_link || tool.link || "https://www.amazon.com",
+		required: tool.required !== undefined ? tool.required : true, // Use backend value if available
+		image: tool.image_link || tool.image || "",
+		riskFactors: tool.risk_factors || tool.riskFactors || "",
+		safetyMeasures: tool.safety_measures || tool.safetyMeasures || ""
 	}));
 }
 
 // Mock tools data for development/testing
 export const mockTools = [
 	{
+		_id: "mock-tool-1",
+		id: "mock-tool-1",
 		name: "Drill",
+		price: 50, // Add single price for testing
 		priceMin: 25,
 		priceMax: 150,
+		price_range: "$25 - $150",
 		rating: 4.5,
 		reviews: 1250,
 		link: "https://amazon.com/drill",
@@ -114,9 +121,13 @@ export const mockTools = [
 		image: ""
 	},
 	{
+		_id: "mock-tool-2",
+		id: "mock-tool-2",
 		name: "Screwdriver Set",
+		price: 30, // Add single price for testing
 		priceMin: 15,
 		priceMax: 45,
+		price_range: "$15 - $45",
 		rating: 4.2,
 		reviews: 890,
 		link: "https://amazon.com/screwdriver",
@@ -124,9 +135,13 @@ export const mockTools = [
 		image: ""
 	},
 	{
+		_id: "mock-tool-3",
+		id: "mock-tool-3",
 		name: "Measuring Tape",
+		price: 15, // Add single price for testing
 		priceMin: 8,
 		priceMax: 25,
+		price_range: "$8 - $25",
 		rating: 4.0,
 		reviews: 567,
 		link: "https://amazon.com/tape",
@@ -134,9 +149,13 @@ export const mockTools = [
 		image: ""
 	},
 	{
+		_id: "mock-tool-4",
+		id: "mock-tool-4",
 		name: "Level",
+		price: 20, // Add single price for testing
 		priceMin: 12,
 		priceMax: 35,
+		price_range: "$12 - $35",
 		rating: 4.3,
 		reviews: 432,
 		link: "https://amazon.com/level",

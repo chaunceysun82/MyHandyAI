@@ -27,6 +27,7 @@ export default function StepPage() {
 	const location = useLocation();
 
 	const userId = location.state?.userId || null;
+	const userName = state?.userName || localStorage.getItem("displayName") || sessionStorage.getItem("displayName") || "User"; // Get userName from navigation state or localStorage
 	const [allSteps, setAllSteps] = useState([]);
 	
 	// Get the project video URL from navigation state
@@ -140,7 +141,8 @@ export default function StepPage() {
 			state: {
 				projectId,
 				projectName: state?.projectName || "Project",
-				projectVideoUrl: projectVideoUrl
+				projectVideoUrl: projectVideoUrl,
+				userName: userName // Pass userName back to overview
 			}
 		});
 	};
@@ -156,7 +158,8 @@ export default function StepPage() {
 				state: {
 					projectId,
 					projectName: state?.projectName || "Project",
-					projectVideoUrl: projectVideoUrl
+					projectVideoUrl: projectVideoUrl,
+					userName: userName // Pass userName to tools page
 				}
 			});
 		} else {
@@ -166,7 +169,8 @@ export default function StepPage() {
 				state: {
 					projectId,
 					projectName: state?.projectName || "Project",
-					projectVideoUrl: projectVideoUrl
+					projectVideoUrl: projectVideoUrl,
+					userName: userName // Pass userName to previous step
 				}
 			});
 		}
@@ -192,7 +196,8 @@ export default function StepPage() {
 				state: {
 					projectId,
 					projectName: state?.projectName || "Project",
-					projectVideoUrl: projectVideoUrl
+					projectVideoUrl: projectVideoUrl,
+					userName: userName // Pass userName to completed page
 				}
 			});
 		} else {
@@ -203,7 +208,8 @@ export default function StepPage() {
 				state: {
 					projectId,
 					projectName: state?.projectName || "Project",
-					projectVideoUrl: projectVideoUrl
+					projectVideoUrl: projectVideoUrl,
+					userName: userName // Pass userName to next step
 				}
 			});
 		}
@@ -329,6 +335,7 @@ export default function StepPage() {
 					onPrev={handlePrev}
 					onNext={handleNext}
 					userId={userId}
+					userName={userName} // Pass userName prop
 					isPrevDisabled={false}
 					isNextDisabled={false}
 					isNextFinal={(() => {

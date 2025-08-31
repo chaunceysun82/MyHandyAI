@@ -8,7 +8,7 @@ import uuid
 from pymongo import DESCENDING
 import pickle
 from db import conversations_collection, project_collection, tools_collection
-from datetime import datetime
+from datetime import datetime, timedelta
 from .project import update_project
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
@@ -24,6 +24,48 @@ from chatbot.agents import AgenticChatbot
 
 router = APIRouter(prefix="/chatbot", tags=["chatbot"])
 client=OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Config for image TTL
+# LAST_IMAGE_TTL_MIN = int(os.getenv("LAST_IMAGE_TTL_MINUTES", "10"))
+# LAST_IMAGE_MAX_B64 = 3_500_000  # ~3.5MB of base64 text
+
+# def _save_last_image(session_id: str, image_b64: str):
+#     """Save the last image for session-based reuse"""
+#     if not session_id or not image_b64:
+#         return
+#     # Avoid huge docs
+#     if len(image_b64) > LAST_IMAGE_MAX_B64:
+#         return
+#     conversations_collection.update_one(
+#         {"session_id": session_id, "chat_type": "session_meta"},
+#         {"$set": {"last_image": image_b64, "last_image_ts": datetime.utcnow()}},
+#         upsert=True
+#     )
+
+# def _load_last_image(session_id: str) -> Optional[str]:
+#     """Load the last image if within TTL window"""
+#     if not session_id:
+#         return None
+#     doc = conversations_collection.find_one(
+#         {"session_id": session_id, "chat_type": "session_meta"},
+#         projection={"last_image": 1, "last_image_ts": 1, "_id": 0}
+#     )
+#     if not doc:
+#         return None
+#     ts = doc.get("last_image_ts")
+#     if not ts:
+#         return None
+#     if datetime.utcnow() - ts > timedelta(minutes=LAST_IMAGE_TTL_MIN):
+#         return None
+#     return doc.get("last_image")
+
+def _clear_last_image(session_id: str):
+    """Clear stored image for session reset"""
+    conversations_collection.update_one(
+        {"session_id": session_id, "chat_type": "session_meta"},
+        {"$unset": {"last_image": "", "last_image_ts": ""}},
+        upsert=True
+    )
 
 class ChatMessage(BaseModel):
     message: str
@@ -113,6 +155,8 @@ def get_session(project):
 def reset_session(session_id, user, project):
     chatbot = AgenticChatbot()
     log_message(session_id, "assistant", "Session reset.", chatbot, user, project, message_type="reset")
+    # Clear any stored image for this session
+    _clear_last_image(session_id)
     return chatbot
 
 def delete_session_docs(session_id):
@@ -363,7 +407,60 @@ async def chat_with_bot(chat_message: ChatMessage):
         session_id = chat_message.session_id or uuid.uuid4().hex
         chatbot = get_latest_chatbot(session_id)
 
-        # Decode uploaded image if present
+        # Log user message
+        log_message(session_id, "user", chat_message.message, chatbot, chat_message.user, chat_message.project)
+
+        # Check if image is provided or can be reused - use vision-aware OpenAI direct call
+        # current_image_b64 = None
+        # use_vision = False
+        
+        # if chat_message.uploaded_image:
+        #     # New image uploaded
+        #     image_data = chat_message.uploaded_image
+        #     if image_data.startswith('data:image'):
+        #         # Extract base64 part for storage
+        #         current_image_b64 = image_data.split(',')[1]
+        #         url = image_data
+        #     else:
+        #         # Plain base64
+        #         current_image_b64 = image_data
+        #         url = f"data:image/jpeg;base64,{image_data}"
+            
+        #     # Save for future reuse
+        #     _save_last_image(session_id, current_image_b64)
+        #     use_vision = True
+            
+        # else:
+        #     # No new image - try to reuse last image
+        #     cached_b64 = _load_last_image(session_id)
+        #     if cached_b64:
+        #         url = f"data:image/jpeg;base64,{cached_b64}"
+        #         use_vision = True
+
+        # if use_vision:
+        #     # Build user message content with image
+        #     user_parts = [{"type": "text", "text": chat_message.message}]
+        #     user_parts.append({
+        #         "type": "image_url", 
+        #         "image_url": {"url": url}
+        #     })
+
+        #     # Call OpenAI with vision
+        #     system_prompt = "You are MyHandyAI, a helpful DIY assistant. Analyze images and provide helpful guidance for DIY projects, tool identification, and home improvement tasks."
+            
+        #     resp = client.chat.completions.create(
+        #         model="gpt-4o",
+        #         messages=[
+        #             {"role": "system", "content": system_prompt},
+        #             {"role": "user", "content": user_parts},
+        #         ],
+        #         temperature=0.4,
+        #         max_tokens=600
+        #     )
+            
+        #     response = resp.choices[0].message.content
+        # else:
+            # No image available - use AgenticChatbot
         uploaded_image = None
         if chat_message.uploaded_image:
             image_data = chat_message.uploaded_image
@@ -371,11 +468,10 @@ async def chat_with_bot(chat_message: ChatMessage):
                 image_data = image_data.split(',')[1]
             uploaded_image = base64.b64decode(image_data)
 
-        # Log user message
-        log_message(session_id, "user", chat_message.message, chatbot, chat_message.user, chat_message.project)
-
-        # Get bot response and log it
+            # Get bot response from AgenticChatbot
         response = chatbot.process_message(chat_message.message, uploaded_image)
+
+        # Log bot response
         log_message(session_id, "assistant", response, chatbot, chat_message.user, chat_message.project)
 
         print(getattr(chatbot, "current_state", None))
@@ -896,11 +992,11 @@ async def compare_and_enhance_tools(tools_data: List[Dict[str, Any]]):
                 
                 print(f"🔍 Analyzing tool: {tool_name}")
                 
-                # Search for similar existing tools in our tools collection
+                
                 similar_tools = find_similar_tools(
                     query=tool_name,
                     limit=3,
-                    similarity_threshold=0.75  # Lower threshold for broader matching
+                    similarity_threshold=0.75  
                 )
                 
                 if similar_tools:
