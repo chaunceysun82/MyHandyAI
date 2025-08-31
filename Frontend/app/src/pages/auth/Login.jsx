@@ -211,7 +211,7 @@ const Login = () => {
 
 	return (
 		<div className="min-h-screen flex flex-col items-center p-4">
-			<h1 className="text-[20px] mt-[-24px] font-semibold p-10">Welcome back!</h1>
+			<h1 className="text-[20px] mt-[-24px] font-semibold pt-20 pb-3">Welcome back!</h1>
 			
 			{/* General Error Message */}
 			{errors.general && (
@@ -260,7 +260,7 @@ const Login = () => {
 					<label className="block mb-2 text-sm font-medium text-gray-700">
 						Email <span className="text-red-500">*</span>
 					</label>
-					<div className={`relative w-full ${errors.email ? 'mb-0' : 'mb-5'}`}>
+					<div className={`relative w-full ${errors.email ? 'mb-4' : 'mb-5'}`}>
 						<input
 							type="email"
 							value={email}
@@ -290,7 +290,7 @@ const Login = () => {
 					<label className="block mb-2 text-sm font-medium text-gray-700">
 						Password <span className="text-red-500">*</span>
 					</label>
-					<div className={`relative w-full ${errors.email ? 'mb-0' : 'mb-5'}`}>
+					<div className={`relative w-full ${errors.email ? 'mb-4' : 'mb-5'}`}>
 						<input
 							value={password}
 							onChange={(e) => {
@@ -332,25 +332,44 @@ const Login = () => {
 				</FieldError>
 
 				<div className="flex justify-between items-center">
-					<label className="flex text-[12px] items-center text-sm text-gray-700">
-						<input
-							type="checkbox"
-							checked={rememberMe}
-							onChange={() => setRememberMe((prev) => !prev)}
-							className="mr-2 size-4 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-						/>
-						<p className="font-light">Remember Me</p>
-					</label>
+					<label className="flex items-center text-gray-700 cursor-pointer">
+						<div className="relative w-5 h-5 mr-2">
+							<input
+								type="checkbox"
+								checked={rememberMe}
+								onChange={() => setRememberMe(prev => !prev)}
+								className="appearance-none w-full h-full bg-[#D9D9D9] border border-gray-300 rounded-[3px] checked:bg-blue-500 checked:border-blue-500 cursor-pointer"
+							/>
+							{/* Custom checkmark */}
+							<svg
+								className={`absolute top-0 left-0 w-full h-full text-white pointer-events-none ${
+									rememberMe ? "block" : "hidden"
+								}`}
+								viewBox="0 0 24 24"
+							>
+								<polyline
+									points="20 6 9 17 4 12"
+									stroke="currentColor"
+									strokeWidth="2"
+									fill="none"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								/>
+							</svg>
+						</div>
+						<span className="font-light text-[12px] text-[#000000]">Remember Me</span>
+						</label>
+
 					<Link
 						to="/forgot-password"
 						style={{color: '#595959'}}
-						className="text-sm font-light hover:underline">
+						className="font-light text-[12px] text-[#000000] hover:underline">
 						Forgot password?
 					</Link>
 				</div>
 
 				<button
-					className="w-full p-2 mt-5 text-[16px] text-white rounded-[20px] bg-[#6FCBAE] hover:bg-green-600 duration-200"
+					className="w-full p-2 mt-5 text-[16px] text-white font-medium rounded-[20px] bg-[#1484A3] hover:bg-[#066580] duration-200"
 					type="submit">
 					Login
 				</button>
@@ -372,7 +391,7 @@ const Login = () => {
 					</button>
 			</div>
 			
-			<div className="flex flex-row gap-6">
+			<div className="flex flex-row gap-[20px]">
 				<p className="text-[12px] text-[#595959] font-light">Don't have an account?</p>
 				<a href = "/signup" className="text-[12px] text-[#55D468] hover:underline font-semibold">Sign up</a>
 			</div>
