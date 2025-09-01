@@ -77,7 +77,12 @@ export default function ProjectCard({
   const canComplete = hasSteps && percentComplete < 100;
 
   return (
-    <div className="bg-gray-100 rounded-xl flex items-center justify-between relative select-none">
+    <div className="bg-gray-100 rounded-xl flex items-center justify-between relative select-none shadow-md border-l-4 border-[#288AA5]"
+    style={{
+      boxShadow: '0 6px 12px -2px rgba(0, 0, 0, 0.1)',
+    }}
+    >
+
       {/* Left Section - Image and Project Details - Clickable */}
       <div 
         className="flex items-center space-x-4 flex-1 rounded-lg p-1 hover:bg-transparent"
@@ -121,11 +126,11 @@ export default function ProjectCard({
       <div className="flex items-center flex-shrink-0">
         <button
           onClick={handleMenuClick}
-          className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded-lg transition-colors"
+          className="p-2 text-black hover:text-gray-800 hover:bg-gray-200 rounded-lg transition-colors absolute right-2 top-2"
           title="More options"
         >
           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+            <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
           </svg>
         </button>
 

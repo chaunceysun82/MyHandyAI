@@ -9,6 +9,7 @@ import MobileWrapper from "../components/MobileWrapper";
 import { fetchProjects, createProject, deleteProject, completeProject, updateProject } from "../services/projects";
 import { getUserById } from "../services/auth";
 import defaultHome from "../../src/assets/default-home.png";
+import { ReactComponent as Filter } from '../../src/assets/Frame.svg';
 
 
 export default function Home() {
@@ -332,14 +333,14 @@ export default function Home() {
         {/* Header */}
         <div className="p-4 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900">
-              {welcomeType === "welcome" ? "Welcome" : "Welcome back"}, <span className="text-blue-600">{getFirstName(userName)}</span>
+            <h1 className="text-[20px] font-regular text-[#000000]">
+              {welcomeType === "welcome" ? "Welcome" : "Welcome back"} <span className="text-black font-bold text-[20px]">{getFirstName(userName)}</span>
             </h1>
             <button 
               onClick={openSidebar}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 text-[#000000]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
@@ -359,20 +360,20 @@ export default function Home() {
           <div className="flex mb-4">
             <button
               onClick={() => setActiveTab("ongoing")}
-              className={`flex-1 py-2 px-4 rounded-l-lg  text-sm font-medium transition-colors ${
+              className={`flex-1 py-1 px-4 rounded-l-[21.63px] text-[16px] font transition-colors border ${
                 activeTab === "ongoing"
-                  ? "bg-gray-800 text-white"
-                  : "bg-gray-200 text-gray-800"
+                  ? "bg-[#1484A3] text-white border-[#1484A3] font-medium"
+                  : "bg-[#FFFFFF] text-[#000000] border-[#1484A3] font-regular"
               }`}
             >
               Ongoing 
             </button>
             <button
               onClick={() => setActiveTab("completed")}
-              className={`flex-1 py-2 px-4 rounded-r-lg  text-sm font-medium transition-colors ${
+              className={`flex-1 py-1 px-4 rounded-r-[21.63px] text-[16px] font transition-colors border ${
                 activeTab === "completed"
-                  ? "bg-gray-800 text-white"
-                  : "bg-gray-200 text-gray-800"
+                  ? "bg-[#1484A3] text-white border-[#1484A3] font-medium"
+                  : "bg-[#FFFFFF] text-[#000000] border-[#1484A3] font-regular"
               }`}
             >
               Completed 
@@ -380,10 +381,10 @@ export default function Home() {
           </div>
 
           {/* Search and Filter Bar */}
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-3 mb-1">
             <div className="flex-1 relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="h-5 w-5 text-[#000000]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
@@ -392,7 +393,7 @@ export default function Home() {
                 placeholder="Search for projects"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-gray-100 border-0 rounded-lg text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                className="w-full pl-10 pr-4 py-1.5 bg-[#FFFFFF] border border-[#000000] rounded-[15px] font-light text-[12px] text-[#000000] placeholder-[#000000]"
               />
             </div>
             
@@ -400,11 +401,12 @@ export default function Home() {
             <div className="filter-menu-container relative">
               <button
                 onClick={() => setShowFilterMenu(!showFilterMenu)}
-                className="p-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                className="p-4 hover:bg-gray-100 transition-colors rounded-[15px] flex items-center justify-center"
               >
-                <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {/* <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.707A1 1 0 013 7V4z" />
-                </svg>
+                </svg> */}
+                <Filter className="h-5 w-5 text-gray-600" />
               </button>
               
               {/* Filter Menu Dropdown */}
@@ -455,9 +457,9 @@ export default function Home() {
           </div>
 
           {/* Projects Section */}
-          <h2 className="text-lg font-semibold text-gray-900 mb-6">
+          {/* <h2 className="text-lg font-semibold text-gray-900 mb-6">
             {activeTab === "ongoing" ? "Ongoing Projects" : "Completed Projects"}
-          </h2>
+          </h2> */}
           
           {filteredProjects.length === 0 ? (
             <div className="text-center py-12">
@@ -513,16 +515,22 @@ export default function Home() {
         {/* Footer - Always at bottom */}
         <div className="flex-shrink-0 border-t border-gray-100 bg-white">
           <div className="p-4">
-            <div className="text-center">
-              <p className="text-base font-medium text-gray-700 mb-4">
-                Need help solving household problem?
+            <div className="text-left">
+              <p className="text-base ml-1 font-medium text-[#000000] mb-4">
+                Need help solving household problem!
               </p>
               <button
                 onClick={openModal}
-                className="w-full bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-xl font-semibold text-gray-800 transition-colors flex items-center justify-center space-x-3"
+                className="w-full bg-[#1484A3] hover:bg-[#066580] px-4 py-1.5 rounded-[21.63px] text-[#FFFFFF] transition-colors flex items-center justify-center space-x-2"
+                style={{
+                  boxShadow: '0px 6px 12px 0px rgba(0, 0, 0, 0.1)',
+                }}
               >
-                <span className="text-2xl">+</span>
-                <span>Start New Project</span>
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 25 25">
+                  <path strokeLinecap="square" strokeWidth={2} d="M12 6v12M6 12h12" />
+                </svg>
+                <span className="text-[14px] font-medium" 
+                >Start New Project</span>
               </button>
             </div>
           </div>

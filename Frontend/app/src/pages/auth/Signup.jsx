@@ -219,7 +219,7 @@ const Signup = () => {
 
 	return (
 		<div className="min-h-screen flex flex-col items-center py-2 px-4">
-			<h1 className="text-[20px] mt-[-24px] font-semibold p-10">Getting Started</h1>
+			<h1 className="text-[20px] mt-[-24px] font-semibold pt-20 text-[#000000] pb-3">Getting Started</h1>
 			
 			{/* General Error Message */}
 			{errors.general && (
@@ -369,11 +369,11 @@ const Signup = () => {
 							required
 						/>
 						<div className="absolute inset-y-0 right-3 flex items-center gap-2">
-							{errors.password && (
+							{/* {errors.password && (
 								<div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
 									<span className="text-white text-xs font-bold">!</span>
 								</div>
-							)}
+							)} */}
 							<div
 								className="cursor-pointer text-gray-500"
 								onClick={() => setShowPassword((prev) => !prev)}>
@@ -441,9 +441,9 @@ const Signup = () => {
 				)}
 
 				<button
-					className="w-full p-2 mt-2 text-[16px] text-white rounded-[20px] bg-[#6FCBAE] hover:bg-green-600 duration-200"
+					className="w-full p-2 mt-2 text-[14px] text-white rounded-[20px] bg-[#1484A3] font-medium hover:bg-[#066580] duration-200"
 					type="submit">
-					Signup
+					Sign Up
 				</button>
 			</form>
 
