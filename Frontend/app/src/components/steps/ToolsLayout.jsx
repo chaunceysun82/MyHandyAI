@@ -5,6 +5,7 @@ export default function ToolsLayout({
 	stepNumber,
 	totalSteps,
 	title,
+	subtitle, // Add subtitle prop
 	children,
 	onBack,
 	onPrev,
@@ -12,6 +13,7 @@ export default function ToolsLayout({
 	projectId,
 	projectName,
 	projectVideoUrl, // Add this prop
+	userName, // Add userName prop
 }) {
 	return (
 		<div className="flex flex-col h-screen bg-gray-50">
@@ -20,6 +22,7 @@ export default function ToolsLayout({
 				stepNumber={stepNumber}
 				totalSteps={totalSteps}
 				title={title}
+				subtitle={subtitle} // Pass subtitle to StepHeader
 				onBack={onBack}
 			/>
 
@@ -36,6 +39,7 @@ export default function ToolsLayout({
 				projectVideoUrl={projectVideoUrl}
 				onPrev={onPrev} 
 				onNext={onNext}
+				userName={userName} // Pass userName prop
 				isPrevDisabled={false} // Enable previous button to go back to overview
 				isNextDisabled={false}
 				isNextFinal={false}

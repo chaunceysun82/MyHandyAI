@@ -9,8 +9,14 @@ export default function ProjectCard({
   percentComplete,
   onStartChat,
   onRemove,
+  onComplete,
+  onRename, // New prop for rename functionality
+  hasSteps = false, // New prop to check if project has steps generated
 }) {
   const [showMenu, setShowMenu] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  console.log("Propject percentage", Number(percentComplete));
 
   const formatLastActivity = (dateString) => {
     if (!dateString) return "Just now";
@@ -30,18 +36,30 @@ export default function ProjectCard({
     setShowMenu(!showMenu);
   };
 
-  const handleOptionClick = (option) => {
+  const handleOptionClick = async (option) => {
     setShowMenu(false);
     
     switch (option) {
       case 'chat':
         if (onStartChat) onStartChat();
         break;
+      case 'complete':
+        if (onComplete && hasSteps) {
+          setIsCompleting(true);
+          try {
+            await onComplete(id);
+          } catch (error) {
+            console.error('Error completing project:', error);
+          } finally {
+            setIsCompleting(false);
+          }
+        }
+        break;
       case 'delete':
         if (onRemove) onRemove(id);
         break;
       case 'rename':
-        console.log('Rename functionality not implemented');
+        if (onRename) onRename();
         break;
       case 'archive':
         console.log('Archive functionality not implemented');
@@ -55,15 +73,23 @@ export default function ProjectCard({
     if (onStartChat) onStartChat();
   };
 
+  // Check if project can be completed
+  const canComplete = hasSteps && percentComplete < 100;
+
   return (
-    <div className="bg-gray-100 rounded-xl px-2 py-1 flex items-center justify-between relative">
+    <div className="bg-gray-100 rounded-xl flex items-center justify-between relative select-none shadow-md border-l-4 border-[#288AA5]"
+    style={{
+      boxShadow: '0 6px 12px -2px rgba(0, 0, 0, 0.1)',
+    }}
+    >
+
       {/* Left Section - Image and Project Details - Clickable */}
       <div 
-        className="flex items-center space-x-4 flex-1 cursor-pointer rounded-lg p-1"
+        className="flex items-center space-x-4 flex-1 rounded-lg p-1 hover:bg-transparent"
         onClick={handleCardClick}
       >
         {/* Project Image */}
-        <div className="w-14 h-14 bg-blue-50 rounded-lg flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0">
+        <div className="w-14 h-14 mx-2 bg-blue-50 rounded-lg flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0">
           <img 
             src={defaultProjectImage} 
             alt="Project" 
@@ -82,7 +108,7 @@ export default function ProjectCard({
         {/* Project Details - Three lines as shown in image */}
         <div className="flex flex-col space-y-1">
           {/* Project Title - First line */}
-          <h3 className="text-base font-semibold text-gray-900">
+          <h3 className="text-base font-semibold text-gray-900 hover:no-underline">
             {projectTitle}
           </h3>
           {/* Last Activity - Second line */}
@@ -100,17 +126,17 @@ export default function ProjectCard({
       <div className="flex items-center flex-shrink-0">
         <button
           onClick={handleMenuClick}
-          className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded-lg transition-colors"
+          className="p-2 text-black hover:text-gray-800 hover:bg-gray-200 rounded-lg transition-colors absolute right-2 top-2"
           title="More options"
         >
           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+            <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
           </svg>
         </button>
 
         {/* Dropdown Menu */}
         {showMenu && (
-          <div className="absolute right-0 top-full mt-2 w-32 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+          <div className="absolute right-0 top-full mt-2 w-36 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
             <div className="py-1">
               <button
                 onClick={(e) => {
@@ -119,19 +145,37 @@ export default function ProjectCard({
                 }}
                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
               >
-                Chat
+                Resume
               </button>
+              
+              {/* Complete option - only show if project has steps and isn't already complete */}
+              {canComplete && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOptionClick('complete');
+                  }}
+                  disabled={isCompleting}
+                  className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                    isCompleting 
+                      ? 'text-gray-400 cursor-not-allowed' 
+                      : 'text-green-600 hover:bg-green-50'
+                  }`}
+                >
+                  {isCompleting ? 'Completing...' : 'Complete'}
+                </button>
+              )}
+              
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleOptionClick('rename');
                 }}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors cursor-not-allowed opacity-50"
-                disabled
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
               >
                 Rename
               </button>
-              <button
+              {/* <button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleOptionClick('archive');
@@ -140,7 +184,7 @@ export default function ProjectCard({
                 disabled
               >
                 Archive
-              </button>
+              </button> */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();

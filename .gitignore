@@ -28,3 +28,4 @@ package-lock.json
 
 # Logs
 *.log
+Backend/dev_detect_app.py

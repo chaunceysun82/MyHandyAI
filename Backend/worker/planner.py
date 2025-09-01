@@ -103,6 +103,10 @@ Project summary:
         amazon_affiliate_tag: str = "myhandyai-20",
         openai_base_url: str = "https://api.openai.com/v1",
         timeout: int = 90,
+        new_summary: Optional[str] = None,
+        matched_summary: Optional[str] = None,
+        matched_tools: Optional[Any] = None,
+        matched_steps: Optional[Any] = None,
     ) -> None:
         self.serpapi_api_key = serpapi_api_key or os.getenv("SERPAPI_API_KEY")
         self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
@@ -113,6 +117,10 @@ Project summary:
         self.amazon_affiliate_tag = amazon_affiliate_tag
         self.base_url = openai_base_url.rstrip("/")
         self.timeout = timeout
+        self.new_summary = new_summary
+        self.matched_summary = matched_summary
+        self.matched_tools = matched_tools
+        self.matched_steps = matched_steps
         
         self._schema = {
             "type": "object",
@@ -262,6 +270,36 @@ Project summary:
     def recommend_tools(self, summary: str, include_json: bool = False) -> Dict[str, Any]:
         prompt = self.PROMPT_TEXT.format(summary=summary)
 
+        # If matched_tools or matched_summary exists, instruct the model to modify them
+        matched_tools_text = None
+        if self.matched_tools:
+            try:
+                matched_tools_text = json.dumps(self.matched_tools, indent=2)
+            except Exception:
+                matched_tools_text = str(self.matched_tools)
+
+            # If user provided matched_tools as a list-of-dicts (the new format):
+            prompt += (
+                "\n\nThe following is an EXISTING list of tools (from a matched project with high similarity). "
+                "Modify or adapt these tool objects to suit the new project summary above. Keep the exact field names "
+                "(name, description, price, risk_factors, safety_measures). Return ONLY a JSON ARRAY (top-level array) "
+                "of tool objects in the same format as provided (i.e., [{name:..., description:..., price:..., ...}, ...]).\n\n"
+                f"Existing tools:\n{matched_tools_text}\n"
+            )
+        elif self.matched_summary:
+            # If only matched_summary is present but not matched_tools, include it as context (do not force array output)
+            prompt += (
+                "\n\nContext: The following MATCHED SUMMARY was highly similar to the new project. Use it as a reference when adapting tools.\n\n"
+                f"Matched Summary:\n{self.matched_summary}\n"
+            )
+
+        # Always include matched_summary if present (even when matched_tools is present)
+        if self.matched_summary and not self.matched_tools:
+            prompt += (
+                "\n\nContext: The following MATCHED SUMMARY was highly similar to the new project. Use it as a reference when adapting tools.\n\n"
+                f"Matched Summary:\n{self.matched_summary}\n"
+            )
+
         payload = {
             "model": self.model,
             "input": [
@@ -304,15 +342,6 @@ Project summary:
                 "amazon_link": None,
             }
 
-            try:
-                img = self._get_image_url(i.name)
-                tool["image_link"] = img
-            except Exception:
-                tool["image_link"] = None
-
-            safe = self._sanitize_for_amazon(i.name)
-            tool["amazon_link"] = f"https://www.amazon.com/s?k={safe}&tag={self.amazon_affiliate_tag}"
-
             tools_list.append(tool)
 
         out: Dict[str, Any] = {"tools": tools_list, "raw": parsed_obj.model_dump()}
@@ -323,13 +352,18 @@ Project summary:
 
 
 class StepsAgentJSON:
-    def __init__(self):
+    def __init__(self, new_summary: Optional[str] = None, matched_summary: Optional[str] = None, matched_tools: Optional[Any] = None, matched_steps: Optional[Any] = None):
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.api_url = "https://api.openai.com/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        self.new_summary = new_summary
+        self.matched_summary = matched_summary
+        self.matched_tools = matched_tools
+        self.matched_steps = matched_steps
+
 
     def _parse_list_items(self, text: str) -> List[str]:
         """
@@ -616,9 +650,30 @@ class StepsAgentJSON:
             
             enhanced_context += answers_context
             enhanced_context += tools_context
-        
+
+        adaptation_instructions = ""
+        if self.matched_steps:
+            try:
+                matched_steps_text = json.dumps(self.matched_steps, indent=2)
+            except Exception:
+                matched_steps_text = str(self.matched_steps)
+
+            adaptation_instructions += (
+                "\n\nADAPTATION INSTRUCTIONS:\n"
+                "The user provided an EXISTING set of steps from a matched project below. Modify and adapt those steps so they match the NEW project summary and context above. "
+                "Strictly preserve the exact output structure and field names expected by this system (Step No., Step Title, Time, Instructions, Tools Needed, Safety Warnings, Tips). "
+                "Update time estimates, instructions, tools needed, safety warnings, and tips where appropriate. If a step is no longer relevant, adjust or remove it, but ensure the final output lists steps numbered sequentially starting at 1. "
+                "Also if some steps are common to both projects, you can keep them with minor adjustments. "
+                "Overall, ensure the final plan is coherent, practical, and tailored to the new project summary and any user answers provided with atleast 6 steps for the whole summary. "
+                "Maintain practical ordering and clarity. Return the plan as plain text in the exact format.\n\n"
+                f"Existing matched steps:\n{matched_steps_text}\n"
+            )
+
+        if self.matched_summary:
+            adaptation_instructions += f"\n\nMatched Summary:\n{self.matched_summary}\n"
+
         # Use the prompt from text file
-        base_prompt = steps_prompt_text
+        base_prompt = steps_prompt_text + adaptation_instructions
 
         messages = [
             {"role": "system", "content": base_prompt},

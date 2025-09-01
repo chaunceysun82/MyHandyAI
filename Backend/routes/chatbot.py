@@ -8,7 +8,7 @@ import uuid
 from pymongo import DESCENDING
 import pickle
 from db import conversations_collection, project_collection, tools_collection
-from datetime import datetime
+from datetime import datetime, timedelta
 from .project import update_project
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
@@ -24,6 +24,48 @@ from chatbot.agents import AgenticChatbot
 
 router = APIRouter(prefix="/chatbot", tags=["chatbot"])
 client=OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Config for image TTL
+# LAST_IMAGE_TTL_MIN = int(os.getenv("LAST_IMAGE_TTL_MINUTES", "10"))
+# LAST_IMAGE_MAX_B64 = 3_500_000  # ~3.5MB of base64 text
+
+# def _save_last_image(session_id: str, image_b64: str):
+#     """Save the last image for session-based reuse"""
+#     if not session_id or not image_b64:
+#         return
+#     # Avoid huge docs
+#     if len(image_b64) > LAST_IMAGE_MAX_B64:
+#         return
+#     conversations_collection.update_one(
+#         {"session_id": session_id, "chat_type": "session_meta"},
+#         {"$set": {"last_image": image_b64, "last_image_ts": datetime.utcnow()}},
+#         upsert=True
+#     )
+
+# def _load_last_image(session_id: str) -> Optional[str]:
+#     """Load the last image if within TTL window"""
+#     if not session_id:
+#         return None
+#     doc = conversations_collection.find_one(
+#         {"session_id": session_id, "chat_type": "session_meta"},
+#         projection={"last_image": 1, "last_image_ts": 1, "_id": 0}
+#     )
+#     if not doc:
+#         return None
+#     ts = doc.get("last_image_ts")
+#     if not ts:
+#         return None
+#     if datetime.utcnow() - ts > timedelta(minutes=LAST_IMAGE_TTL_MIN):
+#         return None
+#     return doc.get("last_image")
+
+def _clear_last_image(session_id: str):
+    """Clear stored image for session reset"""
+    conversations_collection.update_one(
+        {"session_id": session_id, "chat_type": "session_meta"},
+        {"$unset": {"last_image": "", "last_image_ts": ""}},
+        upsert=True
+    )
 
 class ChatMessage(BaseModel):
     message: str
@@ -113,6 +155,8 @@ def get_session(project):
 def reset_session(session_id, user, project):
     chatbot = AgenticChatbot()
     log_message(session_id, "assistant", "Session reset.", chatbot, user, project, message_type="reset")
+    # Clear any stored image for this session
+    _clear_last_image(session_id)
     return chatbot
 
 def delete_session_docs(session_id):
@@ -351,40 +395,7 @@ def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float =
         print(f"Error searching tools in Qdrant: {e}")
         return []
 
-def process_tools_with_reuse(tools_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Process a list of tools, reusing existing ones when possible and storing new ones.
-    """
-    processed_tools = []
-    
-    for tool in tools_list:
-        # Search for similar existing tools
-        similar_tools = find_similar_tools(tool["name"], limit=3, similarity_threshold=0.8)
-        
-        if similar_tools and similar_tools[0]["similarity_score"] >= 0.8:
-            # Reuse existing tool
-            existing_tool = similar_tools[0]
-            tool["image_link"] = existing_tool["image_link"]
-            tool["amazon_link"] = existing_tool["amazon_link"]
-            tool["reused_from"] = existing_tool["tool_id"]
-            
-            # Update usage count
-            update_tool_usage(existing_tool["tool_id"])
-            
-            print(f"Reused existing tool: {tool['name']} (ID: {existing_tool['tool_id']})")
-        else:
-            # Store new tool
-            tool_id = store_tool_in_database(tool)
-            tool["tool_id"] = tool_id
-            
-            # Store embeddings
-            create_and_store_tool_embeddings(tool, tool_id)
-            
-            print(f"Stored new tool: {tool['name']} (ID: {tool_id})")
-        
-        processed_tools.append(tool)
-    
-    return processed_tools
+
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_bot(chat_message: ChatMessage):
@@ -396,7 +407,60 @@ async def chat_with_bot(chat_message: ChatMessage):
         session_id = chat_message.session_id or uuid.uuid4().hex
         chatbot = get_latest_chatbot(session_id)
 
-        # Decode uploaded image if present
+        # Log user message
+        log_message(session_id, "user", chat_message.message, chatbot, chat_message.user, chat_message.project)
+
+        # Check if image is provided or can be reused - use vision-aware OpenAI direct call
+        # current_image_b64 = None
+        # use_vision = False
+        
+        # if chat_message.uploaded_image:
+        #     # New image uploaded
+        #     image_data = chat_message.uploaded_image
+        #     if image_data.startswith('data:image'):
+        #         # Extract base64 part for storage
+        #         current_image_b64 = image_data.split(',')[1]
+        #         url = image_data
+        #     else:
+        #         # Plain base64
+        #         current_image_b64 = image_data
+        #         url = f"data:image/jpeg;base64,{image_data}"
+            
+        #     # Save for future reuse
+        #     _save_last_image(session_id, current_image_b64)
+        #     use_vision = True
+            
+        # else:
+        #     # No new image - try to reuse last image
+        #     cached_b64 = _load_last_image(session_id)
+        #     if cached_b64:
+        #         url = f"data:image/jpeg;base64,{cached_b64}"
+        #         use_vision = True
+
+        # if use_vision:
+        #     # Build user message content with image
+        #     user_parts = [{"type": "text", "text": chat_message.message}]
+        #     user_parts.append({
+        #         "type": "image_url", 
+        #         "image_url": {"url": url}
+        #     })
+
+        #     # Call OpenAI with vision
+        #     system_prompt = "You are MyHandyAI, a helpful DIY assistant. Analyze images and provide helpful guidance for DIY projects, tool identification, and home improvement tasks."
+            
+        #     resp = client.chat.completions.create(
+        #         model="gpt-4o",
+        #         messages=[
+        #             {"role": "system", "content": system_prompt},
+        #             {"role": "user", "content": user_parts},
+        #         ],
+        #         temperature=0.4,
+        #         max_tokens=600
+        #     )
+            
+        #     response = resp.choices[0].message.content
+        # else:
+            # No image available - use AgenticChatbot
         uploaded_image = None
         if chat_message.uploaded_image:
             image_data = chat_message.uploaded_image
@@ -404,11 +468,10 @@ async def chat_with_bot(chat_message: ChatMessage):
                 image_data = image_data.split(',')[1]
             uploaded_image = base64.b64decode(image_data)
 
-        # Log user message
-        log_message(session_id, "user", chat_message.message, chatbot, chat_message.user, chat_message.project)
-
-        # Get bot response and log it
+            # Get bot response from AgenticChatbot
         response = chatbot.process_message(chat_message.message, uploaded_image)
+
+        # Log bot response
         log_message(session_id, "assistant", response, chatbot, chat_message.user, chat_message.project)
 
         print(getattr(chatbot, "current_state", None))
@@ -416,20 +479,6 @@ async def chat_with_bot(chat_message: ChatMessage):
         if getattr(chatbot, "current_state", None) == "complete":
             await save_information(session_id=session_id)
             await qdrant_function(project_id=chat_message.project)
-            
-            # FLOW 1: Extract and save tools from completed project
-            try:
-                print(f"🔄 FLOW 1: Extracting tools from completed project {chat_message.project}")
-                # Check if project has tool_generation data first
-                project = project_collection.find_one({"_id": ObjectId(chat_message.project)})
-                if project and "tool_generation" in project and "tools" in project["tool_generation"]:
-                    await extract_and_save_tools_from_project(chat_message.project)
-                    print(f"✅ FLOW 1: Tools extracted and saved successfully")
-                else:
-                    print(f"ℹ️ FLOW 1: No tool_generation data found, skipping extraction")
-            except Exception as e:
-                print(f"⚠️ FLOW 1: Failed to extract tools: {e}")
-                # Don't fail the main chat response if tool extraction fails
 
         return ChatResponse(
             response=response,
@@ -724,28 +773,7 @@ async def list_tools(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list tools: {str(e)}")
 
-@router.post("/tools/process")
-async def process_tools_for_reuse(tools_data: List[Tool]):
-    """
-    Process a list of tools, reusing existing ones when possible.
-    This endpoint can be called after LLM generates tools to optimize storage and reuse.
-    """
-    try:
-        # Convert Pydantic models to dictionaries
-        tools_list = [tool.model_dump() for tool in tools_data]
-        
-        # Process tools with reuse logic
-        processed_tools = process_tools_with_reuse(tools_list)
-        
-        return {
-            "message": "Tools processed successfully",
-            "total_tools": len(processed_tools),
-            "reused_tools": len([t for t in processed_tools if "reused_from" in t]),
-            "new_tools": len([t for t in processed_tools if "reused_from" not in t]),
-            "tools": processed_tools
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process tools: {str(e)}")
+
 
 @router.delete("/tools/{tool_id}")
 async def delete_tool(tool_id: str):
@@ -1033,299 +1061,3 @@ async def compare_and_enhance_tools(tools_data: List[Dict[str, Any]]):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to compare and enhance tools: {str(e)}")
-
-@router.get("/similar_by_project/{project_id}")
-async def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "projects"):
-    """
-    RAG decision logic (strictly implements the 3 cases you specified):
-      1) best similarity >= 0.90 -> copy tools & steps from matched project into new project
-      2) 0.60 <= similarity < 0.90 -> call ToolsAgent & StepJSONAgent (or fallback LLM) to *modify*
-           tools & steps and store modified versions for the new project
-      3) similarity < 0.60 -> do nothing (leave project as-is)
-    The function assumes the project's summary has already been saved in Mongo (that's why
-    save_information must be called before this function).
-    """
-    try:
-        obj_id = ObjectId(project_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid project_id format")
-
-    project = project_collection.find_one({"_id": obj_id})
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
- 
-    summary = project.get("summary") or project.get("user_description")
-    if not summary or not str(summary).strip():
-        raise HTTPException(status_code=400, detail="Project has no summary or user_description to embed")
-
-    
-    model_name = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
-    try:
-        embeddings = create_embeddings_for_texts([summary], model=model_name)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Embedding creation failed: {str(e)}")
-
-    if not embeddings:
-        raise HTTPException(status_code=500, detail="Embedding API returned no embedding")
-    query_vec = embeddings[0]
-
-    # qdrant client
-    qdrant_url = os.getenv("QDRANT_URL")
-    qdrant_api_key = os.getenv("QDRANT_API_KEY")
-    if not qdrant_url or not qdrant_api_key:
-        raise HTTPException(status_code=500, detail="QDRANT config missing in environment")
-    qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
-
-    # ensure collection exists
-    try:
-        qclient.get_collection(collection_name=collection_name)
-    except UnexpectedResponse as ex:
-        if getattr(ex, "status_code", None) == 404:
-            return {"query_project_id": project_id, "collection": collection_name, "matches": []}
-        else:
-            raise HTTPException(status_code=500, detail=f"Qdrant error: {str(ex)}")
-
-    # search (request a few extra to allow skipping self-matches)
-    limit = top_k + 5
-    try:
-        hits = qclient.search(collection_name=collection_name, query_vector=query_vec, limit=limit, with_payload=True)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Qdrant search failed: {str(e)}")
-
-    results = []
-    best_hit = None
-    best_score = -1.0
-
-   
-    for hit in hits:
-        payload = hit.payload or {}
-        mongo_id_str = payload.get("mongo_id")
-        text_preview = payload.get("text_preview")
-        chunk_index = payload.get("chunk_index")
-        score = getattr(hit, "score", None)
-
-        # skip exact self-match
-        if mongo_id_str and mongo_id_str == str(project.get("_id")):
-            continue
-
-        try:
-            s = float(score) if score is not None else -1.0
-        except Exception:
-            s = -1.0
-
-        
-        matched_obj = None
-        matched_project_id = None
-        if mongo_id_str:
-            try:
-                matched_obj = project_collection.find_one({"_id": ObjectId(mongo_id_str)})
-                if matched_obj:
-                    matched_project_id = str(matched_obj["_id"])
-            except Exception:
-                matched_obj = None
-
-        
-        if s > best_score:
-            best_score = s
-            best_hit = {"hit": hit, "payload": payload, "score": s, "mongo_id": mongo_id_str}
-
-        proj_summary = None
-        if matched_obj:
-            proj_summary = matched_obj.get("summary") or matched_obj.get("user_description")
-
-        if not proj_summary:
-            proj_summary = text_preview
-
-        results.append({
-            "point_id": str(hit.id),
-            "project_id": matched_project_id,
-            "mongo_id_payload": mongo_id_str,
-            "chunk_index": chunk_index,
-            "text_preview": text_preview,
-            "summary": proj_summary,
-            "score": s
-        })
-
-        if len(results) >= top_k:
-            break
-
-    
-    if not best_hit:
-        return {"query_project_id": project_id, "collection": collection_name, "matches": results, "message": "no non-self matches found"}
-
-   
-    matched_mongo_id = best_hit.get("mongo_id")
-    matched_doc = None
-    if matched_mongo_id:
-        try:
-            matched_doc = project_collection.find_one({"_id": ObjectId(matched_mongo_id)})
-        except Exception:
-            matched_doc = None
-
-   
-    if best_score >= 0.90:
-        if matched_doc:
-            matched_tools = matched_doc.get("tools") or matched_doc.get("project_tools") or []
-            matched_steps = matched_doc.get("steps") or matched_doc.get("project_steps") or matched_doc.get("step_list") or []
-            
-            project_collection.find_one_and_update(
-                {"_id": obj_id},
-                {"$set": {"tools": matched_tools, "steps": matched_steps}},
-                upsert=True
-            )
-            return {
-                "query_project_id": project_id,
-                "collection": collection_name,
-                "best_match": {"mongo_id": matched_mongo_id, "score": best_score},
-                "action": "copied_tools_and_steps_from_matched_project",
-                "matches": results
-            }
-        else:
-            
-            return {
-                "query_project_id": project_id,
-                "collection": collection_name,
-                "best_match": {"mongo_id": matched_mongo_id, "score": best_score},
-                "action": "matched_point_no_mongo_doc",
-                "matches": results
-            }
-
-    
-    if 0.60 <= best_score < 0.90:
-        if not matched_doc:
-            return {
-                "query_project_id": project_id,
-                "collection": collection_name,
-                "best_match": {"mongo_id": matched_mongo_id, "score": best_score},
-                "action": "no_mongo_doc_to_adapt",
-                "matches": results
-            }
-        base_steps = matched_doc.get("steps") or matched_doc.get("project_steps") or matched_doc.get("step_list") or []
-        tools_list=matched_doc['tool_generation']['tools']
-        matched_tools=[]
-        
-        for i in tools_list:
-            tool_dict={}
-            tool_dict['name']=i['name']
-            tool_dict['description']=i['description']
-            tool_dict['price']=i['price']
-            tool_dict['risk_factors']=i['risk_factors']
-            tool_dict['safety_measures']=i['safety_measures']
-            matched_tools.append(tool_dict)
-
-        matched_summary = matched_doc.get("summary") or matched_doc.get("user_description") or ""
-
-        def compute_step_changes(base: List[Dict], new: List[Dict]):
-            
-            def title_key(s):
-                return (s.get("title") or s.get("step_title") or "").strip().lower()
-
-            base_map = { title_key(s): s for s in base if title_key(s) }
-            new_map = { title_key(s): s for s in new if title_key(s) }
-
-
-            added = []
-            removed = []
-            updated = []
-
-           
-            for k, s in new_map.items():
-                if k not in base_map:
-                    added.append(s)
-                else:
-                    b = base_map[k]
-                    diffs = {}
-                    
-                    for fld in ("instructions", "tools_needed", "est_time_min", "time_text", "safety_warnings", "tips"):
-                        bv = b.get(fld)
-                        nv = s.get(fld)
-                        if bv != nv:
-                            diffs[fld] = {"old": bv, "new": nv}
-                    if diffs:
-                        updated.append({"title": s.get("title") or s.get("step_title"), "diffs": diffs, "old": b, "new": s})
-
-            for k, s in base_map.items():
-                if k not in new_map:
-                    removed.append(s)
-
-            
-            if not base_map or not new_map:
-                
-                min_len = min(len(base), len(new))
-                for i in range(min_len):
-                    b = base[i]
-                    n = new[i]
-                    diffs = {}
-                   
-                    if b.get("title") != n.get("title"):
-                        diffs["title"] = {"old": b.get("title"), "new": n.get("title")}
-                    if b.get("instructions") != n.get("instructions"):
-                        diffs["instructions"] = {"old": b.get("instructions"), "new": n.get("instructions")}
-                    if diffs:
-                        updated.append({"index": i, "diffs": diffs, "old": b, "new": n})
-                if len(new) > len(base):
-                    added.extend(new[len(base):])
-                if len(base) > len(new):
-                    removed.extend(base[len(new):])
-
-            return {"added": added, "removed": removed, "updated": updated}
-
-        try:
-            tools_agent_instance = ToolsAgent(new_summary=summary, matched_summary=matched_summary, matched_tools=tools_list)
-            tools_res = tools_agent_instance.recommend_tools(summary=summary, include_json=True)
-            
-        except Exception as e:
-           
-            tools_res = {"error": str(e)}
-
-   
-
-        
-        try:
-            steps_agent_instance = StepsAgentJSON(new_summary=summary, matched_summary=matched_summary, matched_tools=tools_res, matched_steps=base_steps)
-            steps_res = steps_agent_instance.generate(tools={"tools": tools_res, "raw": None}, summary=summary)
-            print(steps_res)
-            modified_steps = steps_res.get("steps", []) if isinstance(steps_res, dict) else []
-        except Exception as e:
-            modified_steps = base_steps
-            steps_res = {"error": str(e)}
-
-        steps_changes = compute_step_changes(base_steps, modified_steps)
-
-        project_collection.find_one_and_update(
-            {"_id": obj_id},
-            {"$set": {
-                "tools": tools_res,
-                "steps": modified_steps,
-                "rag_debug": {
-                    "matched_project_id": matched_mongo_id,
-                    "similarity": best_score,
-                    "tools_agent_raw": tools_res,
-                    "steps_agent_raw": steps_res,
-                    "matched_summary": matched_summary,
-                    "new_summary": summary
-                }
-            }},
-            upsert=True
-        )
-
-        return {
-            "query_project_id": project_id,
-            "collection": collection_name,
-            "best_match": {"mongo_id": matched_mongo_id, "score": best_score},
-            "action": "adapted_tools_and_steps",
-            "tools_changes": tools_res,
-            "steps_changes": steps_changes,
-            "raw_tools_agent_output": tools_res,
-            "raw_steps_agent_output": steps_res,
-            "matches": results
-        }
-
-    return {
-        "query_project_id": project_id,
-        "collection": collection_name,
-        "best_match": {"mongo_id": matched_mongo_id, "score": best_score},
-        "action": "no_action_low_similarity",
-        "matches": results
-    }

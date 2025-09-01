@@ -1,10 +1,11 @@
 // src/pages/ProjectOverview.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { fetchEstimations, fetchSteps } from "../services/overview";
 import StepCard from "../components/StepCard";
 import EstimatedBreakdown from "../components/EstimationBreakdown";
 import ChatWindow2 from "../components/Chat/ChatWindow2";
+import defaultTools from "../assets/default_tools.svg";
 
 
 export default function ProjectOverview() {
@@ -17,13 +18,24 @@ export default function ProjectOverview() {
 	const location = useLocation();
 
 
-	const [open, setOpen] = useState(true);
-
 	const {userId} = location.state || {};
 
-	console.log("User ID:", userId);
-
-	const userName = state?.userName || "User";
+	const userName = state?.userName || localStorage.getItem("displayName") || sessionStorage.getItem("displayName") || "User";
+	
+	// Helper function to extract first name
+	const getFirstName = (fullName) => {
+		if (!fullName || fullName === "User") return "User";
+		
+		// Handle cases where there might be extra spaces or single name
+		const trimmedName = fullName.trim();
+		if (!trimmedName) return "User";
+		
+		const firstName = trimmedName.split(" ")[0];
+		if (!firstName) return "User";
+		
+		// Capitalize first letter and make rest lowercase
+		return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+	};
 
 	const [openModal, setOpenModal] = useState(false);
 
@@ -32,6 +44,10 @@ export default function ProjectOverview() {
 	const [estimations, setEstimations] = useState(null);
 	const [error, setError] = useState("");
 	const [projectVideoUrl, setProjectVideoUrl] = useState(null); // Store the project-level YouTube URL
+	
+	// Refs for scrollable sections
+	const stepsContainerRef = useRef(null);
+	const toolsSectionRef = useRef(null);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -39,7 +55,6 @@ export default function ProjectOverview() {
 			setLoading(true);
 			setError("");
 			try {
-				console.log("ProjectOverview: Fetching data for project:", projectId);
 				
 				const [rawSteps, rawEst] = await Promise.all([
 					fetchSteps(projectId).catch((err) => {
@@ -60,19 +75,11 @@ export default function ProjectOverview() {
 
 				if (cancelled) return;
 
-				console.log("ProjectOverview: Raw steps data:", rawSteps);
-				console.log("ProjectOverview: Raw estimations data:", rawEst);
-				
-				// Extract YouTube URL from raw API response
 				const videoUrl = extractProjectVideoUrl(rawSteps);
-				console.log("ProjectOverview: Extracted YouTube URL:", videoUrl);
 				setProjectVideoUrl(videoUrl);
 				
 				const normalizedSteps = normSteps(rawSteps);
 				const normalizedEstimations = normEstimations(rawEst);
-				
-				console.log("ProjectOverview: Normalized steps:", normalizedSteps);
-				console.log("ProjectOverview: Normalized estimations:", normalizedEstimations);
 				
 				setSteps(normalizedSteps);
 				setEstimations(normalizedEstimations);
@@ -93,16 +100,16 @@ export default function ProjectOverview() {
 		};
 	}, [projectId]);
 
+
+
 	const displayedSteps = useMemo(
 		() => (loading ? [] : steps),
 		[loading, steps]
 	);
 	const stats = useMemo(() => {
-		console.log("ProjectOverview: Calculating stats with:", { estimations, steps });
 		
 		if (estimations) {
 			const mins = Number(estimations.minutes || 0);
-			console.log("ProjectOverview: Using estimations data, minutes:", mins);
 			
 			const result = {
 				duration:
@@ -112,11 +119,9 @@ export default function ProjectOverview() {
 				skill: estimations.skill || "Beginner–Intermediate",
 			};
 			
-			console.log("ProjectOverview: Stats from estimations:", result);
 			return result;
 		}
 
-		console.log("ProjectOverview: No estimations, calculating from steps");
 		const mins = steps
 			.map((s) => extractMinutes(s.time))
 			.filter(Boolean)
@@ -128,7 +133,6 @@ export default function ProjectOverview() {
 			skill: "Beginner–Intermediate",
 		};
 		
-		console.log("ProjectOverview: Stats from steps:", result);
 		return result;
 	}, [estimations, steps]);
 
@@ -153,18 +157,12 @@ export default function ProjectOverview() {
 	const goNext = () => {
 		// Always navigate to Step 1 (Tools Required) when Next Step is clicked
 		if (displayedSteps.length > 0) {
-			console.log("ProjectOverview: Navigating to Step 1 (Tools Required)");
-			console.log("ProjectOverview: Video URL for tools page:", projectVideoUrl);
-			console.log("ProjectOverview: Navigation state being passed:", {
-				projectId,
-				stepIndex: 0,
-				projectVideoUrl: projectVideoUrl
-			});
 			navigate(`/projects/${projectId}/tools`, {
 				state: { 
 					projectId, 
 					stepIndex: 0,
-					projectVideoUrl: projectVideoUrl // Add this line to pass video URL
+					projectVideoUrl: projectVideoUrl, // Add this line to pass video URL
+					userName: userName // Pass userName to tools page
 				}
 			});
 		}
@@ -173,13 +171,12 @@ export default function ProjectOverview() {
 	const goToStep = (stepIndex) => {
 		// Check if this is the tools step (first step with tools icon)
 		if (stepIndex === 0 && displayedSteps[0]?.key === "tools-step") {
-			console.log("ProjectOverview: Navigating to tools page");
-			console.log("ProjectOverview: Video URL for tools page:", projectVideoUrl);
 			navigate(`/projects/${projectId}/tools`, { 
 				state: { 
 					projectId, 
 					stepIndex: 0,
-					projectVideoUrl: projectVideoUrl // Pass video URL
+					projectVideoUrl: projectVideoUrl, // Pass video URL
+					userName: userName // Pass userName to tools page
 				}
 			});
 		} else {
@@ -189,21 +186,13 @@ export default function ProjectOverview() {
 			// - URL should be: /tools, /steps/1, /steps/2, /steps/3...
 			// - So Step 2 in UI = /steps/1, Step 3 in UI = /steps/2, etc.
 			const stepNumber = stepIndex; // stepIndex 0 = tools, 1 = first project step, 2 = second project step
-			console.log("ProjectOverview: Navigating to step", stepNumber);
-			console.log("ProjectOverview: Project ID:", projectId);
-			
-			console.log("ProjectOverview: Video URL for step page:", projectVideoUrl);
-			console.log("ProjectOverview: Navigation state:", { 
-				projectId,
-				projectName: state?.projectName || "Project",
-				projectVideoUrl: projectVideoUrl
-			});
 			
 			navigate(`/projects/${projectId}/steps/${stepNumber}`, {
 				state: { 
 					projectId,
 					projectName: state?.projectName || "Project",
-					projectVideoUrl: projectVideoUrl // Pass video URL
+					projectVideoUrl: projectVideoUrl, // Pass video URL
+					userName: userName // Pass userName to step page
 				}
 			});
 		}
@@ -212,114 +201,141 @@ export default function ProjectOverview() {
 	return (
 		<div className="min-h-screen flex justify-center bg-white">
 			<div className="w-full max-w-md flex flex-col h-screen">
-				{/* Header */}
-				<div className="sticky top-0 z-10 bg-white pt-5 pb-3 px-4">
-					<div className="flex items-center justify-center relative">
-						<h1 className="text-[16px] font-semibold">Project Overview</h1>
-						<button
-							aria-label="Close"
-							onClick={handleClose}
-							className="absolute right-0 text-xl leading-none px-2 py-1 rounded hover:bg-gray-100">
-							×
-						</button>
-					</div>
-				</div>
-
-				{/* Estimated Breakdown */}
-				<div className="px-4">
-					{loading ? (
-						<div className="animate-pulse">
-							<div className="bg-gray-200 h-20 rounded-lg"></div>
-						</div>
-					) : (
-						<EstimatedBreakdown stats={stats} />
-					)}
-				</div>
-
-				{/* Intro text */}
-				<div className="px-4">
-					{loading ? (
-						<div className="animate-pulse mt-3">
-							<div className="bg-gray-200 h-3 w-48 rounded"></div>
-						</div>
-					) : (
-						<p className="text-[11px] text-gray-500 mt-3">
-							Based on our conversation, here is your {displayedSteps.length} step
-							solution:
-						</p>
-					)}
-				</div>
-
-				{/* Error banner */}
-				{error && (
-					<div className="px-4 mt-2">
-						<div className="text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">
-							{error}
+				{/* Sticky Project Title Only */}
+				<div className="sticky top-0 z-20 bg-white shadow-sm border-b border-gray-100">
+					<div className="pt-5 pb-3 px-4">
+						<div className="flex items-center justify-center relative">
+							<h1 className="text-[16px] font-semibold">Project Overview</h1>
+							<button
+								aria-label="Close"
+								onClick={handleClose}
+								className="absolute right-0 text-xl leading-none px-2 py-1 rounded hover:bg-gray-100">
+								×
+							</button>
 						</div>
 					</div>
-				)}
+				</div>
 
-				{/* Scrollable Steps list */}
-				<div className="flex-1 overflow-y-auto px-4 mt-3">
-					<div className="space-y-3 pb-4">
+				{/* Scrollable Content Section */}
+				<div className="flex-1 overflow-y-auto">
+					{/* Estimated Breakdown */}
+					<div className="px-4 pt-3 pb-3">
 						{loading ? (
-							// Loading state with empty containers
+							<div className="animate-pulse">
+								<div className="bg-gray-200 h-20 rounded-lg"></div>
+							</div>
+						) : (
+							<EstimatedBreakdown stats={stats} />
+						)}
+					</div>
+
+					{/* Tools and Materials Card */}
+					<div className="px-4 pb-3" ref={toolsSectionRef}>
+						{loading ? (
+							<div className="animate-pulse">
+								<div className="bg-gray-200 h-20 rounded-lg"></div>
+							</div>
+						) : (
+							<StepCard
+								key="tools-step"
+								index={0}
+								icon="🧰"
+								title="Tools and Materials"
+								subtitle="List of tools needed for this project"
+								time=""
+								status=""
+								imageUrl={defaultTools}
+								completed={false}
+								onClick={() => goToStep(0)}
+							/>
+						)}
+					</div>
+
+					{/* Step-by-step guidance heading and description */}
+					<div className="px-4 pb-4">
+						{loading ? (
+							<div className="animate-pulse">
+								<div className="bg-gray-200 h-4 w-48 rounded mb-2"></div>
+								<div className="bg-gray-200 h-3 w-64 rounded"></div>
+							</div>
+						) : (
 							<>
-								{[...Array(4)].map((_, i) => (
-									<div key={i} className="animate-pulse">
-										<div className="w-full px-3 py-3 rounded-2xl bg-gray-200 flex items-center gap-3">
-											{/* Step Image Container */}
-											<div className="w-14 h-14 rounded-lg bg-gray-300"></div>
-											
-											{/* Step Text Container */}
-											<div className="flex-1">
-												{/* Time + Status Row */}
-												<div className="flex gap-2 mb-1">
-													<div className="bg-gray-300 h-4 w-16 rounded-md"></div>
-													<div className="bg-gray-300 h-4 w-20 rounded-md"></div>
+								<h2 className="text-md font-bold text-gray-900 mb-1">Step-by-step guidance</h2>
+								<p className="text-[10px] text-gray-600">
+									Based on our conversation, here is your {displayedSteps.length > 0 ? displayedSteps.length - 1 : 0} step solution:
+								</p>
+							</>
+						)}
+					</div>
+
+					{/* Error banner */}
+					{error && (
+						<div className="px-4 mt-2">
+							<div className="text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">
+								{error}
+							</div>
+						</div>
+					)}
+
+					{/* Steps Container */}
+					<div className="px-4" ref={stepsContainerRef}>
+						<div className="space-y-3 pb-4">
+							{loading ? (
+								// Loading state with empty containers
+								<>
+									{[...Array(4)].map((_, i) => (
+										<div key={i} className="animate-pulse">
+											<div className="w-full px-3 py-3 rounded-2xl bg-gray-200 flex items-center gap-3">
+												{/* Step Image Container */}
+												<div className="w-14 h-14 rounded-lg bg-gray-300"></div>
+												
+												{/* Step Text Container */}
+												<div className="flex-1">
+													{/* Time + Status Row */}
+													<div className="flex gap-2 mb-1">
+														<div className="bg-gray-300 h-4 w-16 rounded-md"></div>
+														<div className="bg-gray-300 h-4 w-20 rounded-md"></div>
+													</div>
+													
+													{/* Title */}
+													<div className="bg-gray-300 h-4 w-32 rounded mb-2"></div>
+													
+													{/* Subtitle */}
+													<div className="bg-gray-300 h-3 w-40 rounded"></div>
 												</div>
 												
-												{/* Title */}
-												<div className="bg-gray-300 h-4 w-32 rounded mb-2"></div>
-												
-												{/* Subtitle */}
-												<div className="bg-gray-300 h-3 w-40 rounded"></div>
-											</div>
-											
-											{/* Step Number Container */}
-											<div className="shrink-0">
-												<div className="bg-gray-300 h-6 w-16 rounded-full"></div>
+												{/* Step Number Container */}
+												<div className="shrink-0">
+													<div className="bg-gray-300 h-6 w-16 rounded-full"></div>
+												</div>
 											</div>
 										</div>
-									</div>
-								))}
-							</>
-						) : (
-							// Actual step cards
-							displayedSteps.map((s, i) => {
-								console.log("ProjectOverview: Rendering step:", { 
-									title: s.title, 
-									completed: s.completed, 
-									status: s.status,
-									index: i 
-								});
-								
-								return (
-									<StepCard
-										key={s.key || i}
-										index={i}
-										icon={s.icon}
-										title={s.title}
-										subtitle={s.subtitle}
-										time={s.time}
-										status={s.status}
-										imageUrl={null}
-										completed={s.completed}
-										onClick={() => goToStep(i)}
-									/>
-								);
-							})
-						)}
+									))}
+								</>
+							) : (
+								// Actual step cards - filter out tools step (index 0)
+								displayedSteps
+									.filter((s, i) => i > 0) // Skip tools step
+									.map((s, i) => {
+										const actualStepIndex = i + 1; // Adjust index since we filtered out tools
+										
+										return (
+											<StepCard
+												key={s.key || actualStepIndex}
+												index={actualStepIndex}
+												icon={s.icon}
+												title={s.title}
+												subtitle={s.subtitle}
+												time={s.time}
+												status={s.status}
+												imageUrl={null}
+												completed={s.completed}
+												onClick={() => goToStep(actualStepIndex)}
+											/>
+										);
+									})
+							)}
+						</div>
 					</div>
 				</div>
 
@@ -327,7 +343,7 @@ export default function ProjectOverview() {
 				<div className="px-4 pb-4 space-y-3">
 					{/* Assistant prompt pill */}
 					<div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-600 flex items-center justify-between">
-						<span>Hi "{userName}", Need MyHandyAI Assistant?</span>
+						<span>Hi {getFirstName(userName)}, Need MyHandyAI Assistant?</span>
 						<button
 							onClick={openAssistant}
 							className="ml-3 px-3 py-1 rounded-lg bg-[#6FCBAE] text-white text-[12px] font-semibold">
@@ -338,11 +354,12 @@ export default function ProjectOverview() {
 					{/* Chat Assistant Modal */}
 					{openModal && (
 						<ChatWindow2
-							isOpen={open}
+							isOpen={openModal}
 							projectId={projectId}
 							onClose={() => setOpenModal(false)}
 							URL={URL}
 							stepNumber={null}
+							userName={userName}
 						/>
 					)}
 
@@ -402,11 +419,39 @@ const defaultSteps = [
 	},
 ];
 
+// Helper function to round minutes to nearest 10
+function roundMinutesToNearestTen(minutes) {
+	if (!minutes || minutes <= 0) return 10; // Minimum 10 minutes
+	return Math.round(minutes / 10) * 10;
+}
+
+// Helper function to round cost to nearest 10
+function roundCostToNearestTen(amount) {
+	if (!amount || amount <= 0) return 10; // Minimum $10
+	return Math.round(amount / 10) * 10;
+}
+
+// Helper function to format rounded duration
+function formatRoundedDuration(minutes) {
+	const roundedMinutes = roundMinutesToNearestTen(minutes);
+	
+	if (roundedMinutes >= 60) {
+		const hours = Math.floor(roundedMinutes / 60);
+		const remainingMinutes = roundedMinutes % 60;
+		
+		if (remainingMinutes === 0) {
+			return `${hours}hr`;
+		} else {
+			return `${hours}hr ${remainingMinutes}min`;
+		}
+	} else {
+		return `${roundedMinutes}min`;
+	}
+}
+
 function normEstimations(api) {
-	console.log("ProjectOverview: normEstimations called with:", api);
 	
 	if (!api) {
-		console.log("ProjectOverview: No estimation data provided");
 		return null;
 	}
 
@@ -416,40 +461,36 @@ function normEstimations(api) {
 		"cost" in api ||
 		"skill" in api
 	) {
-		console.log("ProjectOverview: Using direct estimation data");
 		return api;
 	}
 
-	console.log("ProjectOverview: Processing nested estimation data structure");
 	const ed = api.estimation_data || api.est || api.data || {};
 	const t = ed.total_estimated_time || {};
 	const c = ed.total_estimated_cost || {};
 	const s = ed.summary || {};
 
-	console.log("ProjectOverview: Extracted data:", { ed, t, c, s });
-
 	const minutes = t.minutes ?? ed.total_est_time_min ?? api.total_est_time_min;
-	const duration =
-		t.human_readable || (minutes ? `${minutes} Minutes` : undefined);
+	const roundedMinutes = roundMinutesToNearestTen(minutes);
+	const duration = formatRoundedDuration(roundedMinutes);
 
 	let cost = "";
 	if (typeof c.amount === "number") {
+		const roundedAmount = roundCostToNearestTen(c.amount);
 		const currency = (c.currency || "USD").toUpperCase();
 		try {
 			cost = new Intl.NumberFormat("en-US", {
 				style: "currency",
 				currency,
-				maximumFractionDigits: 2,
-			}).format(c.amount);
+				maximumFractionDigits: 0, // No decimal places for rounded values
+			}).format(roundedAmount);
 		} catch {
-			cost = `$${c.amount.toFixed(2)}`;
+			cost = `$${roundedAmount}`;
 		}
 	}
 
 	const skill = s.complexity_level || s.complexity || api.skill || "";
 
 	const result = { minutes, duration, cost, skill };
-	console.log("ProjectOverview: Final normalized estimations:", result);
 	return result;
 }
 
@@ -489,7 +530,7 @@ function withTools(steps) {
 		{
 			key: "tools-step",
 			icon: "🧰",
-			title: "Tools Required",
+			title: "Tools and Materials",
 			subtitle: "List of tools needed for this project",
 			time: "",
 			completed: false, // Tools step is never completed
@@ -502,10 +543,18 @@ function extractMinutes(text) {
 	if (!text || typeof text !== "string") return 0;
 	const m = text.match(/(\d+)\s*(?:–|-)?\s*(\d+)?\s*min|(\d+)\s*Minutes/i);
 	if (!m) return 0;
-	if (m[3]) return parseInt(m[3], 10) || 0;
-	if (m[1] && m[2]) return Math.round((+m[1] + +m[2]) / 2);
-	if (m[1]) return +m[1];
-	return 0;
+	
+	let result = 0;
+	if (m[3]) {
+		result = parseInt(m[3], 10) || 0;
+	} else if (m[1] && m[2]) {
+		result = Math.round((+m[1] + +m[2]) / 2);
+	} else if (m[1]) {
+		result = +m[1];
+	}
+	
+	// Round to nearest 10 minutes
+	return roundMinutesToNearestTen(result);
 }
 
 function pickIcon(i) {
@@ -514,22 +563,18 @@ function pickIcon(i) {
 
 // Helper function to extract YouTube URL from steps data
 function extractProjectVideoUrl(steps) {
-	console.log("ProjectOverview: extractProjectVideoUrl called with:", steps);
 	
 	if (!steps) {
-		console.log("ProjectOverview: No steps data provided");
 		return null;
 	}
 
 	// Check if steps has a steps_data object with youtube field
 	if (steps.steps_data && steps.steps_data.youtube) {
-		console.log("ProjectOverview: Found YouTube URL in steps_data:", steps.steps_data.youtube);
 		return steps.steps_data.youtube;
 	}
 
 	// Check if steps has a direct youtube field
 	if (steps.youtube) {
-		console.log("ProjectOverview: Found YouTube URL directly:", steps.youtube);
 		return steps.youtube;
 	}
 
@@ -537,12 +582,10 @@ function extractProjectVideoUrl(steps) {
 	if (Array.isArray(steps)) {
 		for (const step of steps) {
 			if (step.videoUrl || step.video_url || step.youtube) {
-				console.log("ProjectOverview: Found YouTube URL in step:", step.videoUrl || step.video_url || step.youtube);
 				return step.videoUrl || step.video_url || step.youtube;
 			}
 		}
 	}
 
-	console.log("ProjectOverview: No YouTube URL found");
 	return null;
 }

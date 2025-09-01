@@ -5,6 +5,7 @@ export default function StepHeader({
 	stepNumber,
 	totalSteps,
 	title, // e.g., "Prepare Tools and Materials"
+	subtitle, // e.g., "Don't have these? Tap any item to order it easily."
 	onBack,
 	className = "", // lets you pass extra classes if needed
 }) {
@@ -50,7 +51,11 @@ export default function StepHeader({
 			{title && (
 				<div className="px-4 pb-2">
 					<div className="text-center">
-						<p className="text-[16px] leading-5 font-medium text-gray-700">{title}</p>
+						<p className="text-[16px] leading-5 font-medium text-gray-700 mb-1">{title}</p>
+						{/* Subtitle */}
+						{subtitle && (
+							<p className="text-sm text-gray-500 leading-4">{subtitle}</p>
+						)}
 					</div>
 				</div>
 			)}

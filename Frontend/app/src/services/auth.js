@@ -26,6 +26,7 @@ export async function loginUser(email, password) {
 	}
 }
 
+
 // New function for combined signup with onboarding data
 export async function signupUserWithOnboarding(userData, onboardingAnswers) {
 	try {
