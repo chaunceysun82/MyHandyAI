@@ -5,6 +5,9 @@ from fastapi.encoders import jsonable_encoder
 from bson import ObjectId
 from db import project_collection, conversations_collection, steps_collection
 from datetime import datetime
+import os
+from qdrant_client import QdrantClient
+from qdrant_client.http.models import Filter, FieldCondition, MatchValue
 
 router = APIRouter()
 
@@ -80,16 +83,58 @@ def update_project(project_id: str, update_data: dict):
 def delete_project(project_id: str):
     project_obj_id = ObjectId(project_id)
 
-    # Delete the project
     result = project_collection.delete_one({"_id": project_obj_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Delete related conversations
-    conversations_collection.delete_many({"project": project_id})
+    conversations_collection.delete_many({"projectId": project_obj_id})
+    conversations_collection.delete_many({"project": str(project_obj_id)})
 
-    return {"message": "Project and associated conversations deleted"}
+    qdrant_url = os.getenv("QDRANT_URL")
+    qdrant_api_key = os.getenv("QDRANT_API_KEY")
+    collection_name = os.getenv("QDRANT_COLLECTION", "projects")
 
+    if not qdrant_url or not qdrant_api_key:
+        return {
+            "message": "Project and associated conversations deleted from MongoDB. Qdrant not configured; no embeddings removed.",
+            "project_id": project_id
+        }
+
+    try:
+        qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
+
+        filter_by_project = Filter(
+            must=[
+                FieldCondition(
+                    key="project",
+                    match=MatchValue(value=str(project_obj_id))
+                )
+            ]
+        )
+        filter_by_mongo = Filter(
+            must=[
+                FieldCondition(
+                    key="mongo_id",
+                    match=MatchValue(value=str(project_obj_id))
+                )
+            ]
+        )
+        combined_filter = Filter(should=[filter_by_project, filter_by_mongo])
+
+        qclient.delete(collection_name=collection_name, points=combined_filter, wait=True)
+
+    except Exception as e:
+        print(f"Warning: failed to delete Qdrant points for project {project_id}: {e}")
+        return {
+            "message": "Project and conversations deleted from MongoDB. Failed to delete Qdrant embeddings (see server logs).",
+            "project_id": project_id,
+            "qdrant_error": str(e)
+        }
+
+    return {
+        "message": "Project, associated conversations, and Qdrant embeddings deleted successfully",
+        "project_id": project_id
+    }
 # @router.put("/complete-step/{project_id}/{step_number}")
 # def complete_step(project_id: str, step_number: int):
 #     result = steps_collection.update_one(
@@ -166,4 +211,3 @@ def steps_progress(project_id):
         return count/len(steps)
     
     return 0
-
