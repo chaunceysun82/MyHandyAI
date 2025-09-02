@@ -6,7 +6,7 @@ Based on the provided summary, generate several (less than 5) clarifying questio
 
 Your questions should focus on:
 
-1. **Specific Details**: Ask for precise measurements, dimensions, or quantities
+1. **Specific Details**: Ask for precise measurements, dimensions, quantities or weight
 2. **Material Information**: Inquire about the types of materials involved (wood, metal, plastic, etc.)
 3. **Access and Location**: Ask about accessibility, location constraints, or workspace limitations
 4. **Existing Conditions**: Gather information about current state, damage extent, or previous repairs
@@ -21,7 +21,7 @@ Guidelines for question generation:
 - Focus on information that will significantly impact the repair approach
 - Ensure questions are relevant to the specific problem described
 - Use clear, simple language that non-experts can understand
-- Avoid ask questions that can be retrived from RAG, like user experience level, available tools, etc.
+- Avoid ask questions that can be retrived from database, like user experience level, available tools, etc.
 
 Return the questions as a JSON array of objects with 'text' field. Example format:
 [
