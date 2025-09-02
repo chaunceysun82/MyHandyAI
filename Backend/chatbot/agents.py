@@ -545,6 +545,183 @@ Please create a summary of this DIY problem."""
         return f"I understand you have a {problem_type.replace('_', ' ')} issue. Based on the image and your answers, I can help you resolve this problem."
 
 
+class ImageQuestionAnalyzer:
+    """Analyzes images in the context of specific clarification questions"""
+    
+    def __init__(self):
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_url = "https://api.openai.com/v1/chat/completions"
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+    
+    def detect_help_request(self, user_message: str) -> bool:
+        """Detect if user is asking for help/guidance"""
+        help_keywords = [
+            "how do i", "how can i", "how to", "help me", "i don't know",
+            "not sure", "can't tell", "how do you", "what should i look for",
+            "how would i", "help identify", "help determine", "show me"
+        ]
+        user_lower = user_message.lower()
+        return any(keyword in user_lower for keyword in help_keywords)
+    
+    def analyze_question_image(
+        self,
+        image_data: bytes,
+        question: str,
+        user_message: str,
+        problem_type: str
+    ) -> Dict[str, Any]:
+        """
+        Analyze image in context of specific question
+        
+        Returns:
+        - analysis: What's seen in the image
+        - answer_extracted: Direct answer extracted from image
+        - guidance_provided: Help/guidance if requested
+        - confidence: Confidence in the analysis
+        - follow_up_needed: Whether more clarification is needed
+        """
+        
+        b64 = base64.b64encode(image_data).decode("utf-8")
+        is_help_request = self.detect_help_request(user_message)
+        
+        if is_help_request:
+            return self._provide_visual_guidance(b64, question, user_message, problem_type)
+        else:
+            return self._extract_answer_from_image(b64, question, user_message, problem_type)
+    
+    def _provide_visual_guidance(self, b64: str, question: str, user_message: str, problem_type: str) -> Dict[str, Any]:
+        """Generate helpful guidance based on image"""
+        
+        system_prompt = f"""You are a helpful DIY assistant analyzing an image to provide guidance for a clarification question.
+
+The user asked: "{question}"
+User's message: "{user_message}"
+Problem type: {problem_type}
+
+Your task is to analyze the image and provide helpful guidance to answer the question. Look for:
+- Specific visual features that help identify materials, types, or characteristics
+- Measurement indicators or scale references
+- Contextual clues from surroundings
+- Safety considerations
+
+Provide educational guidance explaining what to look for and what you can observe in the image.
+
+Return JSON with:
+- "analysis": What you see in the image
+- "guidance": Helpful explanation of what the user should look for
+- "visual_indicators": Specific things you can identify from the image
+- "suggested_answer": Your best assessment based on the image
+- "confidence": Float between 0.0-1.0 for how confident you are
+- "follow_up_needed": Boolean - whether more info is needed
+"""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": f"Please help me understand: {question}"},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+                ]
+            }
+        ]
+
+        try:
+            r = requests.post(
+                self.api_url, headers=self.headers,
+                json={"model": "gpt-4o", "messages": messages, "max_tokens": 800}
+            )
+            if r.status_code == 200:
+                result = clean_and_parse_json(r.json()["choices"][0]["message"]["content"])
+                result["is_help_request"] = True
+                return result
+        except Exception:
+            pass
+        
+        return {
+            "analysis": "I can see your image",
+            "guidance": "I can help analyze what's shown to answer your question.",
+            "visual_indicators": [],
+            "suggested_answer": "",
+            "confidence": 0.3,
+            "follow_up_needed": True,
+            "is_help_request": True
+        }
+    
+    def _extract_answer_from_image(self, b64: str, question: str, user_message: str, problem_type: str) -> Dict[str, Any]:
+        """Extract direct answer from image"""
+        
+        # Create question-type specific prompts
+        question_lower = question.lower()
+        
+        if any(word in question_lower for word in ["wall", "material", "surface"]):
+            analysis_focus = "material identification, wall type, surface characteristics"
+        elif any(word in question_lower for word in ["size", "dimension", "big", "wide", "tall"]):
+            analysis_focus = "measurements, dimensions, scale indicators"
+        elif any(word in question_lower for word in ["location", "where", "room"]):
+            analysis_focus = "room type, location context, surroundings"
+        elif any(word in question_lower for word in ["tool", "equipment"]):
+            analysis_focus = "tools, equipment, available resources"
+        elif any(word in question_lower for word in ["damage", "problem", "issue"]):
+            analysis_focus = "damage assessment, problem areas, condition"
+        else:
+            analysis_focus = "general visual analysis relevant to the question"
+
+        system_prompt = f"""You are analyzing an image to answer a specific DIY question.
+
+Question: "{question}"
+User's response: "{user_message}"
+Problem type: {problem_type}
+Focus on: {analysis_focus}
+
+Analyze the image to extract information that answers the question. Be specific and factual.
+
+Return JSON with:
+- "analysis": What you see in the image
+- "answer_extracted": Direct answer to the question based on the image
+- "supporting_evidence": Visual evidence that supports your answer
+- "confidence": Float between 0.0-1.0 for how confident you are
+- "follow_up_needed": Boolean - whether the image fully answers the question
+- "additional_context": Any extra relevant information from the image
+"""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user", 
+                "content": [
+                    {"type": "text", "text": f"Question: {question}\nUser said: {user_message}"},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+                ]
+            }
+        ]
+
+        try:
+            r = requests.post(
+                self.api_url, headers=self.headers,
+                json={"model": "gpt-4o", "messages": messages, "max_tokens": 800}
+            )
+            if r.status_code == 200:
+                result = clean_and_parse_json(r.json()["choices"][0]["message"]["content"])
+                result["is_help_request"] = False
+                return result
+        except Exception:
+            pass
+        
+        return {
+            "analysis": "I can see your image",
+            "answer_extracted": user_message,  # Fall back to user's text
+            "supporting_evidence": [],
+            "confidence": 0.5,
+            "follow_up_needed": False,
+            "additional_context": "",
+            "is_help_request": False
+        }
+
+
 class QuestionClarificationAgent:
     """Agent 4: Uses an LLM to (1) detect 'skip', (2) detect 'don't know' and rephrase,
                 (3) detect irrelevant/unrealistic answers and re-ask, or (4) accept."""
@@ -556,6 +733,7 @@ class QuestionClarificationAgent:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        self.image_analyzer = ImageQuestionAnalyzer()
 
     def handle_user_response(self, question: str, user_response: str) -> tuple[str, bool]:
         """
@@ -593,6 +771,98 @@ class QuestionClarificationAgent:
                 f"I didn't quite catch that. Could you clarify your answer to:\n\n**{question}**"
             )
             return (fallback, False)
+
+    def handle_user_response_with_image(
+        self, 
+        question: str, 
+        user_response: str, 
+        uploaded_image: Optional[bytes] = None,
+        problem_type: str = "",
+        context: Dict = None
+    ) -> tuple[str, bool, Optional[str]]:
+        """
+        Enhanced response handler that supports image analysis
+        
+        Returns:
+            message: str - Response to user
+            advance: bool - Whether to move to next question
+            enhanced_answer: Optional[str] - Combined text + image insights for storage
+        """
+        
+        if uploaded_image:
+            # Analyze the image in context of the question
+            image_result = self.image_analyzer.analyze_question_image(
+                uploaded_image, question, user_response, problem_type
+            )
+            
+            if image_result.get("is_help_request", False):
+                # User asked for help - provide guidance and re-ask
+                guidance = image_result.get("guidance", "")
+                visual_indicators = image_result.get("visual_indicators", [])
+                suggested_answer = image_result.get("suggested_answer", "")
+                
+                response_parts = []
+                if guidance:
+                    response_parts.append(f"📸 Looking at your photo: {guidance}")
+                
+                if visual_indicators:
+                    indicators_text = ", ".join(visual_indicators)
+                    response_parts.append(f"I can see: {indicators_text}")
+                
+                if suggested_answer:
+                    response_parts.append(f"Based on the image, it appears to be: **{suggested_answer}**")
+                    response_parts.append("Does this help? Please confirm or let me know if you need more clarification.")
+                else:
+                    response_parts.append(f"Please let me know what you think based on this guidance.")
+                
+                return ("\n\n".join(response_parts), False, None)
+            
+            else:
+                # User provided answer with image evidence
+                answer_extracted = image_result.get("answer_extracted", user_response)
+                supporting_evidence = image_result.get("supporting_evidence", [])
+                confidence = image_result.get("confidence", 0.5)
+                follow_up_needed = image_result.get("follow_up_needed", False)
+                additional_context = image_result.get("additional_context", "")
+                
+                # Combine text and image insights
+                enhanced_answer = user_response
+                if answer_extracted and answer_extracted != user_response:
+                    enhanced_answer = f"{user_response} [Image analysis: {answer_extracted}]"
+                if additional_context:
+                    enhanced_answer += f" [Context: {additional_context}]"
+                
+                # High confidence and no follow-up needed = accept
+                if confidence >= 0.7 and not follow_up_needed:
+                    confirmation_msg = ""
+                    if supporting_evidence:
+                        evidence_text = ", ".join(supporting_evidence)
+                        confirmation_msg = f"✅ Great! I can confirm from the photo: {evidence_text}"
+                    
+                    return (confirmation_msg, True, enhanced_answer)
+                
+                # Medium confidence or follow-up needed = ask for confirmation
+                elif confidence >= 0.4:
+                    response_parts = []
+                    if answer_extracted:
+                        response_parts.append(f"📸 From your photo, I can see: {answer_extracted}")
+                    if supporting_evidence:
+                        evidence_text = ", ".join(supporting_evidence)
+                        response_parts.append(f"Supporting evidence: {evidence_text}")
+                    
+                    response_parts.append("Does this match what you were trying to tell me?")
+                    
+                    return ("\n\n".join(response_parts), False, enhanced_answer)
+                
+                # Low confidence = ask for clarification
+                else:
+                    response_msg = f"I can see your photo, but I'm not entirely sure about the answer. Could you provide a bit more detail about: **{question}**"
+                    return (response_msg, False, enhanced_answer)
+        
+        else:
+            # No image provided - use standard text-only logic
+            message, advance = self.handle_user_response(question, user_response)
+            return (message, advance, user_response)
 
     def detect_revision_request(self, user_message: str, current_question: str, question_history: List[str]) -> tuple[bool, Optional[int], str]:
         """
@@ -822,16 +1092,32 @@ class AgenticChatbot:
             # Don't assume keys exist
             self.problem_type = (result.get("problem_type") or "general_repair").strip()
             
-            msg = result.get("response_message") or (
-                "Got it — please share a photo of the problem area and a wider photo for context."
-            )
-            
             # Optional triage bootstrap if the recognizer returns any
             if isinstance(result, dict) and result.get("triage_state"):
                 self.update_triage_state(result["triage_state"])
             
-            self.current_state = "waiting_for_photos"
-            return msg
+            # NEW: Check if image was provided with initial description
+            if uploaded_image:
+                # User provided both description AND image - process both immediately
+                image_result = self.image_agent.analyze_image(uploaded_image, self.problem_type)
+                if isinstance(image_result, dict) and "analysis" in image_result and "questions" in image_result:
+                    self.image_analysis = str(image_result.get("analysis") or "Image analysis completed")
+                    # Skip waiting_for_photos state and go directly to questions
+                    return self._prepare_questions_from_result(image_result)
+                else:
+                    # Image analysis failed, fall back to asking for photo again
+                    self.current_state = "waiting_for_photos"
+                    msg = result.get("response_message") or (
+                        "I had trouble analyzing the image you provided. Could you please share a clearer photo of the problem area?"
+                    )
+                    return msg
+            else:
+                # No image provided - proceed with current behavior
+                msg = result.get("response_message") or (
+                    "Got it — please share a photo of the problem area and a wider photo for context."
+                )
+                self.current_state = "waiting_for_photos"
+                return msg
 
         # 2) Handle photo upload or skip
         if self.current_state == "waiting_for_photos":
@@ -857,7 +1143,7 @@ class AgenticChatbot:
             # No image uploaded and no skip command
             return "Please upload the requested photo so I can analyse it, or type 'skip' if you prefer not to share photos."
 
-        # 3) Q&A loop
+        # 3) Q&A loop with image support
         if self.current_state == "asking_questions":
             current_q = self.questions[self.current_question_index]
             
@@ -875,32 +1161,51 @@ class AgenticChatbot:
             #         # Ask user to specify which question
             #         return revision_message
             
-            # Continue with normal clarification logic
-            clarification, advance = self.clarification_agent.handle_user_response(
-                current_q, user_message
+            # Use enhanced image-aware clarification logic
+            clarification, advance, enhanced_answer = self.clarification_agent.handle_user_response_with_image(
+                current_q, user_message, uploaded_image, self.problem_type, self.triage_state
             )
 
             if advance:
-                # store either "skipped" or the real answer
-                answer = "skipped" if clarification.startswith("Got it") else user_message
-                self.user_answers[self.current_question_index] = answer
+                # Store the enhanced answer (combines text + image insights)
+                final_answer = enhanced_answer if enhanced_answer else user_message
+                if clarification.startswith("Got it"):
+                    final_answer = "skipped"
+                
+                self.user_answers[self.current_question_index] = final_answer
                 
                 # 6a) Heuristic: if this looks like a dimensions question, parse and store
                 if isinstance(current_q, str) and re.search(r"\b(dimension|size|width|height)\b", current_q.lower()):
-                    dims = self.smart_question_manager.parse_dimensions(answer)
+                    dims = self.smart_question_manager.parse_dimensions(final_answer)
                     if dims:
                         self.update_triage_state({"dimensions": {"item": dims}})
 
-                # 6b) Extract extra context (location/materials/tools/symptoms) from the free-text answer
+                # 6b) Extract extra context (location/materials/tools/symptoms) from the enhanced answer
                 ctx_patch = self.smart_question_manager.extract_context_from_answers(
-                    {self.current_question_index: answer}
+                    {self.current_question_index: final_answer}
                 )
                 self.update_triage_state(ctx_patch)
+                
+                # 6c) Extract additional context from image analysis if available
+                if uploaded_image and enhanced_answer and "[Context:" in enhanced_answer:
+                    # Try to extract structured info from image context
+                    try:
+                        context_part = enhanced_answer.split("[Context:")[1].split("]")[0]
+                        image_ctx_patch = self.smart_question_manager.extract_context_from_answers(
+                            {f"image_context_{self.current_question_index}": context_part}
+                        )
+                        self.update_triage_state(image_ctx_patch)
+                    except Exception:
+                        pass  # Don't fail if context extraction fails
                 
                 self.current_question_index += 1
                 return self._proceed_after_question(preamble=clarification)
 
-            return f"{clarification}\n\n**Please answer:**\n{current_q}"
+            # Re-ask the question with clarification or guidance
+            if clarification:
+                return f"{clarification}\n\n**Please answer:**\n{current_q}"
+            else:
+                return f"**Please answer:**\n{current_q}"
 
         # 4) Summary confirmation
         if self.current_state == "showing_summary":
