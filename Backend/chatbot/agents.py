@@ -637,6 +637,14 @@ Return JSON with:
             if r.status_code == 200:
                 result = clean_and_parse_json(r.json()["choices"][0]["message"]["content"])
                 result["is_help_request"] = True
+                
+                # Ensure visual_indicators is always a list
+                if "visual_indicators" in result and not isinstance(result["visual_indicators"], list):
+                    if isinstance(result["visual_indicators"], str):
+                        result["visual_indicators"] = [result["visual_indicators"]]
+                    else:
+                        result["visual_indicators"] = []
+                
                 return result
         except Exception:
             pass
@@ -644,7 +652,7 @@ Return JSON with:
         return {
             "analysis": "I can see your image",
             "guidance": "I can help analyze what's shown to answer your question.",
-            "visual_indicators": [],
+            "visual_indicators": [],  # Ensure this is always a list
             "suggested_answer": "",
             "confidence": 0.3,
             "follow_up_needed": True,
@@ -707,6 +715,14 @@ Return JSON with:
             if r.status_code == 200:
                 result = clean_and_parse_json(r.json()["choices"][0]["message"]["content"])
                 result["is_help_request"] = False
+                
+                # Ensure supporting_evidence is always a list
+                if "supporting_evidence" in result and not isinstance(result["supporting_evidence"], list):
+                    if isinstance(result["supporting_evidence"], str):
+                        result["supporting_evidence"] = [result["supporting_evidence"]]
+                    else:
+                        result["supporting_evidence"] = []
+                
                 return result
         except Exception:
             pass
@@ -714,7 +730,7 @@ Return JSON with:
         return {
             "analysis": "I can see your image",
             "answer_extracted": user_message,  # Fall back to user's text
-            "supporting_evidence": [],
+            "supporting_evidence": [],  # Ensure this is always a list
             "confidence": 0.5,
             "follow_up_needed": False,
             "additional_context": "",
@@ -806,7 +822,13 @@ class QuestionClarificationAgent:
                     response_parts.append(f"📸 Looking at your photo: {guidance}")
                 
                 if visual_indicators:
-                    indicators_text = ", ".join(visual_indicators)
+                    # Ensure visual_indicators is properly formatted
+                    if isinstance(visual_indicators, str):
+                        indicators_text = visual_indicators
+                    elif isinstance(visual_indicators, list):
+                        indicators_text = ", ".join(str(item) for item in visual_indicators)
+                    else:
+                        indicators_text = str(visual_indicators)
                     response_parts.append(f"I can see: {indicators_text}")
                 
                 if suggested_answer:
@@ -836,7 +858,13 @@ class QuestionClarificationAgent:
                 if confidence >= 0.7 and not follow_up_needed:
                     confirmation_msg = ""
                     if supporting_evidence:
-                        evidence_text = ", ".join(supporting_evidence)
+                        # Ensure supporting_evidence is a list, not a string
+                        if isinstance(supporting_evidence, str):
+                            evidence_text = supporting_evidence
+                        elif isinstance(supporting_evidence, list):
+                            evidence_text = ", ".join(str(item) for item in supporting_evidence)
+                        else:
+                            evidence_text = str(supporting_evidence)
                         confirmation_msg = f"✅ Great! I can confirm from the photo: {evidence_text}"
                     
                     return (confirmation_msg, True, enhanced_answer)
@@ -847,7 +875,13 @@ class QuestionClarificationAgent:
                     if answer_extracted:
                         response_parts.append(f"📸 From your photo, I can see: {answer_extracted}")
                     if supporting_evidence:
-                        evidence_text = ", ".join(supporting_evidence)
+                        # Ensure supporting_evidence is properly formatted
+                        if isinstance(supporting_evidence, str):
+                            evidence_text = supporting_evidence
+                        elif isinstance(supporting_evidence, list):
+                            evidence_text = ", ".join(str(item) for item in supporting_evidence)
+                        else:
+                            evidence_text = str(supporting_evidence)
                         response_parts.append(f"Supporting evidence: {evidence_text}")
                     
                     response_parts.append("Does this match what you were trying to tell me?")
@@ -1325,11 +1359,11 @@ class AgenticChatbot:
                 )
                 self.current_state = "showing_summary"
                 
-                # Determine the appropriate message based on whether image was provided
-                if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
-                    intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
+                # Determine the appropriate message based on whether we have meaningful image analysis
+                if self.image_analysis and self.image_analysis.strip() and self.image_analysis != "Image analysis completed":
+                    intro_message = f"Great, thanks for the photo!\n\n📸 **What I can see:** {self.image_analysis}\n\n"
                 else:
-                    intro_message = f"Okay! Based on your description:\n\n{self.image_analysis}\n\n"
+                    intro_message = f"Got it! Based on your description:\n\n"
                 
                 return (
                     f"{intro_message}"
@@ -1362,11 +1396,11 @@ class AgenticChatbot:
             )
             self.current_state = "showing_summary"
             
-            # Determine the appropriate message based on whether image was provided
-            if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
-                intro_message = f"Great, thanks for the photo! \n\n{self.image_analysis}\n\n"
+            # Determine the appropriate message based on whether we have meaningful image analysis
+            if self.image_analysis and self.image_analysis.strip() and self.image_analysis != "Image analysis completed":
+                intro_message = f"Great, thanks for the photo!\n\n📸 **What I can see:** {self.image_analysis}\n\n"
             else:
-                intro_message = f"Okay! Based on your description:\n\n{self.image_analysis}\n\n"
+                intro_message = f"Got it! Based on your description:\n\n"
             
             return (
                 f"{intro_message}"
@@ -1378,11 +1412,11 @@ class AgenticChatbot:
         self.current_question_index = 0
         self.current_state = "asking_questions"
         
-        # Determine the appropriate message based on whether image was provided
-        if "photo" in (self.image_analysis or "").lower() or "image" in (self.image_analysis or "").lower():
-            intro_message = f"Great, thanks for the photo!\n\n{self.image_analysis}\n\n"
+        # Determine the appropriate message based on whether we have meaningful image analysis
+        if self.image_analysis and self.image_analysis.strip() and self.image_analysis != "Image analysis completed":
+            intro_message = f"Great, thanks for the photo!\n\n📸 **What I can see:** {self.image_analysis}\n\n"
         else:
-            intro_message = f"Okay!\n\n"
+            intro_message = f"Got it!\n\n"
         
         return (
             f"{intro_message}"
