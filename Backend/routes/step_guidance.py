@@ -7,6 +7,7 @@ import uuid
 import json
 import pickle
 import re
+import base64
 from datetime import datetime
 from bson import ObjectId
 from pymongo import DESCENDING
@@ -30,7 +31,7 @@ class ChatMessage(BaseModel):
     message: str
     project: str
     step: int
-    uploaded_image: Optional[str] = None  # placeholder; not used by this bot
+    uploaded_image: Optional[str] = None  # base64 image for step guidance and troubleshooting
 
 class ChatResponse(BaseModel):
     response: str
@@ -249,7 +250,17 @@ def chat_with_step_guidance(payload: ChatMessage):
 
     _log(session_id, "user", payload.message, bot, project["userId"], payload.project)
     
-    reply = bot.chat(payload.message, payload.step)
+    # Process uploaded image if provided
+    uploaded_image = None
+    if payload.uploaded_image:
+        image_data = payload.uploaded_image
+        if image_data.startswith('data:image'):
+            # Extract base64 part if it includes data URL prefix
+            image_data = image_data.split(',')[1]
+        uploaded_image = base64.b64decode(image_data)
+    
+    # Call chat method with image support
+    reply = bot.chat(payload.message, payload.step, uploaded_image)
     _log(session_id, "assistant", reply, bot, project["userId"], payload.project)
 
     return ChatResponse(
