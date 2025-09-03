@@ -119,10 +119,14 @@ export default function StepCompletionConfirmation({
 		});
 		setShowCongratulatoryCard(true);
 		
-		// Auto-hide after 6 seconds
+		// Auto-hide after 3 seconds
 		setTimeout(() => {
 			setShowCongratulatoryCard(false);
-		}, 6000);
+			// If this is the final step, navigate to project completion
+			if (isFinalStepCompleted && onProjectComplete) {
+				onProjectComplete();
+			}
+		}, 4000);
 	};
 
 	// Complete all remaining steps and finish project
@@ -354,29 +358,11 @@ export default function StepCompletionConfirmation({
 								<>
 									Step {completedStepData.stepNumber}/{completedStepData.total} ({completedStepData.stepTitle}) is complete!
 									{completedStepData.nextStepTitle && (
-										<> You can continue with {completedStepData.nextStepTitle}.</>
+										<> You can continue with Step {completedStepData.stepNumber + 1}/{completedStepData.total}.</>
 									)}
 								</>
 							)}
 						</p>
-						
-						{/* Close Button */}
-						<button
-							onClick={() => {
-								setShowCongratulatoryCard(false);
-								// If this is the final step, navigate to project completion
-								if (completedStepData.isFinalStep && onProjectComplete) {
-									onProjectComplete();
-								}
-							}}
-							className={`w-full py-2 px-4 font-medium rounded-lg transition-colors ${
-								completedStepData.isFinalStep 
-									? 'bg-green-500 text-white hover:bg-green-600'
-									: 'bg-blue-500 text-white hover:bg-blue-600'
-							}`}
-						>
-							{completedStepData.isFinalStep ? 'Finish Project' : 'Continue'}
-						</button>
 					</div>
 				</div>
 			)}

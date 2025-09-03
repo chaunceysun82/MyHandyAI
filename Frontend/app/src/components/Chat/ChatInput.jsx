@@ -10,6 +10,7 @@ export default function ChatInput({ onSend, onDetected, apiBase, showQuickReplie
   const [previews, setPreviews] = useState([]);
   const [detecting, setDetecting] = useState(false);
   const [detectError, setDetectError] = useState("");
+  const [processingImages, setProcessingImages] = useState(false);
 
   const { transcript, listening, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
 
@@ -72,7 +73,32 @@ export default function ChatInput({ onSend, onDetected, apiBase, showQuickReplie
 
   const handleFiles = async (event) => {
     const files = Array.from(event.target.files);
-    setSelectedFiles((prev) => [...prev, ...files]);
+    
+    // Validate files before adding
+    const validFiles = files.filter(file => {
+      // Check if it's an image
+      if (!file.type.startsWith("image/")) {
+        console.warn(`Skipping non-image file: ${file.name}`);
+        return false;
+      }
+      
+      // Check file size (limit to 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        console.warn(`File too large: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+        return false;
+      }
+      
+      return true;
+    });
+    
+    // Show warning if some files were filtered out
+    if (validFiles.length !== files.length) {
+      const skippedCount = files.length - validFiles.length;
+      alert(`Warning: ${skippedCount} file(s) were skipped due to size limits (max 5MB) or invalid format (images only).`);
+    }
+    
+    setSelectedFiles((prev) => [...prev, ...validFiles]);
     
     event.target.value = "";
   };
@@ -88,6 +114,9 @@ export default function ChatInput({ onSend, onDetected, apiBase, showQuickReplie
       {/* Small detection status */}
       {detecting && (
         <div className="text-xs text-gray-500 px-1">Analyzing image…</div>
+      )}
+      {processingImages && (
+        <div className="text-xs text-blue-500 px-1">Processing images…</div>
       )}
       {!!detectError && (
         <div className="text-xs text-red-500 px-1">{detectError}</div>
@@ -135,7 +164,7 @@ export default function ChatInput({ onSend, onDetected, apiBase, showQuickReplie
             ref={fileInputRef}
             onChange={handleFiles}
             multiple
-            accept="image/*" // Only allow image files
+            accept="image/*,.jpg,.jpeg,.png,.gif,.webp" // Only allow image files with specific extensions
             className="hidden"
           />
         </button>
