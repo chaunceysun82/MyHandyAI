@@ -22,7 +22,8 @@ class User(BaseModel):
 
 class LoginData(BaseModel):
     email: EmailStr
-    password: str
+    password: Optional[str] = None
+    google_flag: Optional[bool] = None
 
 @router.post("/users")
 def create_user(user: User):
@@ -63,6 +64,10 @@ def delete_user(user_id: str):
 @router.post("/login")
 def login(data: LoginData):
     user = users_collection.find_one({"email": data.email})
+    if data.google_flag:
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {"message": "Login successful", "id": str(user["_id"])}
     if not user or user.get("password") != data.password:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     return {"message": "Login successful", "id": str(user["_id"])}
