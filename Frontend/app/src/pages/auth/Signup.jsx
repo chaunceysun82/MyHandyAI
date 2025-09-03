@@ -150,6 +150,14 @@ const Signup = () => {
 				localStorage.setItem("displayName", user.displayName || user.email?.split("@")[0] || "User");
 				localStorage.setItem("userEmail", user.email || "");
 				
+				// Store user data for onboarding (same as email users)
+				localStorage.setItem("tempUserData", JSON.stringify({
+					userId: data.id,
+					firstname: user.displayName.split(" ")[0] || user.displayName,
+					lastname: user.displayName.split(" ").slice(1).join(" ") || "",
+					email: user.email
+				}));
+				
 				// Navigate to onboarding
 				navigate("/onboarding/1");
 			} else {
