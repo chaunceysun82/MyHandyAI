@@ -55,61 +55,69 @@ const Login = () => {
 			const user = result.user;
 			console.log("Google login attempt for:", user.email);
 			
-			// For Google sign-in, we'll try to find existing user by attempting to create a temporary user
-			// This works with the existing backend endpoint
-			try {
-				const response = await fetch(`${process.env.REACT_APP_BASE_URL}/users`, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						firstname: "temp",
-						lastname: "temp",
-						email: user.email,
-						password: "temp"
-					}),
-				});
+			// Use the updated login endpoint with google_flag to ignore password validation
+			const response = await fetch(`${process.env.REACT_APP_BASE_URL}/login`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					email: user.email,
+					password: "", // Empty password for Google users
+					google_flag: true // Flag to indicate Google authentication
+				}),
+			});
+			
+			if (response.ok) {
+				const data = await response.json();
+				console.log("Google login successful:", data);
 				
-				if (response.status === 400) {
-					const error = await response.json();
-					if (error.detail === "Email already exists") {
-						// User exists, we need to check onboarding completion
-						// But since we don't have a way to get user data by email without backend changes,
-						// we'll redirect to onboarding to let them complete it
-						console.log("Existing user found, redirecting to onboarding");
-						
-						// Store Google user data temporarily
-						localStorage.setItem("tempGoogleUser", JSON.stringify({
-							uid: user.uid,
-							email: user.email,
-							displayName: user.displayName || user.email?.split("@")[0] || "User"
+				// Store backend user ID (not Firebase UID)
+				const store = rememberMe ? localStorage : sessionStorage;
+				store.setItem("authToken", data.id);
+				
+				// Fetch user data and check onboarding completion
+				try {
+					const userData = await getUserById(data.id);
+					const full = [userData.firstname, userData.lastname].filter(Boolean).join(" ") || (userData.email ?? "User");
+					store.setItem("displayName", full);
+					store.setItem("userEmail", userData.email || "");
+					
+					// Check if user has completed onboarding
+					if (hasCompletedOnboarding(userData)) {
+						console.log("User has completed onboarding, redirecting to home");
+						// Set flag to indicate user is coming from login
+						localStorage.setItem("fromLogin", "true");
+						navigate("/home");
+					} else {
+						console.log("User has not completed onboarding, redirecting to onboarding");
+						// Store user data temporarily for onboarding completion
+						localStorage.setItem("tempUserData", JSON.stringify({
+							userId: data.id,
+							firstname: userData.firstname,
+							lastname: userData.lastname,
+							email: userData.email
 						}));
-						
-						setErrors(prev => ({
-							...prev,
-							general: "Please login with your password to continue, or complete onboarding if you haven't finished it."
-						}));
-						return;
+						navigate("/onboarding", { replace: true });
 					}
+				} catch (error) {
+					console.error("Error fetching user data:", error);
+					// If we can't fetch user data, redirect to home as fallback
+					navigate("/home");
 				}
-				
-				// User doesn't exist, proceed with signup
-				console.log("New user, proceeding with signup");
+			} else if (response.status === 404) {
+				// User doesn't exist - redirect to signup
+				console.log("Google user not found, redirecting to signup");
 				localStorage.setItem("tempGoogleUser", JSON.stringify({
 					uid: user.uid,
 					email: user.email,
 					displayName: user.displayName || user.email?.split("@")[0] || "User"
 				}));
 				navigate("/signup");
-				
-			} catch (error) {
-				console.error("Error checking user existence:", error);
-				// If we can't check, assume new user and redirect to signup
-				localStorage.setItem("tempGoogleUser", JSON.stringify({
-					uid: user.uid,
-					email: user.email,
-					displayName: user.displayName || user.email?.split("@")[0] || "User"
+			} else {
+				const error = await response.json();
+				setErrors(prev => ({
+					...prev,
+					general: error.detail || "Google login failed"
 				}));
-				navigate("/signup");
 			}
 		} catch (error) {
 			console.error("An error occurred during Google sign-in:", error);

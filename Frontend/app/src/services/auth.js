@@ -180,20 +180,21 @@ export async function createUserDuringSignup(userData) {
 
 // Check if user has completed onboarding
 export function hasCompletedOnboarding(user) {
-	// Check if user has the essential onboarding fields
-	// These fields are typically set during onboarding completion
+	// Check if user has any onboarding fields
+	// Since onboarding questions are optional, we just need to check if the user
+	// has gone through the onboarding process and has at least some data
 	const onboardingFields = [
 		'experienceLevel',
 		'confidence', 
 		'tools',
 		'interestedProjects',
 		'country',
-		'state'
+		'state',
+		'describe'
 	];
 	
-	// User has completed onboarding if they have at least 3 of these fields
-	// and the fields have meaningful values (not just empty strings or null)
-	const completedFields = onboardingFields.filter(field => {
+	// Check if user has any onboarding data
+	const hasAnyOnboardingData = onboardingFields.some(field => {
 		const value = user[field];
 		return value && 
 			   value !== "" && 
@@ -202,11 +203,13 @@ export function hasCompletedOnboarding(user) {
 			   (typeof value === 'string' ? value.trim().length > 0 : true);
 	});
 	
-	// Also check if user has a describe field as it's often filled during onboarding
-	if (user.describe && user.describe.trim().length > 0) {
-		completedFields.push('describe');
-	}
+	// Alternative: Check if user has been through onboarding by looking for any onboarding-related field
+	// This is more lenient and accounts for optional questions
+	const hasOnboardingExperience = hasAnyOnboardingData || 
+		(user.experienceLevel || user.confidence || user.tools || user.interestedProjects || 
+		 user.country || user.state || user.describe);
 	
-	// User has completed onboarding if they have at least 3 meaningful onboarding fields
-	return completedFields.length >= 3;
+	// User has completed onboarding if they have any onboarding data
+	// This is more flexible and accounts for optional questions
+	return hasOnboardingExperience;
 }

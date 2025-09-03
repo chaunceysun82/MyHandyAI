@@ -99,7 +99,7 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
             
             {/* User Info */}
             <div className="flex flex-col">
-              <h3 className="text-base font-semibold text-gray-900">{userName}</h3>
+              <h3 className="text-base font-semibold text-gray-900">{userName.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}</h3>
               <p className="text-xs text-gray-600">{userEmail}</p>
             </div>
           </div>

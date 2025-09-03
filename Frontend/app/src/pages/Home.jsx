@@ -334,7 +334,7 @@ export default function Home() {
         <div className="p-4 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center justify-between">
             <h1 className="text-[20px] font-regular text-[#000000]">
-              {welcomeType === "welcome" ? "Welcome" : "Welcome back"} <span className="text-black font-bold text-[20px]">{getFirstName(userName)}</span>
+              {welcomeType === "welcome" ? "Welcome" : "Welcome back"}, <span className="text-black font-bold text-[20px]">{getFirstName(userName)}</span>
             </h1>
             <button 
               onClick={openSidebar}

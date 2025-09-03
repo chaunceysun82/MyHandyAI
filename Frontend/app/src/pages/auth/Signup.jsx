@@ -128,12 +128,54 @@ const Signup = () => {
 			// Clear any temporary Google user data from login redirect
 			localStorage.removeItem("tempGoogleUser");
 			
-			// For signup, always redirect to onboarding since this is a new user
-			console.log("New user signing up, redirecting to onboarding");
-			localStorage.setItem("authToken", user.uid);
-			localStorage.setItem("displayName", user.displayName || user.email?.split("@")[0] || "User");
-			localStorage.setItem("userEmail", user.email || "");
-			navigate("/onboarding/1");
+			// Create user in backend immediately with Google data
+			const response = await fetch(`${process.env.REACT_APP_BASE_URL}/users`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					firstname: user.displayName.split(" ")[0] || user.displayName,
+					lastname: user.displayName.split(" ").slice(1).join(" ") || "",
+					email: user.email,
+					password: "", // Empty password for Google users
+					google_flag: true // Flag to indicate Google user
+				}),
+			});
+			
+			if (response.ok) {
+				const data = await response.json();
+				console.log("Google user created in backend:", data);
+				
+				// Store backend user ID (not Firebase UID)
+				localStorage.setItem("authToken", data.id);
+				localStorage.setItem("displayName", user.displayName || user.email?.split("@")[0] || "User");
+				localStorage.setItem("userEmail", user.email || "");
+				
+				// Store user data for onboarding (same as email users)
+				localStorage.setItem("tempUserData", JSON.stringify({
+					userId: data.id,
+					firstname: user.displayName.split(" ")[0] || user.displayName,
+					lastname: user.displayName.split(" ").slice(1).join(" ") || "",
+					email: user.email
+				}));
+				
+				// Navigate to onboarding
+				navigate("/onboarding/1");
+			} else {
+				const error = await response.json();
+				console.error("Backend error creating Google user:", error);
+				
+				if (error.detail === "Email already exists") {
+					setErrors(prev => ({
+						...prev,
+						general: "This Google account is already registered. Please login instead."
+					}));
+				} else {
+					setErrors(prev => ({
+						...prev,
+						general: error.detail || "Google signup failed. Please try again."
+					}));
+				}
+			}
 		} catch (error) {
 			console.error("An error occurred during Google signup:", error);
 			setErrors(prev => ({
