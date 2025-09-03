@@ -5,12 +5,137 @@ import os
 import re
 import json
 import math
+import base64
+import requests
 from typing import Dict, Any, List, Optional
 
 DEFAULT_MODEL = os.getenv("STEP_GUIDANCE_MODEL", "gpt-5-nano") 
 CLASSIFIER_MODEL = os.getenv("STEP_GUIDANCE_CLASSIFIER_MODEL", "gpt-5-nano")
 MAX_TURNS_IN_CONTEXT = int(os.getenv("STEP_GUIDANCE_MAX_TURNS", "10"))
 MIN_RELEVANCE_TO_ANSWER = float(os.getenv("STEP_GUIDANCE_MIN_REL", "0.35"))  # 0..1
+
+def clean_and_parse_json(raw_str: str):
+    """
+    Cleans code fences (```json ... ```) from a string and parses it as JSON.
+    """
+    if raw_str is None:
+        raise ValueError("No input string")
+    s = raw_str.strip()
+    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)           # strip fences
+    m = re.search(r"\{.*\}\s*$", s, flags=re.S)               # grab last JSON object
+    if m: s = m.group(0)
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON format: {e}")
+
+
+class StepGuidanceImageAnalyzer:
+    """Analyzes images in the context of step guidance and troubleshooting"""
+    
+    def __init__(self):
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_url = "https://api.openai.com/v1/chat/completions"
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+    
+    def analyze_step_image(
+        self,
+        image_data: bytes,
+        user_message: str,
+        current_step: int,
+        step_context: str,
+        problem_summary: str
+    ) -> Dict[str, Any]:
+        """
+        Analyze image in context of current step for guidance or troubleshooting
+        
+        Returns:
+        - analysis: What's seen in the image
+        - guidance: Step-specific guidance based on image
+        - issues_detected: Any problems or concerns spotted
+        - next_actions: Suggested next steps
+        - safety_notes: Any safety considerations
+        """
+        
+        b64 = base64.b64encode(image_data).decode("utf-8")
+        
+        system_prompt = f"""You are a helpful DIY step guidance assistant analyzing an image to provide contextual help.
+
+Current Context:
+- Step: {current_step}
+- User's question/message: "{user_message}"
+- Step context: {step_context}
+- Problem summary: {problem_summary}
+
+Your task is to analyze the image and provide helpful, step-specific guidance. Look for:
+- Progress on the current step
+- Potential issues or problems
+- Safety concerns
+- Whether the user is on the right track
+- Specific guidance for what to do next
+
+Provide practical, actionable advice based on what you see in the image.
+
+Return JSON with:
+- "analysis": What you see in the image relevant to the step
+- "guidance": Specific guidance based on the image and current step
+- "issues_detected": Any problems or concerns (list)
+- "next_actions": Suggested immediate next steps (list)
+- "safety_notes": Any safety considerations (list)
+- "progress_assessment": How well the step is progressing ("good", "needs_attention", "problematic")
+"""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": f"Step {current_step}: {user_message}"},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+                ]
+            }
+        ]
+
+        try:
+            r = requests.post(
+                self.api_url, headers=self.headers,
+                json={"model": "gpt-4o", "messages": messages, "max_tokens": 800}
+            )
+            if r.status_code == 200:
+                result = clean_and_parse_json(r.json()["choices"][0]["message"]["content"])
+                
+                # Ensure all expected fields exist and are properly typed
+                result.setdefault("analysis", "I can see your image related to the current step")
+                result.setdefault("guidance", "")
+                result.setdefault("issues_detected", [])
+                result.setdefault("next_actions", [])
+                result.setdefault("safety_notes", [])
+                result.setdefault("progress_assessment", "good")
+                
+                # Ensure lists are actually lists
+                for list_field in ["issues_detected", "next_actions", "safety_notes"]:
+                    if not isinstance(result[list_field], list):
+                        if isinstance(result[list_field], str):
+                            result[list_field] = [result[list_field]] if result[list_field] else []
+                        else:
+                            result[list_field] = []
+                
+                return result
+        except Exception as e:
+            print(f"Error analyzing step image: {e}")
+            pass
+        
+        return {
+            "analysis": "I can see your image related to the current step",
+            "guidance": "Based on your image, let me help you with this step.",
+            "issues_detected": [],
+            "next_actions": [],
+            "safety_notes": [],
+            "progress_assessment": "good"
+        }
 
 class StepGuidanceChatbot:
     """
@@ -27,6 +152,7 @@ class StepGuidanceChatbot:
         self.problem_summary: str = ""
         self.current_step: int = -1  # stays fixed unless your UI sets it via set_current_step()
         self.history: List[Dict[str, str]] = []
+        self.image_analyzer = StepGuidanceImageAnalyzer()
 
     # ---------- Public API ----------
 
@@ -51,33 +177,107 @@ class StepGuidanceChatbot:
             return
         self.current_step = max(1, min(self.total_steps, idx))
 
-    def chat(self, user_message: str, step: int) -> str:
+    def chat(self, user_message: str, step: int, uploaded_image: Optional[bytes] = None) -> str:
         """
         Free-form chat with the LLM using the guide + current step context.
         Before answering, verify relevance; if off-topic, nudge the user.
+        Now supports image analysis for step guidance and troubleshooting.
         """
-        self.current_step=step
+        self.current_step = step
         user_message = (user_message or "").strip()
         self._remember("user", user_message)
 
-        # 1) Relevance gate (heuristic + micro-classifier)
+        # 1) If image provided, analyze it first for step-specific guidance
+        image_analysis_result = None
+        if uploaded_image:
+            step_context = self._build_step_context_block(self.current_step)
+            image_analysis_result = self.image_analyzer.analyze_step_image(
+                uploaded_image, user_message, self.current_step, step_context, self.problem_summary
+            )
+
+        # 2) Relevance gate (heuristic + micro-classifier)
         rel_score, rel_label = self._relevance_check(user_message)
         if rel_label == "not_relevant" or rel_score < MIN_RELEVANCE_TO_ANSWER:
             step_title = self._step_title(self.current_step)
             msg = (
-                f"That question doesn’t appear related to the project "
+                f"That question doesn't appear related to the project "
                 "Ask me about this project, the tools/materials involved, safety, or troubleshooting. "
             )
             self._remember("assistant", msg)
             return msg
 
-        # 2) Build messages for the main model
+        # 3) Build enhanced response with image context if available
+        if image_analysis_result:
+            reply = self._build_image_enhanced_response(user_message, image_analysis_result)
+        else:
+            # 4) Standard text-only response
+            reply = self._build_standard_response(user_message)
+        
+        if not reply:
+            reply = (
+                "I couldn't reach the model just now. Here's a quick overview of the current step:\n\n"
+                + self._render_step(self.current_step)
+            )
+        
+        self._remember("assistant", reply)
+        return reply
+
+    def _build_image_enhanced_response(self, user_message: str, image_analysis: Dict[str, Any]) -> str:
+        """Build response that incorporates image analysis with step guidance"""
+        
+        analysis = image_analysis.get("analysis", "")
+        guidance = image_analysis.get("guidance", "")
+        issues = image_analysis.get("issues_detected", [])
+        next_actions = image_analysis.get("next_actions", [])
+        safety_notes = image_analysis.get("safety_notes", [])
+        progress = image_analysis.get("progress_assessment", "good")
+        
+        response_parts = []
+        
+        # Start with image analysis
+        if analysis:
+            response_parts.append(f"📸 **Looking at your image:** {analysis}")
+        
+        # Add guidance
+        if guidance:
+            response_parts.append(f"**Guidance:** {guidance}")
+        
+        # Add issues if detected
+        if issues:
+            issues_text = "\n".join(f"• {issue}" for issue in issues)
+            response_parts.append(f"⚠️ **Issues noticed:**\n{issues_text}")
+        
+        # Add safety notes if any
+        if safety_notes:
+            safety_text = "\n".join(f"• {note}" for note in safety_notes)
+            response_parts.append(f"🔒 **Safety reminders:**\n{safety_text}")
+        
+        # Add next actions
+        if next_actions:
+            actions_text = "\n".join(f"• {action}" for action in next_actions)
+            response_parts.append(f"👉 **Next steps:**\n{actions_text}")
+        
+        # Add progress assessment
+        if progress == "problematic":
+            response_parts.append("🔴 **Status:** This needs attention before proceeding.")
+        elif progress == "needs_attention":
+            response_parts.append("🟡 **Status:** You're on track, but double-check a few things.")
+        else:
+            response_parts.append("✅ **Status:** Looking good!")
+        
+        # Ask if user has more questions
+        response_parts.append("Any other questions about this step?")
+        
+        return "\n\n".join(response_parts)
+    
+    def _build_standard_response(self, user_message: str) -> str:
+        """Build standard text-only response using the LLM"""
+        
+        # Build messages for the main model (original logic)
         system = self._build_system_prompt()
         guide_context = self._build_guide_context_block(self.current_step)
         step_context = self._build_step_context_block(self.current_step)
         
-        print("step_context: ", step_context)
-
         messages = [
             {"role": "system", "content": system},
             {"role": "system", "content": guide_context},
@@ -87,16 +287,7 @@ class StepGuidanceChatbot:
             messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": user_message})
         
-        print("messages: ", messages)
-
-        reply = self._call_llm(messages, model=DEFAULT_MODEL)
-        if not reply:
-            reply = (
-                "I couldn’t reach the model just now. Here’s a quick overview of the current step:\n\n"
-                + self._render_step(self.current_step)
-            )
-        self._remember("assistant", reply)
-        return reply
+        return self._call_llm(messages, model=DEFAULT_MODEL)
 
     # ---------- Prompt Builders ----------
 
