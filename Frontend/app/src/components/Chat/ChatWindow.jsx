@@ -252,10 +252,37 @@ export default function ChatWindow({
     if (!text.trim() && files.length === 0) return;
 
     try {
+      // Validate files before processing
+      const validFiles = files.filter(file => {
+        if (!file.type.startsWith("image/")) {
+          console.warn(`Skipping non-image file: ${file.name}`);
+          return false;
+        }
+        
+        // Check file size (limit to 5MB)
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (file.size > maxSize) {
+          console.warn(`File too large: ${file.name} (${file.size} bytes)`);
+          return false;
+        }
+        
+        return true;
+      });
+
+      if (validFiles.length !== files.length) {
+        setMessages((prev) => [
+          ...prev,
+          { 
+            sender: "bot", 
+            content: "Some files were skipped due to size limits (max 5MB) or invalid format (images only)." 
+          },
+        ]);
+      }
+
       // 1) Show selected images as separate messages (image bubbles)
-      if (files.length > 0) {
-        for (const file of files) {
-          if (file.type.startsWith("image/")) {
+      if (validFiles.length > 0) {
+        for (const file of validFiles) {
+          try {
             const imageUrl = await toBase64(file);
             const imageMsg = {
               sender: "user",
@@ -264,14 +291,23 @@ export default function ChatWindow({
               isImageOnly: true,
             };
             setMessages((prev) => [...prev, imageMsg]);
+          } catch (error) {
+            console.error("Error processing image:", error);
+            setMessages((prev) => [
+              ...prev,
+              { 
+                sender: "bot", 
+                content: `Error processing image ${file.name}: ${error.message}` 
+              },
+            ]);
           }
         }
       }
 
       // 2) Build visible user text + file list
       let messageContent = text.trim();
-      if (files.length > 0) {
-        const fileNames = files.map((f) => f.name).join("\n");
+      if (validFiles.length > 0) {
+        const fileNames = validFiles.map((f) => f.name).join("\n");
         messageContent = messageContent
           ? `${messageContent}\nFiles:\n${fileNames}`
           : `Files: ${fileNames}`;
@@ -282,15 +318,29 @@ export default function ChatWindow({
 
       // 3) Add detected-tools hint for the LLM
       const detSummary =
-        files.length > 0 && ownedTools.length > 0
+        validFiles.length > 0 && ownedTools.length > 0
           ? `\n\n[Detected tools in attached image: ${ownedTools.map(t => t.name).join(", ")}]`
           : "";
       const currInput = `${messageContent || text || ""}${detSummary}`;
 
       // 4) Prepare payload per API
       let uploaded_image = null;
-      const firstImage = files.find((f) => f.type.startsWith("image/"));
-      if (firstImage) uploaded_image = await toBase64(firstImage);
+      const firstImage = validFiles.find((f) => f.type.startsWith("image/"));
+      if (firstImage) {
+        try {
+          uploaded_image = await toBase64(firstImage);
+        } catch (error) {
+          console.error("Error converting image to base64:", error);
+          setMessages((prev) => [
+            ...prev,
+            { 
+              sender: "bot", 
+              content: "Error processing image. Please try again with a smaller file." 
+            },
+          ]);
+          return;
+        }
+      }
 
       let payload;
       let endpoint = `${URL}/${api}/chat`;
@@ -331,7 +381,7 @@ export default function ChatWindow({
       console.error("Chat error", err);
       setMessages((prev) => [
         ...prev,
-        { sender: "bot", content: "Oops! Something went wrong." },
+        { sender: "bot", content: "Oops! Something went wrong. Please try again." },
       ]);
     }
   };
