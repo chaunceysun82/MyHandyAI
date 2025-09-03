@@ -38,6 +38,7 @@ class ChatResponse(BaseModel):
     session_id: str
     current_step: Optional[int] = None
     total_steps: Optional[int] = None
+    suggested_messages: Optional[List[str]] = None
 
 # class TaskStatus(BaseModel):
 #     session_id: str
@@ -129,6 +130,59 @@ def get_latest_chatbot(session_id):
 def get_conversation_history(session_id):
     cursor = conversations_step_collection.find({"session_id": session_id}).sort("timestamp", 1)
     return [{"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]} for doc in cursor]
+
+def get_step_guidance_suggested_messages(current_step: int, total_steps: int, step_data: Dict = None) -> List[str]:
+    """
+    Generate suggested messages for step guidance based on current step and context.
+    """
+    if current_step == -1:
+        # Starting step guidance
+        return [
+            "Let's start with step 1",
+            "Show me the tools I need",
+            "What safety precautions should I take?",
+            "I'm ready to begin"
+        ]
+    elif current_step == 0:
+        # At the beginning
+        return [
+            "I'm ready for the first step",
+            "What tools do I need first?",
+            "Any safety warnings?",
+            "Let's get started"
+        ]
+    elif 1 <= current_step <= total_steps:
+        # During step execution
+        if step_data and step_data.get("completed"):
+            return [
+                "Next step please",
+                "I've completed this step",
+                "Continue to next step",
+                "What's the next step?"
+            ]
+        else:
+            return [
+                "I need help with this step",
+                "I'm stuck on this part",
+                "Can you clarify this instruction?",
+                "Mark this step as complete"
+            ]
+    elif current_step > total_steps:
+        # Project completed
+        return [
+            "Great! Project completed",
+            "Any final tips?",
+            "What should I check?",
+            "Thank you for the guidance"
+        ]
+    else:
+        # Default fallback
+        return [
+            "I need help",
+            "Next step",
+            "Clarify please",
+            "I'm confused"
+        ]
 
 def _fetch_project_data(project_id: str) -> Dict[str, Any]:
     """Fetch project and its steps/tools from DB; map to chatbot schema."""
@@ -232,11 +286,15 @@ def start_step_guidance_task(payload: StartTaskRequest):
 
     _log(session_id, "assistant", welcome, bot, project["userId"], payload.project)
 
+    # Get suggested messages for starting step guidance
+    suggested_messages = get_step_guidance_suggested_messages(-1, total_steps)
+
     return ChatResponse(
         response=welcome,
         session_id=session_id,
         current_step=-1,
-        total_steps=total_steps
+        total_steps=total_steps,
+        suggested_messages=suggested_messages
     )
 
 @router.post("/chat", response_model=ChatResponse)
@@ -263,11 +321,27 @@ def chat_with_step_guidance(payload: ChatMessage):
     reply = bot.chat(payload.message, payload.step, uploaded_image)
     _log(session_id, "assistant", reply, bot, project["userId"], payload.project)
 
+    # Get current step info and generate suggested messages
+    current_step = getattr(bot, "current_step", None)
+    total_steps = getattr(bot, "total_steps", None)
+    
+    # Get step data if available
+    step_data = None
+    if hasattr(bot, "steps_data") and current_step and current_step in bot.steps_data:
+        step_data = bot.steps_data[current_step]
+    
+    suggested_messages = get_step_guidance_suggested_messages(
+        current_step or -1, 
+        total_steps or 1, 
+        step_data
+    )
+
     return ChatResponse(
         response=reply,
         session_id=session_id,
-        current_step=getattr(bot, "current_step", None),
-        total_steps=getattr(bot, "total_steps", None)
+        current_step=current_step,
+        total_steps=total_steps,
+        suggested_messages=suggested_messages
     )
 
 @router.get("/session/{session_id}/history")

@@ -87,10 +87,12 @@ class ChatResponse(BaseModel):
     response: str
     session_id: str
     current_state: Optional[str] = None
+    suggested_messages: Optional[List[str]] = None
 
 class ChatSession(BaseModel):
     session_id: str
     intro_message: str
+    suggested_messages: Optional[List[str]] = None
 
 class SessionInfo(BaseModel):
     session_id: str
@@ -143,6 +145,98 @@ def get_latest_chatbot(session_id):
 def get_conversation_history(session_id):
     cursor = conversations_collection.find({"session_id": session_id}).sort("timestamp", 1)
     return [{"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]} for doc in cursor]
+
+def get_suggested_messages(current_state: str, problem_type: str = None) -> List[str]:
+    """
+    Generate suggested messages based on the current chatbot state and problem type.
+    """
+    if current_state == "waiting_for_problem":
+        # Problem description state - suggest different types of problems
+        return [
+            "I have a leaking pipe",
+            "My electrical outlet isn't working", 
+            "I need to hang a mirror on the wall",
+            "My sink is clogged",
+            "I want to fix a wobbly chair"
+        ]
+    
+    elif current_state == "waiting_for_photos":
+        # Photo upload state - help with photo decisions
+        return [
+            "Skip photos",
+            "What photos do you need?",
+            "Can I describe instead of photo?",
+            "I'll upload a photo"
+        ]
+    
+    elif current_state == "asking_questions":
+        # Clarifying questions state - current behavior but more helpful
+        if problem_type:
+            # Customize based on problem type
+            if "electrical" in problem_type.lower():
+                return [
+                    "I'm not sure about electrical details",
+                    "Is this safe to check myself?",
+                    "Skip this question",
+                    "I need help understanding this"
+                ]
+            elif "plumbing" in problem_type.lower() or "leak" in problem_type.lower() or "sink" in problem_type.lower():
+                return [
+                    "I don't know the pipe material",
+                    "Skip this question", 
+                    "How can I find this information?",
+                    "I need help with this"
+                ]
+            elif "hanging" in problem_type.lower() or "mirror" in problem_type.lower():
+                return [
+                    "I'm not sure about wall type",
+                    "How do I measure this?",
+                    "Skip this question",
+                    "I don't have measuring tools"
+                ]
+            else:
+                # General repair questions
+                return [
+                    "Skip this question",
+                    "How do I find this information?", 
+                    "I'm not sure about this",
+                    "I don't have the right tools to check"
+                ]
+        else:
+            # Default clarifying questions
+            return [
+                "Skip this question",
+                "How do I answer this question",
+                "I'm not sure about this",
+                "I don't know how to check this"
+            ]
+    
+    elif current_state == "showing_summary":
+        # Summary confirmation state - simple yes/no responses
+        return [
+            "Yes, that's correct",
+            "No, that's not right",
+            "Yes",
+            "No, let me clarify"
+        ]
+    
+    elif current_state == "complete":
+        # Chat completed - next steps
+        return [
+            "Show me the project plan",
+            "Start step-by-step guidance",
+            "What tools do I need?",
+            "How long will this take?"
+        ]
+    
+    else:
+        # Default fallback
+        return [
+            "Tell me more",
+            "I need help",
+            "Skip this",
+            "I'm not sure"
+        ]
 
 @router.get("/session/{project}")
 def get_session(project):
@@ -480,10 +574,16 @@ async def chat_with_bot(chat_message: ChatMessage):
             await save_information(session_id=session_id)
             await qdrant_function(project_id=chat_message.project)
 
+        # Generate suggested messages based on current state
+        current_state = getattr(chatbot, "current_state", None)
+        problem_type = getattr(chatbot, "problem_type", None)
+        suggested_messages = get_suggested_messages(current_state, problem_type)
+
         return ChatResponse(
             response=response,
             session_id=session_id,
-            current_state=getattr(chatbot, "current_state", None)
+            current_state=current_state,
+            suggested_messages=suggested_messages
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chatbot error: {str(e)}")
@@ -497,7 +597,15 @@ async def start_new_session(payload: StartChat):
     chatbot = AgenticChatbot()
     intro_message = chatbot.greet()
     log_message(session_id, "assistant", intro_message, chatbot, payload.user, payload.project, message_type="project_intro")
-    return ChatSession(session_id=session_id, intro_message=intro_message)
+    
+    # Get initial suggested messages for problem description state
+    suggested_messages = get_suggested_messages("waiting_for_problem")
+    
+    return ChatSession(
+        session_id=session_id, 
+        intro_message=intro_message,
+        suggested_messages=suggested_messages
+    )
 
 
 @router.get("/session/{session_id}/history")
