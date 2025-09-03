@@ -10,7 +10,7 @@ router = APIRouter()
 class User(BaseModel):
     firstname: str
     lastname: str
-    password: str
+    password: Optional[str] = None
     email: EmailStr
     describe: Optional[str] = None
     experienceLevel: Optional[str] = None
