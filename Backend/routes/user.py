@@ -12,6 +12,7 @@ class User(BaseModel):
     lastname: str
     password: Optional[str] = None
     email: EmailStr
+    google_flag: Optional[bool] = None
     describe: Optional[str] = None
     experienceLevel: Optional[str] = None
     confidence: Optional[int] = None
@@ -29,8 +30,16 @@ class LoginData(BaseModel):
 def create_user(user: User):
     if users_collection.find_one({"email": user.email}):
         raise HTTPException(status_code=400, detail="Email already exists")
-    if not user.password:
-        raise HTTPException(status_code=400, detail="invalid password")
+    
+    # For Google users, password is not required
+    if user.google_flag is True:
+        # Google user - password can be empty or None
+        pass
+    else:
+        # Email user - password is required
+        if not user.password:
+            raise HTTPException(status_code=400, detail="Password required for email users")
+    
     new_user = user.dict()
     new_user["createdAt"] = datetime.utcnow()
     result = users_collection.insert_one(new_user)
