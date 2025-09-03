@@ -75,21 +75,6 @@ export default function ChatInput({ onSend, onDetected, apiBase, showQuickReplie
     setSelectedFiles((prev) => [...prev, ...files]);
     
     event.target.value = "";
-
-    // Run tool detection on the first image (if any)
-    const first = files.find(f => f.type?.startsWith("image/"));
-    if (first) {
-      try {
-        setDetectError("");
-        setDetecting(true);
-        const data = await detectTools(first, apiBase);
-        onDetected?.(data.tools || []);
-      } catch (e) {
-        setDetectError(e.message || "Detection failed");
-      } finally {
-        setDetecting(false);
-      }
-    }
   };
 
   const removeFile = (index) => {
