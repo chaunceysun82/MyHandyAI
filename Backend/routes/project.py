@@ -103,25 +103,30 @@ def delete_project(project_id: str):
     try:
         qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
 
-        filter_by_project = Filter(
-            must=[
-                FieldCondition(
-                    key="project",
-                    match=MatchValue(value=str(project_obj_id))
-                )
-            ]
-        )
-        filter_by_mongo = Filter(
-            must=[
-                FieldCondition(
-                    key="mongo_id",
-                    match=MatchValue(value=str(project_obj_id))
-                )
-            ]
-        )
-        combined_filter = Filter(should=[filter_by_project, filter_by_mongo])
+        from qdrant_client.http.models import Filter, FieldCondition, MatchValue
 
-        qclient.delete(collection_name=collection_name, points=combined_filter, wait=True)
+        combined_filter = Filter(
+            should=[
+                FieldCondition(key="project", match=MatchValue(value=str(project_obj_id))),
+                FieldCondition(key="mongo_id", match=MatchValue(value=str(project_obj_id))),
+            ]
+        )
+
+        # Optional: log the count to confirm what will be deleted
+        try:
+            count_before = qclient.count(collection_name=collection_name, filter=combined_filter).count
+            print(f"Qdrant: {count_before} points match the delete filter for project {project_id}")
+        except Exception:
+            print("Qdrant: could not fetch count before delete (continuing to delete)")
+
+        qclient.delete(collection_name=collection_name, filter=combined_filter, wait=True)
+
+        # Optional: confirm deletion
+        try:
+            count_after = qclient.count(collection_name=collection_name, filter=combined_filter).count
+            print(f"Qdrant: {count_after} points remain after deletion for project {project_id}")
+        except Exception:
+            pass
 
     except Exception as e:
         print(f"Warning: failed to delete Qdrant points for project {project_id}: {e}")
@@ -135,6 +140,7 @@ def delete_project(project_id: str):
         "message": "Project, associated conversations, and Qdrant embeddings deleted successfully",
         "project_id": project_id
     }
+
 # @router.put("/complete-step/{project_id}/{step_number}")
 # def complete_step(project_id: str, step_number: int):
 #     result = steps_collection.update_one(
