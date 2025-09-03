@@ -8,6 +8,7 @@ from datetime import datetime
 import os
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Filter, FieldCondition, MatchValue
+from qdrant_client.http import models
 
 router = APIRouter()
 
@@ -15,6 +16,32 @@ class Project(BaseModel):
     projectTitle: str
     userId: str
 
+def fetch_all_points_client(url, api_key, collection_name, limit=500):
+    client = QdrantClient(url=url, api_key=api_key)
+    all_points = []
+    offset = None
+
+    while True:
+        response = client.scroll(
+            collection_name=collection_name,
+            limit=limit,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False, 
+        )
+        
+        if isinstance(response, tuple) and len(response) == 2:
+            pts, next_offset = response
+        else:
+            pts = response
+            next_offset = None
+            
+        all_points.extend(pts)
+        if not next_offset:
+            break
+        offset = next_offset
+
+    return all_points
 
 @router.post("/projects")
 def create_project(project: Project):
@@ -90,56 +117,36 @@ def delete_project(project_id: str):
     conversations_collection.delete_many({"projectId": project_obj_id})
     conversations_collection.delete_many({"project": str(project_obj_id)})
 
-    qdrant_url = os.getenv("QDRANT_URL")
-    qdrant_api_key = os.getenv("QDRANT_API_KEY")
-    collection_name = os.getenv("QDRANT_COLLECTION", "projects")
-
-    if not qdrant_url or not qdrant_api_key:
-        return {
-            "message": "Project and associated conversations deleted from MongoDB. Qdrant not configured; no embeddings removed.",
-            "project_id": project_id
-        }
-
-    try:
-        qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
-
-        from qdrant_client.http.models import Filter, FieldCondition, MatchValue
-
-        combined_filter = Filter(
-            should=[
-                FieldCondition(key="project", match=MatchValue(value=str(project_obj_id))),
-                FieldCondition(key="mongo_id", match=MatchValue(value=str(project_obj_id))),
-            ]
+    client_points = fetch_all_points_client(
+        os.getenv("QDRANT_URL"), 
+        os.getenv("QDRANT_API_KEY"), 
+        "projects"
+    )
+    
+    # Find points with the matching project ID
+    points_to_delete = []
+    for point in client_points:
+        if point.payload and 'project' in point.payload and point.payload['project'] == project_id:
+            points_to_delete.append(point.id)
+    
+    # Delete the points if found
+    if points_to_delete:
+        client = QdrantClient(url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"))
+        response = client.delete(
+            collection_name="projects",
+            points_selector=models.PointIdsList(points=points_to_delete),
+            wait=True
         )
-
-        # Optional: log the count to confirm what will be deleted
-        try:
-            count_before = qclient.count(collection_name=collection_name, filter=combined_filter).count
-            print(f"Qdrant: {count_before} points match the delete filter for project {project_id}")
-        except Exception:
-            print("Qdrant: could not fetch count before delete (continuing to delete)")
-
-        qclient.delete(collection_name=collection_name, filter=combined_filter, wait=True)
-
-        # Optional: confirm deletion
-        try:
-            count_after = qclient.count(collection_name=collection_name, filter=combined_filter).count
-            print(f"Qdrant: {count_after} points remain after deletion for project {project_id}")
-        except Exception:
-            pass
-
-    except Exception as e:
-        print(f"Warning: failed to delete Qdrant points for project {project_id}: {e}")
         return {
-            "message": "Project and conversations deleted from MongoDB. Failed to delete Qdrant embeddings (see server logs).",
-            "project_id": project_id,
-            "qdrant_error": str(e)
-        }
-
-    return {
         "message": "Project, associated conversations, and Qdrant embeddings deleted successfully",
         "project_id": project_id
     }
+    else:
+        print(f"Warning: failed to delete Qdrant points for project {project_id}")
+        return {
+            "message": "Project and conversations deleted from MongoDB. Failed to delete Qdrant embeddings (see server logs).",
+            "project_id": project_id
+        }
 
 # @router.put("/complete-step/{project_id}/{step_number}")
 # def complete_step(project_id: str, step_number: int):
