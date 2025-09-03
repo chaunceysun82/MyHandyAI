@@ -85,19 +85,55 @@ export async function updateUser(userId, userData) {
 export const transformOnboardingAnswers = (onboardingAnswers) => {
 	const userData = {};
 	
+	console.log("Transforming onboarding answers:", onboardingAnswers);
+	
+	// Map question IDs to user fields based on the actual onboarding questions
+	// This should be updated based on your actual question structure
 	Object.entries(onboardingAnswers).forEach(([questionId, answer]) => {
+		console.log(`Processing question ${questionId} with answer:`, answer);
+		
+		// Handle different answer types
 		if (typeof answer === 'string') {
-			handleStringAnswer(answer, userData);
+			// For string answers, we need to know which question this is
+			// For now, let's use a more reliable approach
+			if (answer.toLowerCase().includes('experience') || answer.toLowerCase().includes('beginner') || answer.toLowerCase().includes('intermediate') || answer.toLowerCase().includes('expert')) {
+				userData.experienceLevel = answer;
+			} else if (answer.toLowerCase().includes('confident')) {
+				// Handle confidence levels
+				const confidenceMap = {
+					'not confident at all': 1,
+					'slightly confident': 2,
+					'somewhat confident': 3,
+					'confident': 4,
+					'very confident': 5
+				};
+				userData.confidence = confidenceMap[answer.toLowerCase()] || 3;
+			} else if (answer.toLowerCase().includes('describe') || answer.toLowerCase().includes('about')) {
+				userData.describe = answer;
+			} else if (answer.toLowerCase().includes('tools') || answer.toLowerCase().includes('equipment')) {
+				userData.tools = answer;
+			} else if (answer.toLowerCase().includes('projects') || answer.toLowerCase().includes('interested')) {
+				userData.interestedProjects = answer;
+			} else {
+				// Default to describe if it's a long text answer
+				if (!userData.describe && answer.length > 20) {
+					userData.describe = answer;
+				}
+			}
 		} else if (Array.isArray(answer)) {
+			// For array answers (multiple selection), join them
 			userData.tools = answer.join(', ');
 		} else if (typeof answer === 'object' && answer.country) {
+			// For location objects
 			userData.country = answer.country;
 			userData.state = answer.state;
 		} else if (typeof answer === 'number') {
+			// For numeric answers (confidence levels)
 			userData.confidence = answer;
 		}
 	});
 	
+	console.log("Transformed user data:", userData);
 	return userData;
 };
 

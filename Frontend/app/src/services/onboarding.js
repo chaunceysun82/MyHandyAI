@@ -16,16 +16,18 @@ export const fetchOnboardingQuestions = async () => {
 
 export const submitOnboardingAnswers = async (answers) => {
 	console.log("Submitting onboarding answers:", answers);
+	console.log("Answers type:", typeof answers);
+	console.log("Answers keys:", Object.keys(answers));
 	
 	// Check if this is a new signup with onboarding data
 	const tempUserData = localStorage.getItem("tempUserData");
-	const authToken = localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
+	const userId = localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
 	
 	console.log("Onboarding submission - checking user data:", {
 		hasTempUserData: !!tempUserData,
-		hasAuthToken: !!authToken,
+		hasUserId: !!userId,
 		tempUserData: tempUserData ? "Present" : "Not present",
-		authToken: authToken ? "Present" : "Not present"
+		userId: userId ? "Present" : "Not present"
 	});
 	
 	if (tempUserData) {
@@ -40,6 +42,7 @@ export const submitOnboardingAnswers = async (answers) => {
 			
 			// Transform onboarding answers to user schema fields
 			const transformedOnboardingData = transformOnboardingAnswers(answers);
+			console.log("Transformed onboarding data:", transformedOnboardingData);
 			
 			// Update existing user with onboarding data using PUT
 			const result = await updateUser(userId, transformedOnboardingData);
@@ -61,22 +64,22 @@ export const submitOnboardingAnswers = async (answers) => {
 			console.error("Error updating user with onboarding data:", error);
 			throw error;
 		}
-	} else if (authToken) {
+	} else if (userId) {
 		// This is an existing user (email or Google) updating their onboarding data
 		try {
 			// First, check if user exists in backend
-			const userResponse = await fetch(`${BASE_URL}/users/${authToken}`);
+			const userResponse = await fetch(`${BASE_URL}/users/${userId}`);
 			
 			if (userResponse.ok) {
 				// User exists, update with onboarding data
-				console.log("Updating existing user with onboarding data for userID:", authToken);
+				console.log("Updating existing user with onboarding data for userID:", userId);
 				
 				// Transform answers to match user schema using the shared function from auth.js
 				const userUpdateData = transformOnboardingAnswers(answers);
 				console.log("Transformed user data:", userUpdateData);
 				
 				// Use the shared updateUser function
-				const result = await updateUser(authToken, userUpdateData);
+				const result = await updateUser(userId, userUpdateData);
 				console.log("User updated successfully:", result);
 				
 				return result;
@@ -89,8 +92,8 @@ export const submitOnboardingAnswers = async (answers) => {
 			throw error;
 		}
 	} else {
-		// No user data or auth token found
-		console.error("No user data or auth token found for onboarding submission");
+		// No user data or user ID found
+		console.error("No user data or user ID found for onboarding submission");
 		throw new Error("No user data found for onboarding submission");
 	}
 };
