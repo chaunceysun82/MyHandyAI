@@ -639,6 +639,43 @@ async def get_session_info(session_id: str):
     )
 
 
+@router.get("/suggested-messages/{state}")
+async def get_suggested_messages_for_state(state: str, problem_type: Optional[str] = None):
+    """
+    Get suggested messages for a specific chatbot state and problem type.
+    Useful for testing or frontend-only message updates.
+    """
+    try:
+        messages = get_suggested_messages(state, problem_type)
+        return {
+            "state": state,
+            "problem_type": problem_type,
+            "suggested_messages": messages
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid state or problem type: {str(e)}")
+
+@router.get("/suggested-messages/preview")
+async def preview_all_suggested_messages():
+    """
+    Preview all available suggested messages for different states.
+    Useful for testing and development.
+    """
+    try:
+        preview = {
+            "waiting_for_problem": get_suggested_messages("waiting_for_problem"),
+            "waiting_for_photos": get_suggested_messages("waiting_for_photos"),
+            "asking_questions_general": get_suggested_messages("asking_questions"),
+            "asking_questions_electrical": get_suggested_messages("asking_questions", "electrical_issue"),
+            "asking_questions_plumbing": get_suggested_messages("asking_questions", "leaking_pipe"),
+            "asking_questions_hanging": get_suggested_messages("asking_questions", "hanging_mirror"),
+            "showing_summary": get_suggested_messages("showing_summary"),
+            "complete": get_suggested_messages("complete")
+        }
+        return preview
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate preview: {str(e)}")
+
 @router.post("/session/{session_id}/reset")
 async def reset_conversation(payload: ResetChat):
     """

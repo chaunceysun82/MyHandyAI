@@ -380,6 +380,41 @@ def delete_step_guidance_session(session_id: str):
     conversations_step_collection.delete_many({"session_id": session_id, "chat_type": CHAT_TYPE})
     return {"message": f"Step guidance session {session_id} deleted successfully"}
 
+@router.get("/suggested-messages/{current_step}")
+def get_step_suggested_messages(current_step: int, total_steps: int = 5):
+    """
+    Get suggested messages for a specific step in step guidance.
+    Useful for testing or frontend-only message updates.
+    """
+    try:
+        messages = get_step_guidance_suggested_messages(current_step, total_steps)
+        return {
+            "current_step": current_step,
+            "total_steps": total_steps,
+            "suggested_messages": messages
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid step parameters: {str(e)}")
+
+@router.get("/suggested-messages/preview")
+def preview_step_suggested_messages():
+    """
+    Preview all available step guidance suggested messages.
+    Useful for testing and development.
+    """
+    try:
+        preview = {
+            "starting_guidance": get_step_guidance_suggested_messages(-1, 5),
+            "step_0": get_step_guidance_suggested_messages(0, 5),
+            "step_1_incomplete": get_step_guidance_suggested_messages(1, 5, {"completed": False}),
+            "step_1_completed": get_step_guidance_suggested_messages(1, 5, {"completed": True}),
+            "step_5_final": get_step_guidance_suggested_messages(5, 5),
+            "project_completed": get_step_guidance_suggested_messages(6, 5)
+        }
+        return preview
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate preview: {str(e)}")
+
 @router.get("/health")
 def health_check():
     return {"status": "healthy", "message": "Step Guidance API is running"}
