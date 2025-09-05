@@ -495,22 +495,75 @@ class ImageRequest(BaseModel):
     project_id: str
 
 def _build_prompt(step_text: str, summary_text: Optional[str] = None, guidance="neutral") -> str:
+        # payload = {
+        #     "model": "gpt-5-nano", 
+        #     "messages": [
+        #         {"role": "system", "content": (
+        #             "You are an image generation agent specializing in DIY/repair steps."
+        #             "Your task is to create a detailed prompt for an image generation model. based on the user input provided."
+        #             f"Context summary of the overall project: {summary_text}"
+        #             "Focus on depicting the CURRENT STEP for the image. Overall summary is just for context."
+        #         )},
+        #         {"role": "user", "content": json.dumps({
+        #             "description": step_text
+        #         })}
+        #     ],
+        #     "max_completion_tokens": 2000,
+        #     "reasoning_effort": "low",
+        #     "verbosity": "low",
+        # }
         payload = {
-            "model": "gpt-5-nano",  # or the model you prefer
+            "model": "gpt-5-nano",
             "messages": [
-                {"role": "system", "content": (
-                    "You are an image generation agent specializing in DIY/repair steps."
-                    "Your task is to create a detailed prompt for an image generation model. based on the user input provided."
-                    f"Context summary of the overall project: {summary_text}"
-                    "Focus on depicting the CURRENT STEP for the image. Overall summary is just for context."
-                )},
-                {"role": "user", "content": json.dumps({
-                    "description": step_text
-                })}
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert image-prompt engineer who crafts single, high-precision prompts"
+                        " optimized for Imagen 4.O to create step-by-step DIY / repair images.\n\n"
+                        "TASK: Using the provided project_summary only for context, produce a single concise"
+                        " *image-generation prompt string* that clearly depicts the CURRENT STEP described"
+                        " in the user description. The assistant's reply must be ONLY a single JSON object"
+                        " containing the key 'imagen_prompt' whose value is the full textual prompt (no"
+                        " extra explanation or metadata outside that JSON).\n\n"
+                        "REQUIREMENTS FOR THE GENERATED PROMPT (must be encoded into the prompt):\n"
+                        "- Focal point & action: exactly what to show (e.g., 'tight close-up of right hand"
+                        " using a Philips #2 screwdriver to loosen the silver M3 screw at the lower-left corner of the metal bracket').\n"
+                        "- Tools & materials: list visible tools and materials and approximate positions.\n"
+                        "- Vantage & composition: camera angle (close-up / macro / 45° / top-down), framing"
+                        " (rule of thirds, centered), and how much of the scene to include.\n"
+                        "- Photographic directives: lens (e.g., 50mm macro), aperture (e.g., f/2.8 for shallow DOF),"
+                        " perspective, depth of field, resolution/high detail, natural soft directional lighting,\n"
+                        "- Texture & state: clear textures (metal scratches, painted wood grain), exact state"
+                        " (e.g., 'screw half-out', 'wire exposed 2 mm'), before/after indication if relevant.\n"
+                        "- Safety & human elements: include gloved hands if safety needed; avoid showing faces;"
+                        " hands only, cropped above the wrist.\n"
+                        "- Annotations & overlays: if helpful, include small, non-intrusive annotation positions"
+                        " (e.g., 'place a small white label near the screw reading \"1\"'), and specify whether the"
+                        " labels should be part of the image or added later. Prefer no large text in the image.\n"
+                        "- Style & mood: photorealistic, high-contrast, true color, minimal clutter in background."
+                        "\n\n"
+                        "NEGATIVE CONSTRAINTS: explicitly avoid watermarks, logos, UI chrome, extraneous people/faces,"
+                        " cartoon styling, or ambiguous camera directions. Keep the language unambiguous and actionable."
+                        "\n\n"
+                        "OUTPUT RULE: produce only: {\"imagen_prompt\": \"<single prompt string>\"} as the assistant response."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps({
+                        "project_summary": summary_text,
+                        "description": step_text,
+                        "visible_tools": [],     
+                        "required_materials": [],  
+                        "safety": "gloves recommended",  
+                        "preferred_camera_angle": "close-up", 
+                        "preferred_aspect_ratio": "4:3"
+                    })
+                }
             ],
             "max_completion_tokens": 2000,
             "reasoning_effort": "low",
-            "verbosity": "low",
+            "verbosity": "low"
         }
         r = requests.post(
             "https://api.openai.com/v1/chat/completions",
