@@ -526,10 +526,10 @@ def _build_prompt(step_text: str, summary_text: Optional[str] = None, guidance="
                         " containing the key 'imagen_prompt' whose value is the full textual prompt (no"
                         " extra explanation or metadata outside that JSON).\n\n"
                         "REQUIREMENTS FOR THE GENERATED PROMPT (must be encoded into the prompt):\n"
-                        "- Focal point & action: exactly what to show (e.g., 'tight close-up of right hand"
+                        "- Focal point & action: exactly what to show (e.g., 'tight eye-level or medium shot of the working phase with tools and materials"
                         " using a Philips #2 screwdriver to loosen the silver M3 screw at the lower-left corner of the metal bracket').\n"
                         "- Tools & materials: list visible tools and materials and approximate positions.\n"
-                        "- Vantage & composition: camera angle (close-up / macro / 45° / top-down), framing"
+                        "- Vantage & composition: camera angle (close-up / eye-level / medium shot / top-down), framing"
                         " (rule of thirds, centered), and how much of the scene to include.\n"
                         "- Photographic directives: lens (e.g., 50mm macro), aperture (e.g., f/2.8 for shallow DOF),"
                         " perspective, depth of field, resolution/high detail, natural soft directional lighting,\n"
@@ -556,7 +556,7 @@ def _build_prompt(step_text: str, summary_text: Optional[str] = None, guidance="
                         "visible_tools": [],     
                         "required_materials": [],  
                         "safety": "gloves recommended",  
-                        "preferred_camera_angle": "close-up", 
+                        "preferred_camera_angle": "eye-level", 
                         "preferred_aspect_ratio": "4:3"
                     })
                 }
