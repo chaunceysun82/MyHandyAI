@@ -1,8 +1,8 @@
 import React from "react";
 
-const QuickReplyButtons = ({ onQuickReply }) => {
-  // Predefined array of quick reply options
-  const quickReplies = [
+const QuickReplyButtons = ({ onQuickReply, suggestedMessages = [] }) => {
+  // Use suggested messages from backend, fallback to default if none provided
+  const quickReplies = suggestedMessages.length > 0 ? suggestedMessages : [
     "Skip this question?",
     "How do I answer this question",
     "Is this a required question",

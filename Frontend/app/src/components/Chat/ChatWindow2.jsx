@@ -51,6 +51,9 @@ export default function ChatWindow2({
   
   const [messages, setMessages] = useState([]);
   const [sessionId, setSessionId] = useState(null);
+  
+  // State for suggested messages from backend
+  const [suggestedMessages, setSuggestedMessages] = useState([]);
 
   useEffect(() => {
     if (messagesEndRef.current) 
@@ -105,6 +108,13 @@ export default function ChatWindow2({
             if (!cancelled) {
               console.log("Response from starting session:", startRes.data);
               setSessionId(startRes.data.session_id);
+              
+              // Set suggested messages from backend response
+              if (startRes.data.suggested_messages) {
+                setSuggestedMessages(startRes.data.suggested_messages);
+                console.log("💬 Step guidance suggested messages received:", startRes.data.suggested_messages);
+              }
+              
               const historyRes = await axios.get(`${URL}/step-guidance/session/${startRes.data.session_id}/history`);
               const formattedMessages = historyRes.data.map(({role, message}) => ({
                 sender: role === "user" ? "user" : "bot",
@@ -279,6 +289,12 @@ export default function ChatWindow2({
       setLoading(false);
 
       setMessages((prev) => [...prev, botMsg]);
+      
+      // Update suggested messages if provided in response
+      if (res.data.suggested_messages) {
+        setSuggestedMessages(res.data.suggested_messages);
+        console.log("💬 Updated step guidance suggested messages:", res.data.suggested_messages);
+      }
 
       // check for the current_state of the response:
       console.log("Current State:", res.data.current_state);
@@ -412,7 +428,7 @@ export default function ChatWindow2({
             {/* Chat Input */}
             <div className="flex-shrink-0 flex flex-col px-4 py-3 gap-2 mb-3">
               <hr className="border-t border-gray-200/70" />
-              <ChatInput onSend={handleSend} />
+              <ChatInput onSend={handleSend} suggestedMessages={suggestedMessages} />
             </div>
 
             {/* Navigation Buttons

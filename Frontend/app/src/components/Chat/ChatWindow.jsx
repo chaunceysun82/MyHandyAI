@@ -76,8 +76,18 @@ export default function ChatWindow({
 
   const [sessionId, setSessionId] = useState(() => {
     const saved = localStorage.getItem(STORAGE_SESSION_KEY);
+    console.log("🚀 ChatWindow Initialized:", {
+      hasExistingSession: !!saved,
+      sessionId: saved || "No existing session",
+      projectId: projectId,
+      userId: userId,
+      api: secondChatStatus ? "step-guidance" : "chatbot"
+    });
     return saved || null;
   });
+
+  // State for suggested messages from backend
+  const [suggestedMessages, setSuggestedMessages] = useState([]);
 
   // Remember detected tools for this chat (and persist)
   const [ownedTools, setOwnedTools] = useState(() => {
@@ -207,10 +217,33 @@ export default function ChatWindow({
           setSessionId(res.data.session_id);
           localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
           setMessages([{ sender: "bot", content: res.data.intro_message }]);
+          
+          // Set suggested messages from backend response
+          if (res.data.suggested_messages) {
+            setSuggestedMessages(res.data.suggested_messages);
+            console.log("💬 Suggested messages received:", res.data.suggested_messages);
+          }
+          
+          // Console log the new session ID
+          console.log("🆕 New Chat Session Started:", {
+            sessionId: res.data.session_id,
+            api: api,
+            projectId: projectId,
+            userId: userId,
+            suggestedMessages: res.data.suggested_messages
+          });
         } catch (err) {
           console.error("Intro message error", err);
         }
       } else {
+        // Console log the existing session ID
+        console.log("🔄 Existing Chat Session Loaded:", {
+          sessionId: sessionId,
+          api: api,
+          projectId: projectId,
+          userId: userId
+        });
+        
         try {
           // fetch history from the right API family
           const historyRes = await axios.get(
@@ -372,9 +405,16 @@ export default function ChatWindow({
       const botMsg = { sender: "bot", content: res.data.response };
       setLoading(false);
       setMessages((prev) => [...prev, botMsg]);
+      
+      // Update suggested messages if provided in response
+      if (res.data.suggested_messages) {
+        setSuggestedMessages(res.data.suggested_messages);
+        console.log("💬 Updated suggested messages:", res.data.suggested_messages);
+      }
 
       if (res.data.current_state === "complete") {
-        setTimeout(() => setStatus(true), 1500);
+        // Wait longer for the user to read the final message, then show loading
+        setTimeout(() => setStatus(true), 5000);
       }
     } catch (err) {
       setLoading(false);
@@ -492,6 +532,7 @@ export default function ChatWindow({
               onSend={handleSend}
               onDetected={handleDetectedTools}
               apiBase={URL}
+              suggestedMessages={suggestedMessages}
             />
           </div>
 

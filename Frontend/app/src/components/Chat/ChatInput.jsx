@@ -3,7 +3,7 @@ import { detectTools } from "../../services/toolDetection";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
 import QuickReplyButtons from "./QuickReplyButtons";
 
-export default function ChatInput({ onSend, onDetected, apiBase, showQuickReplies = true }) {
+export default function ChatInput({ onSend, onDetected, apiBase, showQuickReplies = true, suggestedMessages = [] }) {
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const fileInputRef = useRef(null);
@@ -110,7 +110,7 @@ export default function ChatInput({ onSend, onDetected, apiBase, showQuickReplie
   return (
     <div className="flex flex-col gap-1">
       {/* Quick Reply Buttons */}
-      {showQuickReplies && <QuickReplyButtons onQuickReply={handleQuickReply} />}
+      {showQuickReplies && <QuickReplyButtons onQuickReply={handleQuickReply} suggestedMessages={suggestedMessages} />}
       {/* Small detection status */}
       {detecting && (
         <div className="text-xs text-gray-500 px-1">Analyzing image…</div>
