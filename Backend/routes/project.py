@@ -187,6 +187,32 @@ def complete_step(project_id: str, step: int):
 
     return {"message": "Step updated", "modified": bool(result.modified_count)}
 
+@router.put("/reset-step/{project_id}/{step}")
+def reset_step(project_id: str, step: int):
+    result = project_collection.update_one(
+        {"_id": ObjectId(project_id), "step_generation.steps.order": step},
+        {"$set": {"step_generation.steps.$.completed": False}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Step not found")
+    
+    project_collection.update_one(
+        {"_id": ObjectId(project_id)},
+        {"$set": {"completed": False}}
+    )
+
+    return {"message": "Step reset", "modified": bool(result.modified_count)}
+
+@router.put("/step-feedback/{project_id}/{step}/{feedback}")
+def step_feedback(project_id: str, step: int, feedback: int):
+    result = project_collection.update_one(
+        {"_id": ObjectId(project_id), "step_generation.steps.order": step},
+        {"$set": {"step_generation.steps.$.feedback": feedback}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Step not found")
+    return {"message": "Step feedback updated", "modified": bool(result.modified_count)}
+
 @router.put("/project/{project_id}/complete")
 def complete_all_steps(project_id):
     cursor= project_collection.find_one({
