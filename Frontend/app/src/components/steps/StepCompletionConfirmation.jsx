@@ -72,6 +72,13 @@ export default function StepCompletionConfirmation({
 			console.warn('No steps data available:', allSteps);
 			return false;
 		}
+
+		console.log('isFinalStep check:', {
+			currentStepIndex,
+			stepsArrayLength: stepsArray.length
+		});
+
+		console.log('Steps Array:', stepsArray.map((s, i) => ({ index: i, title: s.title, completed: s.completed })));
 		
 		// Check if current step is the last step (currentStepIndex is 1-based)
 		return currentStepIndex === stepsArray.length;
@@ -200,6 +207,13 @@ export default function StepCompletionConfirmation({
 			setShowCongratulatoryCard(false);
 			// If this is the final step, navigate to project completion
 			if (isFinalStepCompleted && onProjectComplete) {
+				console.log('Navigating to project completion page...', {
+					stepTitle,
+					stepNumber: currentStepNumber,
+					total,
+					nextStepTitle,
+					isFinalStep: isFinalStepCompleted
+				});
 				onProjectComplete();
 			}
 		}, 4000);
@@ -325,6 +339,12 @@ export default function StepCompletionConfirmation({
 					normalStepsArray = allSteps.steps;
 				}
 				
+				console.log('🎯 handleStepComplete debug:', {
+					normalStepsArray,
+					currentStepIndex,
+					stepNumber
+				});
+				// Show congratulatory message
 				const actualStepIndex = currentStepIndex - 1; // Convert 1-based to 0-based
 				const stepTitle = normalStepsArray[actualStepIndex]?.title || `Step ${stepNumber}`;
 				showCongratulatoryMessage(stepTitle);
@@ -383,6 +403,13 @@ export default function StepCompletionConfirmation({
 				previousStepsArray2 = allSteps.steps;
 			}
 			
+			console.log('🎯 completeStepWithPrevious debug:', {
+				previousStepsArray2,
+				currentStepIndex,
+				stepNumber
+			});
+
+			// Show congratulatory message
 			const actualStepIndex = currentStepIndex - 1; // Convert 1-based to 0-based
 			const stepTitle = previousStepsArray2[actualStepIndex]?.title || `Step ${stepNumber}`;
 			showCongratulatoryMessage(stepTitle);
