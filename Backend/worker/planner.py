@@ -805,7 +805,7 @@ class EstimationAgent:
             "summary": {
                 "total_steps": steps_data.get("total_steps", 0),
                 "tools_required": len(tools_data.get("tools", [])),
-                "complexity_level": self._assess_complexity(total_time, len(step_breakdown))
+                "complexity_level": self._assess_complexity(total_time, len(step_breakdown), steps_data)
             }
         }
         
