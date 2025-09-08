@@ -73,7 +73,7 @@ export default function ToolCard({ tool, toolId, isSelected, isSelectionMode, on
 		<>
 			<div className="w-full flex flex-col items-center h-full">
 				{/* Card */}
-				<div className="w-full h-full rounded-xl border border-gray-200 bg-gray-100 shadow-sm p-3 flex flex-col items-center justify-between min-h-[160px] relative">
+				<div className="w-full h-full rounded-xl border border-gray-200 bg-white shadow-sm p-3 flex flex-col items-center justify-between min-h-[160px] relative">
 					{/* Required Badge - Smaller and positioned towards the left */}
 					<div className="absolute top-2 left-2">
 						<span

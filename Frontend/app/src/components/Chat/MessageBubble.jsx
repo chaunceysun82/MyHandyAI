@@ -1,5 +1,6 @@
 import React from "react";
 import { splitMessageIntoParts, forceSplitLongContent } from "../../utilities/textProcessing";
+import {ReactComponent as Bot} from '../../assets/Bot.svg';
 
 // Custom CSS for text wrapping - ensures long words break properly
 // wordBreak: 'break-word' - breaks long words at any character if necessary
@@ -102,19 +103,22 @@ const MessagePart = ({ type, content, icon, isFirst = false, showIcon = false })
 			case "tip":
 				return "bg-yellow-50 border border-yellow-200";
 			case "paragraph":
-				return "bg-gray-200 border border-gray-200";
+				return "bg-white border border-gray-200";
 			default:
-				return "bg-gray-200 border border-gray-200";
+				return "bg-white border border-gray-200";
 		}
 	};
 
 	return (
 		<div className={`flex items-start gap-2 ${isFirst ? 'mt-4' : 'mt-3'}`}>
 			{showIcon ? (
-				<div className="h-7 w-7 rounded-full bg-gray-200 flex items-center justify-center shrink-0">
-					<span className="text-xs">🤖</span>
+				<div className="h-7 w-7 rounded-full bg-[#1484A3] flex items-center justify-center shrink-0">
+					<span className="text-xs">
+						<Bot width = {20} height = {20}/>
+					</span>
 				</div>
 			) : (
+
 				<div className="h-7 w-7 shrink-0"></div>
 			)}
 			<div className={`max-w-[78%] text-[15px] rounded-xl px-3.5 py-2.5 leading-snug text-gray-800 break-words overflow-hidden ${getBubbleStyle()}`}>
@@ -221,7 +225,7 @@ export default function MessageBubble({ role = "bot", children, images = [], isI
 	// User message
 	return (
 		<div className="mt-3 flex justify-end">
-			<div className="max-w-[78%] bg-blue-500 text-white text-[15px] rounded-xl px-3.5 py-2.5 leading-snug break-words overflow-hidden">
+			<div className="max-w-[78%] bg-white border border-gray-200 text-gray-800 text-[15px] rounded-xl px-3.5 py-2.5 leading-snug break-words overflow-hidden">
 				<div className="break-words overflow-wrap-anywhere hyphens-auto" style={textWrapStyles}>
 					{children}
 				</div>
