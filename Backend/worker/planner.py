@@ -48,6 +48,7 @@ def minutes_to_human(minutes: int) -> str:
 tools_prompt_text = load_prompt("generation_tools_prompt.txt")
 steps_prompt_text = load_prompt("generation_steps_prompt.txt")
 fallback_tools_text = load_prompt("generation_fallback_tools_prompt.txt")
+assess_complexity_text = load_prompt("generation_assess_complexity_prompt.txt")
 
 
 class Step(BaseModel):
@@ -820,7 +821,7 @@ class EstimationAgent:
         
         text_steps = "\n".join([f"{s.get('order',0)}. {s.get('title','')}" for s in steps])
         messages = [
-            {"role": "system", "content": "You are an expert project estimator. Based on summary and steps title, classify the project complexity into one of four levels: Easy, Moderate, Challenging, Complex. Examples: hanging a mirror or mounting a tv = Easy/Moderate, building a deck = Challenging/Complex, or installing a fence = Moderate."},
+            {"role": "system", "content": assess_complexity_text},
             {"role": "user", "content": f"Given a summary of {summary} and the following steps {text_steps}, classify the project complexity level, dont over exagerate complexity. Respond with only one of the following words: Easy, Moderate, Challenging, Complex."}
         ]
         try:
