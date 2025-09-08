@@ -340,7 +340,8 @@ def lambda_handler(event, context):
             
             estimation_result = estimation_agent.generate_estimation(
                 tools_data=cursor["tool_generation"],
-                steps_data=cursor["step_generation"]
+                steps_data=cursor["step_generation"],
+                summary=cursor["summary"]
             )
             
             if estimation_result is None:

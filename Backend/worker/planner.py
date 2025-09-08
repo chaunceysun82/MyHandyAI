@@ -770,7 +770,7 @@ class EstimationAgent:
             "Content-Type": "application/json",
         }
 
-    def generate_estimation(self, tools_data: Dict[str, Any], steps_data: Dict[str, Any]) -> Dict[str, Any]:
+    def generate_estimation(self, tools_data: Dict[str, Any], steps_data: Dict[str, Any], summary: str) -> Dict[str, Any]:
         """
         Generate comprehensive estimation including cost and time breakdown.
         Returns JSON with cost estimates, time estimates, and step-by-step breakdown.
@@ -805,7 +805,7 @@ class EstimationAgent:
             "summary": {
                 "total_steps": steps_data.get("total_steps", 0),
                 "tools_required": len(tools_data.get("tools", [])),
-                "complexity_level": self._assess_complexity(total_time, len(step_breakdown), steps_data)
+                "complexity_level": self._assess_complexity(total_time, len(step_breakdown), steps_data, summary)
             }
         }
         
