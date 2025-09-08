@@ -810,8 +810,8 @@ class EstimationAgent:
         }
         
         return estimation_data
-    
-    def _assess_complexity(self, total_time: int, total_steps: int, steps_data: Dict[str, Any]) -> str:
+
+    def _assess_complexity(self, total_time: int, total_steps: int, steps_data: Dict[str, Any], summary: str) -> str:
         """Assess the complexity level based on time and steps"""
 
         steps=steps_data.get("steps", [])
@@ -820,8 +820,8 @@ class EstimationAgent:
         
         text_steps = "\n".join([f"{s.get('order',0)}. {s.get('title','')}" for s in steps])
         messages = [
-            {"role": "system", "content": "You are an expert project estimator. Based on the following steps, total time and number of steps of a project, classify the project complexity into one of four levels: Easy, Moderate, Challenging, Complex."},
-            {"role": "user", "content": f"Given a total estimated time of {total_time} minutes, {total_steps} steps and {text_steps}, classify the project complexity level. Respond with only one of the following words: Easy, Moderate, Challenging, Complex."}
+            {"role": "system", "content": "You are an expert project estimator. Based on summary and steps title, classify the project complexity into one of four levels: Easy, Moderate, Challenging, Complex. Consider projects like hanging a mirror or mounting a tv Easy/Moderate, building a deck Challenging/Complex, or installing a fence Moderate."},
+            {"role": "user", "content": f"Given a summary of {summary} and the following steps {text_steps}, classify the project complexity level. Respond with only one of the following words: Easy, Moderate, Challenging, Complex."}
         ]
         try:
             # Using the same API structure as agents.py
@@ -833,7 +833,6 @@ class EstimationAgent:
                 "verbosity": "low"
             }
             
-            r = requests.post(self.api_url, headers=self.headers, json=payload)
             r = requests.post(
                 self.api_url,
                 headers={**self.headers},
