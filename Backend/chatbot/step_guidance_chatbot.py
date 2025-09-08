@@ -93,7 +93,7 @@ Return JSON with:
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": f"Step {current_step}: {user_message}"},
+                    {"type": "text", "text": f"Step {current_step}: {user_message + " analyze the image and provide guidance."}"},
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
                 ]
             }
