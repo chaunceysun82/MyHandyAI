@@ -820,8 +820,8 @@ class EstimationAgent:
         
         text_steps = "\n".join([f"{s.get('order',0)}. {s.get('title','')}" for s in steps])
         messages = [
-            {"role": "system", "content": "You are an expert project estimator. Based on summary and steps title, classify the project complexity into one of four levels: Easy, Moderate, Challenging, Complex. Consider projects like hanging a mirror or mounting a tv Easy/Moderate, building a deck Challenging/Complex, or installing a fence Moderate."},
-            {"role": "user", "content": f"Given a summary of {summary} and the following steps {text_steps}, classify the project complexity level. Respond with only one of the following words: Easy, Moderate, Challenging, Complex."}
+            {"role": "system", "content": "You are an expert project estimator. Based on summary and steps title, classify the project complexity into one of four levels: Easy, Moderate, Challenging, Complex. Examples: hanging a mirror or mounting a tv = Easy/Moderate, building a deck = Challenging/Complex, or installing a fence = Moderate."},
+            {"role": "user", "content": f"Given a summary of {summary} and the following steps {text_steps}, classify the project complexity level, dont over exagerate complexity. Respond with only one of the following words: Easy, Moderate, Challenging, Complex."}
         ]
         try:
             # Using the same API structure as agents.py
