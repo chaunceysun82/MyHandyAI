@@ -524,11 +524,11 @@ Image analysis: {image_analysis}
 User's answers to clarifying questions:
 {answers_text}
 
-Please create a summary of this DIY problem."""
+Please create a summary of this DIY problem. Dont ask for more information, just create the summary."""
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": "Please create a summary of this DIY problem."}
+            {"role": "user", "content": "Please create a summary of this DIY problem. Dont ask for more information or confirmation, just create the summary."}
         ]
 
         try:
