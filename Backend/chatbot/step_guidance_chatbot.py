@@ -44,10 +44,10 @@ class StepGuidanceImageAnalyzer:
     def analyze_step_image(
         self,
         image_data: bytes,
-        user_message: str,
         current_step: int,
         step_context: str,
-        problem_summary: str
+        problem_summary: str,
+        user_message: str="",
     ) -> Dict[str, Any]:
         """
         Analyze image in context of current step for guidance or troubleshooting
@@ -93,7 +93,7 @@ Return JSON with:
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": f"Step {current_step}: {user_message + " analyze the image and provide guidance."}"},
+                    {"type": "text", "text": f"Step {current_step}: {user_message + "analyze the image and provide guidance."}"},
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
                 ]
             }
@@ -192,7 +192,7 @@ class StepGuidanceChatbot:
         if uploaded_image:
             step_context = self._build_step_context_block(self.current_step)
             image_analysis_result = self.image_analyzer.analyze_step_image(
-                uploaded_image, user_message, self.current_step, step_context, self.problem_summary
+                uploaded_image, self.current_step, step_context, self.problem_summary, user_message
             )
 
         # 2) Relevance gate (heuristic + micro-classifier)
