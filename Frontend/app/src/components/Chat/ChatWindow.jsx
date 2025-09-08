@@ -27,10 +27,10 @@ export default function ChatWindow({
 
   // Tips while loading
   const tips = [
-    "💡 Tip: You can upload multiple files for better results.",
-    "⚠️ Please be careful when using any tools or materials provided by MyHandyAI.",
-    "📂 Keep your project organized for quick access.",
-    "💬 Use short and clear prompts for better responses.",
+    "💡 We are now analyzing your project...",
+    "💡 Putting  your tailored repair recipe together...this may take a couple of minutes...",
+    "💡 Thanks for your patience! Almost done...",
+    "💡 Almost there, hang tight! MyHandyAI is gathering the best tools for you..."
   ];
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
   useEffect(() => {
