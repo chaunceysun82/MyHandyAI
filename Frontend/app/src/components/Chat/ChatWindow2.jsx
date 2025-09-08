@@ -25,16 +25,15 @@ export default function ChatWindow2({
   const [isClosing, setIsClosing] = useState(false);
 
   const tips = [
-      "💡 Tip: You can upload multiple files for better results.",
-      "⚠️ Please be careful when using any tools or materials provided by MyHandyAI.",
-      "📂 Keep your project organized for quick access.",
-      "💬 Use short and clear prompts for better responses.",
-    ];
-  
+    "💡 Tip: You can upload multiple files for better results.",
+    "⚠️ Please be careful when using any tools or materials provided by MyHandyAI.",
+    "📂 Keep your project organized for quick access.",
+    "💬 Use short and clear prompts for better responses.",
+  ];
+
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
 
-  useEffect(() => 
-  {
+  useEffect(() => {
     if (status) {
       const interval = setInterval(() => {
         setCurrentTipIndex((prevIndex) => (prevIndex + 1) % tips.length);
@@ -48,7 +47,7 @@ export default function ChatWindow2({
   const messagesEndRef = useRef(null);
 
   const navigate = useNavigate();
-  
+
   const [messages, setMessages] = useState([]);
   const [sessionId, setSessionId] = useState(null);
   
@@ -56,8 +55,7 @@ export default function ChatWindow2({
   const [suggestedMessages, setSuggestedMessages] = useState([]);
 
   useEffect(() => {
-    if (messagesEndRef.current) 
-    {
+    if (messagesEndRef.current) {
       messagesEndRef.current.scrollTo({
         top: messagesEndRef.current.scrollHeight,
         behavior: "smooth"
@@ -85,7 +83,7 @@ export default function ChatWindow2({
           try {
             const historyRes = await axios.get(`${URL}/step-guidance/session/${sessionRes.data.session}/history`);
             if (!cancelled) {
-              const formattedMessages = historyRes.data.map(({role, message}) => ({
+              const formattedMessages = historyRes.data.map(({ role, message }) => ({
                 sender: role === "user" ? "user" : "bot",
                 content: message,
               }));
@@ -93,7 +91,7 @@ export default function ChatWindow2({
             }
           } catch (historyErr) {
             if (!cancelled) {
-              setMessages([{sender: "bot", content: "Failed to load chat history."}]);
+              setMessages([{ sender: "bot", content: "Failed to load chat history." }]);
             }
           }
         } else {
@@ -102,7 +100,7 @@ export default function ChatWindow2({
             const startRes = await axios.post(
               `${URL}/step-guidance/start`,
               { project: projectId },
-              { headers: { "Content-Type": "application/json" }}
+              { headers: { "Content-Type": "application/json" } }
             );
 
             if (!cancelled) {
@@ -116,7 +114,7 @@ export default function ChatWindow2({
               }
               
               const historyRes = await axios.get(`${URL}/step-guidance/session/${startRes.data.session_id}/history`);
-              const formattedMessages = historyRes.data.map(({role, message}) => ({
+              const formattedMessages = historyRes.data.map(({ role, message }) => ({
                 sender: role === "user" ? "user" : "bot",
                 content: message,
               }));
@@ -125,7 +123,7 @@ export default function ChatWindow2({
             }
           } catch (historyErr) {
             if (!cancelled) {
-              setMessages([{sender: "bot", content: "Failed to load chat history."}]);
+              setMessages([{ sender: "bot", content: "Failed to load chat history." }]);
             }
           }
         }
@@ -152,7 +150,7 @@ export default function ChatWindow2({
 
   // Drag handlers
   const startDrag = (e) => setDrag({ active: true, startY: e.clientY, dy: 0 });
-  
+
   useEffect(() => {
     if (!drag.active) return;
     const move = (e) => setDrag((d) => ({ ...d, dy: Math.max(0, e.clientY - d.startY) }));
@@ -185,58 +183,105 @@ export default function ChatWindow2({
   }, [isOpen]);
 
   useEffect(() => {
-      const getStatus = async () => {
-        if(status === true)
-        {
-          try 
-          {
-            const response = await axios.post(`${URL}/generation/all/${projectId}`);
+    const getStatus = async () => {
+      if (status === true) {
+        try {
+          const response = await axios.post(`${URL}/generation/all/${projectId}`);
 
-            if(response)
-            {
-              setStatus2(true);
-            }
-          } catch (err) {
-            console.log("Err: ", err);
+          if (response) {
+            setStatus2(true);
           }
+        } catch (err) {
+          console.log("Err: ", err);
         }
       }
-      getStatus();
+    }
+    getStatus();
   }, [status, navigate]);
 
   useEffect(() => {
-        if(status2 === true)
-        {
-            const interval = setInterval(async () => {
-              try 
-              {
-                const response = await axios.get(`${URL}/generation/status/${projectId}`);
+    if (status2 === true) {
+      const interval = setInterval(async () => {
+        try {
+          const response = await axios.get(`${URL}/generation/status/${projectId}`);
 
-                if(response)
-                {
-                  const message = response.data.message;
+          if (response) {
+            const message = response.data.message;
 
-                  console.log("Message:", message);
-                  if(message === "generation completed")
-                  {
-                    clearInterval(interval);
-                    navigate(`/projects/${projectId}/overview`, { state: { userName } });
-                  }
-                }
-              } 
-              catch (err) {
-                console.log("Err: ", err);
-              }
-            }, 5000);
-
-            return () => clearInterval(interval);
+            console.log("Message:", message);
+            if (message === "generation completed") {
+              clearInterval(interval);
+              navigate(`/projects/${projectId}/overview`, { state: { userName } });
+            }
+          }
         }
+        catch (err) {
+          console.log("Err: ", err);
+        }
+      }, 5000);
+
+      return () => clearInterval(interval);
+    }
   }, [status2, navigate]);
 
 
 
   const handleSend = async (text, files = []) => {
     if (!text.trim() && files.length === 0) return;
+
+    // Validate files before processing
+
+    
+    const validFiles = files.filter(file => {
+      if (!file.type.startsWith("image/")) {
+        console.warn(`Skipping non-image file: ${file.name}`);
+        return false;
+      }
+
+      // Check file size (limit to 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        console.warn(`File too large: ${file.name} (${file.size} bytes)`);
+        return false;
+      }
+
+      return true;
+    });
+
+    if (validFiles.length !== files.length) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          content: "Some files were skipped due to size limits (max 5MB) or invalid format (images only)."
+        },
+      ]);
+    }
+
+    // 1) Show selected images as separate messages (image bubbles)
+    if (validFiles.length > 0) {
+      for (const file of validFiles) {
+        try {
+          const imageUrl = await toBase64(file);
+          const imageMsg = {
+            sender: "user",
+            content: "",
+            images: [imageUrl],
+            isImageOnly: true,
+          };
+          setMessages((prev) => [...prev, imageMsg]);
+        } catch (error) {
+          console.error("Error processing image:", error);
+          setMessages((prev) => [
+            ...prev,
+            {
+              sender: "bot",
+              content: `Error processing image ${file.name}: ${error.message}`
+            },
+          ]);
+        }
+      }
+    }
 
     let messageContent = text.trim();
 
@@ -250,9 +295,9 @@ export default function ChatWindow2({
         }
       }
 
-      const userMsg = { 
-        sender: "user", 
-        content: messageContent 
+      const userMsg = {
+        sender: "user",
+        content: messageContent
       };
 
       setMessages((prev) => [...prev, userMsg]);
@@ -262,14 +307,14 @@ export default function ChatWindow2({
       let uploadedimage = null;
 
       const currFile = files[0];
-      if(currFile && currFile.type.startsWith('image/')) {
+      if (currFile && currFile.type.startsWith('image/')) {
         uploadedimage = await toBase64(currFile);
       }
 
       const payload = {
-        message: currInput,      
-        project: projectId,    
-        uploaded_image: uploadedimage, 
+        message: currInput,
+        project: projectId,
+        uploaded_image: uploadedimage,
         step: stepNumber || -1
       };
 
@@ -278,9 +323,9 @@ export default function ChatWindow2({
       const res = await axios.post(
         `${URL}/step-guidance/chat`,
         payload,
-        { 
-          headers: 
-            { "Content-Type": "application/json" } 
+        {
+          headers:
+            { "Content-Type": "application/json" }
         }
       );
 
@@ -298,8 +343,8 @@ export default function ChatWindow2({
 
       // check for the current_state of the response:
       console.log("Current State:", res.data.current_state);
-      
-      if(res.data.current_state === 'complete') {
+
+      if (res.data.current_state === 'complete') {
         // Wait a bit for the user to read the final message, then show loading
         setTimeout(() => {
           setStatus(true);
@@ -323,7 +368,7 @@ export default function ChatWindow2({
       reader.readAsDataURL(file);
       reader.onload = () => resolve(reader.result);
       reader.onerror = (error) => reject(error);
-  });
+    });
 
   // Don't render if not open
   if (!isOpen) return null;
@@ -364,21 +409,19 @@ export default function ChatWindow2({
           }
         `}
       </style>
-      
+
       <div className="fixed inset-0 z-[1000]">
         {/* Backdrop */}
-        <div 
-          className={`absolute inset-0 bg-black/30 transition-opacity duration-300 ${
-            isClosing ? 'opacity-0' : 'opacity-100'
-          }`}
+        <div
+          className={`absolute inset-0 bg-black/30 transition-opacity duration-300 ${isClosing ? 'opacity-0' : 'opacity-100'
+            }`}
           onClick={handleClose}
         />
 
         {/* Chat Modal */}
         <div
-          className={`absolute bottom-0 h-[90svh] md:h-[95vh] left-1/2 w-full max-w-[420px] -translate-x-1/2 px-4 pt-4 pb-0 transition-all duration-300 ease-out ${
-            isClosing ? 'animate-slide-down' : 'animate-slide-up'
-          }`}
+          className={`absolute bottom-0 h-[90svh] md:h-[95vh] left-1/2 w-full max-w-[420px] -translate-x-1/2 px-4 pt-4 pb-0 transition-all duration-300 ease-out ${isClosing ? 'animate-slide-down' : 'animate-slide-up'
+            }`}
           style={{
             transform: finalTransform,
           }}
@@ -389,7 +432,7 @@ export default function ChatWindow2({
             <ChatHeader onClose={handleClose} dragHandleProps={{ onPointerDown: startDrag }} />
 
             {status === false ? (
-              <div 
+              <div
                 ref={messagesEndRef}
                 className="flex-1 overflow-y-auto px-5 pt-1 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               >
@@ -398,7 +441,7 @@ export default function ChatWindow2({
                 {loading && (
                   <div className="flex items-center gap-2 text-gray-500 mt-2">
                     <div className="loader w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
-                    
+
                     <div className="flex items-center gap-1">
                       <span>Bot is thinking</span>
                       <div className="flex items-center gap-1 translate-y-[4px]">

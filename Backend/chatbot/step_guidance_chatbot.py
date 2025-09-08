@@ -196,7 +196,10 @@ class StepGuidanceChatbot:
             )
 
         # 2) Relevance gate (heuristic + micro-classifier)
-        rel_score, rel_label = self._relevance_check(user_message)
+        if user_message and not image_analysis_result:
+            rel_score, rel_label = self._relevance_check(user_message)
+        else:
+            rel_score, rel_label = 1.0, "relevant"
         if rel_label == "not_relevant" or rel_score < MIN_RELEVANCE_TO_ANSWER:
             step_title = self._step_title(self.current_step)
             msg = (

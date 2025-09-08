@@ -811,16 +811,54 @@ class EstimationAgent:
         
         return estimation_data
     
-    def _assess_complexity(self, total_time: int, total_steps: int) -> str:
+    def _assess_complexity(self, total_time: int, total_steps: int, steps_data: Dict[str, Any]) -> str:
         """Assess the complexity level based on time and steps"""
-        if total_time <= 60 and total_steps <= 3:
-            return "Easy"
-        elif total_time <= 180 and total_steps <= 5:
-            return "Moderate"
-        elif total_time <= 360 and total_steps <= 8:
-            return "Challenging"
-        else:
-            return "Complex"
+
+        steps=steps_data.get("steps", [])
+        if not steps:     
+            return "Unknown"
+        
+        text_steps = "\n".join([f"{s.get('order',0)}. {s.get('title','')}" for s in steps])
+        messages = [
+            {"role": "system", "content": "You are an expert project estimator. Based on the following steps, total time and number of steps of a project, classify the project complexity into one of four levels: Easy, Moderate, Challenging, Complex."},
+            {"role": "user", "content": f"Given a total estimated time of {total_time} minutes, {total_steps} steps and {text_steps}, classify the project complexity level. Respond with only one of the following words: Easy, Moderate, Challenging, Complex."}
+        ]
+        try:
+            # Using the same API structure as agents.py
+            payload = {
+                "model": "gpt-5-mini",
+                "messages": messages,
+                "max_completion_tokens": 2000,
+                "reasoning_effort": "low",
+                "verbosity": "low"
+            }
+            
+            r = requests.post(self.api_url, headers=self.headers, json=payload)
+            if r.status_code == 200:
+                print(r.json())
+                content = r.json()["choices"][0]["message"]["content"].strip()
+                print(f"✅ LLM Response received, length: {len(content)} characters")
+                
+                if content in ("Easy", "Moderate", "Challenging", "Complex"):
+                    return content
+                print("❌ Unexpected LLM Response")
+                return "Unknown"
+            else:
+                print(f"❌ API Error {r.status_code}")
+                print(f"Response: {r.text}")
+                raise HTTPException(status_code=r.status_code, detail=f"LLM API error: {r.status_code}")
+                
+        except requests.exceptions.Timeout:
+            print("❌ Request timeout")
+            raise HTTPException(status_code=500, detail="LLM request timed out")
+        except requests.exceptions.RequestException as re:
+            print(f"❌ Request error: {str(re)}")
+            raise HTTPException(status_code=500, detail=f"LLM request failed: {str(re)}")
+        
+        except Exception as e:
+            print(f"❌ Unexpected error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+        
 
 
 class ContentPlanner:
