@@ -17,8 +17,8 @@ const Chat = () => {
   const tips = [
     "💡 We are now analyzing your project...",
     "💡 Putting  your tailored repair recipe together...this may take a couple of minutes...",
-    "💡 Thanks for your patience! Almost done...",
-    "💡 Almost there, hang tight! MyHandyAI is gathering the best tools for you..."
+    "💡 Almost there, hang tight! MyHandyAI is gathering the best tools for you...",
+    "💡 Thanks for your patience! Almost done..."
   ];
 
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
