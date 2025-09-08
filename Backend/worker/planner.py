@@ -834,19 +834,17 @@ class EstimationAgent:
             }
             
             r = requests.post(self.api_url, headers=self.headers, json=payload)
-            if r.status_code == 200:
-                print(r.json())
-                content = r.json()["choices"][0]["message"]["content"].strip()
-                print(f"✅ LLM Response received, length: {len(content)} characters")
-                
-                if content in ("Easy", "Moderate", "Challenging", "Complex"):
-                    return content
-                print("❌ Unexpected LLM Response")
-                return "Unknown"
-            else:
-                print(f"❌ API Error {r.status_code}")
-                print(f"Response: {r.text}")
-                raise HTTPException(status_code=r.status_code, detail=f"LLM API error: {r.status_code}")
+            r = requests.post(
+                self.api_url,
+                headers={**self.headers},
+                json=payload, timeout=30
+            )
+            r.raise_for_status()
+            data = r.json()
+            content = data["choices"][0]["message"]["content"]
+            print (content)
+
+            return content.strip()
                 
         except requests.exceptions.Timeout:
             print("❌ Request timeout")
