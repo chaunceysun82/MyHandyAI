@@ -27,8 +27,8 @@ export default function StepCard({
 	return (
 		<button
 			onClick={onClick}
-			className="w-full text-left px-3 py-3 rounded-2xl bg-[#E5E5E5] hover:bg-gray-300 transition-colors p-3 flex items-center gap-3 border-l-4"
-			style={{ borderLeftColor: '#10B981' }}>
+			className="w-full text-left px-3 py-3 rounded-2xl shadow-md hover:bg-gray-300 transition-colors p-3 flex items-center gap-3 border-l-4"
+			style={{ borderLeftColor: '#1484A3'}}>
 			{/* Step Image */}
 			<div className="w-14 h-14 rounded-lg overflow-hidden flex items-center justify-center bg-[#F6F0E0]">
 				{imageUrl ? (
@@ -85,7 +85,7 @@ export default function StepCard({
 
 			{/* Navigation Arrow - Right side */}
 			<div className="shrink-0">
-				<span className="inline-flex items-center text-xs px-2 py-1 rounded-full bg-white border border-gray-300">
+				<span className="inline-flex items-center text-xs px-2 py-1 rounded-full bg-[#E9FAFF] border border-gray-300">
 					{isToolsStep ? "Tools" : `Step ${index}`} <span className="ml-1">›</span>
 				</span>
 			</div>

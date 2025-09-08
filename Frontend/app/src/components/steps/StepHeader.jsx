@@ -39,7 +39,7 @@ export default function StepHeader({
 				{/* Center: Step number or Tools text */}
 				<div className="flex-1 flex justify-center">
 					<span className="text-lg font-semibold text-gray-900">
-						{isToolsStep ? "Tools" : `Step ${stepNumber}/${totalSteps}`}
+						{isToolsStep ? "Tools and Materials" : `Step ${stepNumber}/${totalSteps}`}
 					</span>
 				</div>
 
@@ -48,10 +48,10 @@ export default function StepHeader({
 			</div>
 
 			{/* Title in separate row below */}
-			{title && (
+			{(title || subtitle) && (
 				<div className="px-4 pb-2">
 					<div className="text-center">
-						<p className="text-[16px] leading-5 font-medium text-gray-700 mb-1">{title}</p>
+						<p className="text-[16px] leading-5 font-medium text-gray-700 mb-[-4px]">{title}</p>
 						{/* Subtitle */}
 						{subtitle && (
 							<p className="text-sm text-gray-500 leading-4">{subtitle}</p>

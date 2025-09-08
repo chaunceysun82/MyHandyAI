@@ -268,7 +268,7 @@ export default function StepPage() {
 
 	return (
 		<MobileWrapper>
-			<div className="flex flex-col h-screen bg-gray-50">
+			<div className="flex flex-col h-screen bg-[#fffef6] ">
 				{/* Header - Fixed at top */}
 				<StepHeader
 					stepNumber={parseInt(stepIndex)}

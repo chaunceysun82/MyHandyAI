@@ -17,7 +17,7 @@ const QuickReplyButtons = ({ onQuickReply, suggestedMessages = [] }) => {
           <button
             key={index}
             onClick={() => onQuickReply(reply)}
-            className="py-1 px-2 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md border border-gray-200 transition-colors duration-200 hover:border-gray-300 whitespace-nowrap flex-shrink-0"
+            className="py-1 px-2 text-xs bg-[#E9FAFF] hover:bg-[#d2f4fc] text-gray-700 rounded-md border border-gray-200 transition-colors duration-200 hover:border-gray-300 whitespace-nowrap flex-shrink-0"
           >
             {reply}
           </button>

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { toggleStepCompletion } from "../../services/steps";
 import { completeProject } from "../../services/projects";
 import ChatWindow2 from "../Chat/ChatWindow2";
+import {ReactComponent as Bot} from '../../assets/Bot.svg';
 
 export default function StepFooter({ 
 	projectId, 
@@ -213,16 +214,12 @@ export default function StepFooter({
 
 	return (
 		<>
-			<div className="px-4 pb-4 space-y-3">
+			<div className="px-4 pb-4 space-y-3 border-t bg-white">
 				{/* Assistant prompt pill */}
-				<div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-600 flex items-center justify-between">
-					<span>Hi {getFirstName(userName)}, Need MyHandyAI Assistant?</span>
-					<button
-						onClick={handleChatClick}
-						className="ml-3 px-3 py-1 rounded-lg bg-[#6FCBAE] text-white text-[12px] font-semibold">
-						Ask
-					</button>
-				</div>
+			<button onClick={handleChatClick} className="rounded-xl w-full shadow-xl border justify-center items-center gap-[10px] flex border-gray-200 bg-[#1484A3] transition-all ease-in-out duration-200 hover:bg-[#026e8c] px-3 py-2 mt-2 text-[12px] text-white font-light">
+				<Bot width = {20} height = {20} />
+				<span>Hi {getFirstName(userName)}, Need MyHandyAI Assistant?</span>
+			</button>
 
 			{openModal && (
 				<ChatWindow2
@@ -240,22 +237,20 @@ export default function StepFooter({
 					<button
 						onClick={handlePrevClick}
 						disabled={isPrevDisabled}
-						className={`py-2 rounded-lg font-medium ${
+						className={`py-2 rounded-lg font-regular ${
 							isPrevDisabled
 								? "bg-gray-100 text-gray-400 cursor-not-allowed"
-								: "border border-gray-300 bg-gray-50 text-sm"
+								: "bg-[#E9FAFF] text-[12px] shadow-md hover:bg-[#d9f7ff] transition-all erase-in-out duration-300"
 						}`}>
 						Previous
 					</button>
 					<button
 						onClick={handleNextClick}
 						disabled={isNextDisabled || isCompleting}
-						className={`py-2 rounded-lg font-medium ${
+						className={`py-2 rounded-lg font-regular ${
 							isNextDisabled || isCompleting
 								? "bg-gray-100 text-gray-400 cursor-not-allowed"
-								: isNextFinal
-								? "bg-green-600 text-white hover:bg-green-700"
-								: "bg-black text-white text-sm font-semibold"
+								: "bg-[#E9FAFF] text-[12px] text-black shadow-md hover:bg-[#d9f7ff] transition-all erase-in-out duration-300"
 						}`}>
 						{isCompleting ? "Completing..." : (isNextFinal ? "Finish" : "Next Step")}
 					</button>
