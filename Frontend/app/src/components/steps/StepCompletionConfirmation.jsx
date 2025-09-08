@@ -26,49 +26,78 @@ export default function StepCompletionConfirmation({
 	const [showCongratulatoryCard, setShowCongratulatoryCard] = useState(false);
 	const [completedStepData, setCompletedStepData] = useState(null);
 
-	// Check if previous steps are completed (excluding tools step)
+	// Check if previous steps are completed
 	const checkPreviousStepsCompleted = () => {
-		// Ensure allSteps is an array before checking
-		if (!Array.isArray(allSteps) || allSteps.length === 0) {
-			console.warn('allSteps is not an array or is empty:', allSteps);
+		// Handle different data structures from the API
+		let stepsArray = [];
+		
+		if (Array.isArray(allSteps)) {
+			stepsArray = allSteps;
+		} else if (allSteps?.steps_data?.steps && Array.isArray(allSteps.steps_data.steps)) {
+			stepsArray = allSteps.steps_data.steps;
+		} else if (allSteps?.steps && Array.isArray(allSteps.steps)) {
+			stepsArray = allSteps.steps;
+		}
+		
+		if (stepsArray.length === 0) {
+			console.warn('No steps data available:', allSteps);
 			return true; // Default to true to avoid blocking completion
 		}
 		
-		if (currentStepIndex <= 1) return true; // First instruction step (step 1), no previous instruction steps to check
+		if (currentStepIndex <= 1) return true; // First step, no previous steps to check
 		
-		// Check only instruction steps (skip tools step at index 0)
-		for (let i = 1; i < currentStepIndex; i++) {
-			if (!allSteps[i]?.completed) {
+		// Check previous steps (currentStepIndex is 1-based, so check from 0 to currentStepIndex-2)
+		for (let i = 0; i < currentStepIndex - 1; i++) {
+			if (!stepsArray[i]?.completed) {
 				return false;
 			}
 		}
 		return true;
 	};
 
-	// Check if this is the final step (excluding tools step)
+	// Check if this is the final step
 	const isFinalStep = () => {
-		// Ensure allSteps is an array before filtering
-		if (!Array.isArray(allSteps) || allSteps.length === 0) {
-			console.warn('allSteps is not an array or is empty:', allSteps);
+		// Handle different data structures from the API
+		let stepsArray = [];
+		
+		if (Array.isArray(allSteps)) {
+			stepsArray = allSteps;
+		} else if (allSteps?.steps_data?.steps && Array.isArray(allSteps.steps_data.steps)) {
+			stepsArray = allSteps.steps_data.steps;
+		} else if (allSteps?.steps && Array.isArray(allSteps.steps)) {
+			stepsArray = allSteps.steps;
+		}
+		
+		if (stepsArray.length === 0) {
+			console.warn('No steps data available:', allSteps);
 			return false;
 		}
 		
-		// Filter out tools step and check if current step is the last instruction step
-		const instructionSteps = allSteps.filter((step, index) => index > 0); // Skip tools step (index 0)
-		return currentStepIndex === instructionSteps.length;
+		// Check if current step is the last step (currentStepIndex is 1-based)
+		return currentStepIndex === stepsArray.length;
 	};
 
-	// Check if all instruction steps are completed
+	// Check if all steps are completed
 	const checkAllStepsCompleted = () => {
-		// Ensure allSteps is an array before iterating
-		if (!Array.isArray(allSteps) || allSteps.length === 0) {
-			console.warn('allSteps is not an array or is empty:', allSteps);
+		// Handle different data structures from the API
+		let stepsArray = [];
+		
+		if (Array.isArray(allSteps)) {
+			stepsArray = allSteps;
+		} else if (allSteps?.steps_data?.steps && Array.isArray(allSteps.steps_data.steps)) {
+			stepsArray = allSteps.steps_data.steps;
+		} else if (allSteps?.steps && Array.isArray(allSteps.steps)) {
+			stepsArray = allSteps.steps;
+		}
+		
+		if (stepsArray.length === 0) {
+			console.warn('No steps data available:', allSteps);
 			return false;
 		}
 		
-		// Check all instruction steps (skip tools step at index 0)
-		for (let i = 1; i < allSteps.length; i++) {
-			if (!allSteps[i]?.completed) {
+		// Check all steps
+		for (let i = 0; i < stepsArray.length; i++) {
+			if (!stepsArray[i]?.completed) {
 				return false;
 			}
 		}
@@ -77,20 +106,43 @@ export default function StepCompletionConfirmation({
 
 	// Calculate remaining steps for congratulatory message
 	const getRemainingStepsInfo = () => {
-		if (!Array.isArray(allSteps) || allSteps.length === 0) {
+		// Handle different data structures from the API
+		let stepsArray = [];
+		
+		if (Array.isArray(allSteps)) {
+			stepsArray = allSteps;
+		} else if (allSteps?.steps_data?.steps && Array.isArray(allSteps.steps_data.steps)) {
+			stepsArray = allSteps.steps_data.steps;
+		} else if (allSteps?.steps && Array.isArray(allSteps.steps)) {
+			stepsArray = allSteps.steps;
+		}
+		
+		if (stepsArray.length === 0) {
 			return { remaining: 0, total: 0 };
 		}
 		
-		// Count remaining instruction steps (skip tools step at index 0)
+		// Count instruction steps (the stepsArray contains only instruction steps, no tools step)
 		let remaining = 0;
-		let total = 0;
+		let total = stepsArray.length;
 		
-		for (let i = 1; i < allSteps.length; i++) {
-			total++;
-			if (!allSteps[i]?.completed) {
+		// Count remaining steps (excluding current step since it's being completed)
+		// Note: currentStepIndex is 1-based from URL, but stepsArray is 0-based
+		const actualCurrentIndex = currentStepIndex - 1;
+		
+		for (let i = 0; i < stepsArray.length; i++) {
+			if (!stepsArray[i]?.completed && i !== actualCurrentIndex) {
 				remaining++;
 			}
 		}
+		
+		console.log("🎯 getRemainingStepsInfo debug:", {
+			stepsArrayLength: stepsArray.length,
+			currentStepIndex,
+			actualCurrentIndex,
+			total,
+			remaining,
+			stepsArray: stepsArray.map((s, i) => ({ index: i, title: s.title, completed: s.completed }))
+		});
 		
 		return { remaining, total };
 	};
@@ -98,15 +150,39 @@ export default function StepCompletionConfirmation({
 	// Show congratulatory card when step is completed
 	const showCongratulatoryMessage = (stepTitle) => {
 		const { remaining, total } = getRemainingStepsInfo();
-		const isFinalStepCompleted = remaining === 0;
-		const currentStepNumber = total - remaining;
+		// Check if this is the final step BEFORE completion
+		const isFinalStepCompleted = isFinalStep();
+		// Calculate current step number correctly (currentStepIndex is 1-based from URL)
+		const currentStepNumber = currentStepIndex;
+		
+		console.log("🎉 Step completion debug:", {
+			currentStepIndex,
+			currentStepNumber,
+			remaining,
+			total,
+			isFinalStepCompleted,
+			stepTitle,
+			allStepsLength: Array.isArray(allSteps) ? allSteps.length : 'Not an array',
+			allStepsStructure: allSteps
+		});
 		
 		// Get next step title
 		let nextStepTitle = null;
-		if (!isFinalStepCompleted && Array.isArray(allSteps)) {
-			const nextStepIndex = currentStepIndex + 1;
-			if (nextStepIndex < allSteps.length) {
-				nextStepTitle = allSteps[nextStepIndex]?.title || `Step ${nextStepIndex + 1}`;
+		if (!isFinalStepCompleted) {
+			// Handle different data structures from the API
+			let stepsArray = [];
+			
+			if (Array.isArray(allSteps)) {
+				stepsArray = allSteps;
+			} else if (allSteps?.steps_data?.steps && Array.isArray(allSteps.steps_data.steps)) {
+				stepsArray = allSteps.steps_data.steps;
+			} else if (allSteps?.steps && Array.isArray(allSteps.steps)) {
+				stepsArray = allSteps.steps;
+			}
+			
+			const nextStepIndex = currentStepIndex; // currentStepIndex is 1-based, next step is at same index
+			if (nextStepIndex < stepsArray.length) {
+				nextStepTitle = stepsArray[nextStepIndex]?.title || `Step ${nextStepIndex + 1}`;
 			}
 		}
 		
@@ -132,9 +208,19 @@ export default function StepCompletionConfirmation({
 	// Complete all remaining steps and finish project
 	const completeAllStepsAndFinish = async () => {
 		try {
-			// Ensure allSteps is an array before iterating
-			if (!Array.isArray(allSteps) || allSteps.length === 0) {
-				console.warn('allSteps is not an array or is empty:', allSteps);
+			// Handle different data structures from the API
+			let allStepsArray = [];
+			
+			if (Array.isArray(allSteps)) {
+				allStepsArray = allSteps;
+			} else if (allSteps?.steps_data?.steps && Array.isArray(allSteps.steps_data.steps)) {
+				allStepsArray = allSteps.steps_data.steps;
+			} else if (allSteps?.steps && Array.isArray(allSteps.steps)) {
+				allStepsArray = allSteps.steps;
+			}
+			
+			if (allStepsArray.length === 0) {
+				console.warn('No steps data available:', allSteps);
 				// Just complete the current step if allSteps is invalid
 				await toggleStepCompletion(projectId, stepNumber);
 				if (onStepUpdate) onStepUpdate();
@@ -142,10 +228,10 @@ export default function StepCompletionConfirmation({
 				return;
 			}
 			
-			// Mark all incomplete instruction steps as completed (skip tools step at index 0)
-			for (let i = 1; i < allSteps.length; i++) {
-				if (!allSteps[i]?.completed) {
-					await toggleStepCompletion(projectId, i + 1);
+			// Mark all incomplete steps as completed
+			for (let i = 0; i < allStepsArray.length; i++) {
+				if (!allStepsArray[i]?.completed) {
+					await toggleStepCompletion(projectId, i + 1); // Step numbers are 1-based
 				}
 			}
 			
@@ -168,7 +254,18 @@ export default function StepCompletionConfirmation({
 			if (onStepUpdate) onStepUpdate();
 			
 			// Show congratulatory message for final step completion
-			const stepTitle = allSteps[currentStepIndex]?.title || `Step ${stepNumber}`;
+			// Handle different data structures from the API
+			let finalStepsArray = [];
+			if (Array.isArray(allSteps)) {
+				finalStepsArray = allSteps;
+			} else if (allSteps?.steps_data?.steps && Array.isArray(allSteps.steps_data.steps)) {
+				finalStepsArray = allSteps.steps_data.steps;
+			} else if (allSteps?.steps && Array.isArray(allSteps.steps)) {
+				finalStepsArray = allSteps.steps;
+			}
+			
+			const actualStepIndex = currentStepIndex - 1; // Convert 1-based to 0-based
+			const stepTitle = finalStepsArray[actualStepIndex]?.title || `Step ${stepNumber}`;
 			showCongratulatoryMessage(stepTitle);
 			
 			// Navigate to project completion page after a short delay
@@ -218,7 +315,18 @@ export default function StepCompletionConfirmation({
 				if (onStepUpdate) onStepUpdate();
 				
 				// Show congratulatory message
-				const stepTitle = allSteps[currentStepIndex]?.title || `Step ${stepNumber}`;
+				// Handle different data structures from the API
+				let normalStepsArray = [];
+				if (Array.isArray(allSteps)) {
+					normalStepsArray = allSteps;
+				} else if (allSteps?.steps_data?.steps && Array.isArray(allSteps.steps_data.steps)) {
+					normalStepsArray = allSteps.steps_data.steps;
+				} else if (allSteps?.steps && Array.isArray(allSteps.steps)) {
+					normalStepsArray = allSteps.steps;
+				}
+				
+				const actualStepIndex = currentStepIndex - 1; // Convert 1-based to 0-based
+				const stepTitle = normalStepsArray[actualStepIndex]?.title || `Step ${stepNumber}`;
 				showCongratulatoryMessage(stepTitle);
 			}
 		} catch (error) {
@@ -227,22 +335,33 @@ export default function StepCompletionConfirmation({
 		}
 	};
 
-	// Complete current step and mark previous incomplete steps as completed (excluding tools step)
+	// Complete current step and mark previous incomplete steps as completed
 	const completeStepWithPrevious = async () => {
 		try {
-			// Ensure allSteps is an array before iterating
-			if (!Array.isArray(allSteps) || allSteps.length === 0) {
-				console.warn('allSteps is not an array or is empty:', allSteps);
+			// Handle different data structures from the API
+			let previousStepsArray = [];
+			
+			if (Array.isArray(allSteps)) {
+				previousStepsArray = allSteps;
+			} else if (allSteps?.steps_data?.steps && Array.isArray(allSteps.steps_data.steps)) {
+				previousStepsArray = allSteps.steps_data.steps;
+			} else if (allSteps?.steps && Array.isArray(allSteps.steps)) {
+				previousStepsArray = allSteps.steps;
+			}
+			
+			if (previousStepsArray.length === 0) {
+				console.warn('No steps data available:', allSteps);
 				// Just complete the current step if allSteps is invalid
 				await toggleStepCompletion(projectId, stepNumber);
 				if (onStepUpdate) onStepUpdate();
 				return;
 			}
 
-			// Mark all previous incomplete instruction steps as completed (skip tools step at index 0)
-			for (let i = 1; i < currentStepIndex; i++) {
-				if (!allSteps[i]?.completed) {
-					await toggleStepCompletion(projectId, i + 1);
+			// Mark all previous incomplete steps as completed
+			// currentStepIndex is 1-based, so check from 0 to currentStepIndex-2
+			for (let i = 0; i < currentStepIndex - 1; i++) {
+				if (!previousStepsArray[i]?.completed) {
+					await toggleStepCompletion(projectId, i + 1); // Step numbers are 1-based
 				}
 			}
 			
@@ -254,7 +373,18 @@ export default function StepCompletionConfirmation({
 			if (onStepUpdate) onStepUpdate();
 			
 			// Show congratulatory message
-			const stepTitle = allSteps[currentStepIndex]?.title || `Step ${stepNumber}`;
+			// Handle different data structures from the API
+			let previousStepsArray2 = [];
+			if (Array.isArray(allSteps)) {
+				previousStepsArray2 = allSteps;
+			} else if (allSteps?.steps_data?.steps && Array.isArray(allSteps.steps_data.steps)) {
+				previousStepsArray2 = allSteps.steps_data.steps;
+			} else if (allSteps?.steps && Array.isArray(allSteps.steps)) {
+				previousStepsArray2 = allSteps.steps;
+			}
+			
+			const actualStepIndex = currentStepIndex - 1; // Convert 1-based to 0-based
+			const stepTitle = previousStepsArray2[actualStepIndex]?.title || `Step ${stepNumber}`;
 			showCongratulatoryMessage(stepTitle);
 			
 		} catch (error) {
@@ -356,9 +486,9 @@ export default function StepCompletionConfirmation({
 								<>You are done with your DIY project! All steps have been completed successfully.</>
 							) : (
 								<>
-									Step {completedStepData.stepNumber}/{completedStepData.total} ({completedStepData.stepTitle}) is complete!
+									Step {completedStepData.stepNumber}/{completedStepData.total} {completedStepData.stepTitle} is complete!
 									{completedStepData.nextStepTitle && (
-										<> You can continue with Step {completedStepData.stepNumber + 1}/{completedStepData.total}.</>
+										<> You can continue with Step {completedStepData.stepNumber + 1}/{completedStepData.total} {completedStepData.nextStepTitle}.</>
 									)}
 								</>
 							)}
