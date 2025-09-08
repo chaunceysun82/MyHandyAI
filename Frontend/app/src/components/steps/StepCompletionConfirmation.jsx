@@ -312,6 +312,7 @@ export default function StepCompletionConfirmation({
 					setValidationType('previous');
 					setPendingAction(() => () => completeStepWithPrevious());
 					setShowValidationModal(true);
+					print('Previous steps validation modal shown');
 					return;
 				}
 
@@ -321,6 +322,7 @@ export default function StepCompletionConfirmation({
 					setValidationType('final');
 					setPendingAction(() => () => completeAllStepsAndFinish());
 					setShowValidationModal(true);
+					print('Final step validation modal shown');
 					return;
 				}
 
