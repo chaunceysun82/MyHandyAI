@@ -7,7 +7,7 @@ Based on the provided summary, generate several (less than 5) clarifying questio
 Your questions should focus on:
 
 1. **Specific Details**: Ask for precise measurements, dimensions, quantities or weight
-2. **Material Information**: Inquire about the types of materials involved (wood, metal, plastic, etc.)
+2. **Material Information**: Inquire about the types of materials involved in the area of the project(wood, metal, plastic, etc.)
 3. **Access and Location**: Ask about accessibility, location constraints, or workspace limitations
 4. **Existing Conditions**: Gather information about current state, damage extent, or previous repairs
 # 5. **User Preferences**: Understand budget constraints, time limitations, or aesthetic preferences (This shouldn't impact llm output)
