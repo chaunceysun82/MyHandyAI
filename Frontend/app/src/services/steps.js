@@ -32,6 +32,30 @@ export const toggleStepCompletion = async (projectId, stepNumber) => {
 	}
 };
 
+// Reset step completion status (undo completion)
+export const resetStepCompletion = async (projectId, stepNumber) => {
+	try {
+		const response = await fetch(`${BASE_URL}/reset-step/${projectId}/${stepNumber}`, {
+			method: 'PUT',
+			headers: {
+				'Content-Type': 'application/json',
+			}
+		});
+
+		if (!response.ok) {
+			throw new Error(`HTTP error! status: ${response.status}`);
+		}
+
+		const result = await response.json();
+		console.log('Step completion reset:', result);
+		return result;
+		
+	} catch (error) {
+		console.error('Error resetting step completion:', error);
+		throw error;
+	}
+};
+
 // Get step details by project ID and step number
 export const getStepDetails = async (projectId, stepNumber) => {
 	try {
@@ -68,6 +92,30 @@ export const updateStepProgress = async (projectId, stepNumber, progressData) =>
 		
 	} catch (error) {
 		console.error('Error updating step progress:', error);
+		throw error;
+	}
+};
+
+// Submit step feedback (1 for good, 0 for bad)
+export const submitStepFeedback = async (projectId, stepNumber, feedback) => {
+	try {
+		const response = await fetch(`${BASE_URL}/step-feedback/${projectId}/${stepNumber}/${feedback}`, {
+			method: 'PUT',
+			headers: {
+				'Content-Type': 'application/json',
+			}
+		});
+
+		if (!response.ok) {
+			throw new Error(`HTTP error! status: ${response.status}`);
+		}
+
+		const result = await response.json();
+		console.log('Step feedback submitted:', result);
+		return result;
+		
+	} catch (error) {
+		console.error('Error submitting step feedback:', error);
 		throw error;
 	}
 };

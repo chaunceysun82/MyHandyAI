@@ -279,8 +279,13 @@ export default function StepPage() {
 
 				{/* Main Content - Scrollable */}
 				<main className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-					{/* Time Estimate */}
-					<StepTimeEstimate time={step.time} completed={step.completed} />
+					{/* Time Estimate with Feedback */}
+					<StepTimeEstimate 
+						time={step.time} 
+						completed={step.completed} 
+						projectId={projectId}
+						stepNumber={parseInt(stepIndex)}
+					/>
 
 					{/* Media Guide Section - Video and Image */}
 					<StepMediaGuide 
@@ -288,17 +293,6 @@ export default function StepPage() {
 						imageData={step.image || step.imageData || step.image_data} 
 						title="Step Guide" 
 					/>
-					{/* Debug: Log step data for media */}
-					{console.log("StepPage: Step data for media:", { 
-						videoUrl: projectVideoUrl, 
-						imageData: step.image || step.imageData || step.image_data,
-						projectVideoUrl: projectVideoUrl,
-						stepTitle: step.title,
-						fullStep: step,
-						stepImage: step.image,
-						stepImageData: step.imageData,
-						stepImageDataAlt: step.image_data
-					})}
 
 					{/* Instructions */}
 					<StepInstructions instructions={step.instructions} />
