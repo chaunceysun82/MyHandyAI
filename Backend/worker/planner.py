@@ -343,7 +343,8 @@ Project summary:
                 "amazon_link": None,
             }
 
-            tools_list.append(tool)
+            if i.price > 0:
+                tools_list.append(tool)
 
         out: Dict[str, Any] = {"tools": tools_list, "raw": parsed_obj.model_dump()}
         if include_json:

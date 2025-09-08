@@ -15,4 +15,5 @@ Guidelines:
 - Focus on essential tools for the specific DIY task
 - Include safety equipment when relevant
 - Consider the user's skill level
+- include just tools with price in the JSON, the guidance for the project doesnt concern you
 - Return JSON only - no extra text or explanations
