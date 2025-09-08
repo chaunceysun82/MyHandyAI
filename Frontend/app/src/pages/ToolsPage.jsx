@@ -276,7 +276,7 @@ export default function ToolsPage() {
 			<ToolsLayout
 				stepNumber={0} // Changed from 1 to 0 to display "Tools" instead of "Step 1/6"
 				totalSteps={totalSteps}
-				title="Prepare Tools and Materials"
+				title=""
 				subtitle="Don't have these? Tap any item to order it easily."
 				onBack={handleBack}
 				onPrev={handlePrev}
@@ -309,9 +309,9 @@ export default function ToolsPage() {
 						<div className="flex gap-2">
 							<button
 								onClick={() => setActiveFilter("all")}
-								className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+								className={`px-3 py-1.5 rounded-[50px] text-xs font-regular transition-colors ${
 									activeFilter === "all"
-										? "bg-blue-600 text-white"
+										? "bg-[#1484A3] text-white"
 										: "bg-gray-200 text-gray-700 hover:bg-gray-300"
 								}`}
 							>
@@ -319,9 +319,9 @@ export default function ToolsPage() {
 							</button>
 							<button
 								onClick={() => setActiveFilter("required")}
-								className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+								className={`px-3 py-1.5 rounded-[50px] text-xs font-regular transition-colors ${
 									activeFilter === "required"
-										? "bg-blue-600 text-white"
+										? "bg-[#1484A3] text-white"
 										: "bg-gray-200 text-gray-700 hover:bg-gray-300"
 								}`}
 							>
@@ -329,9 +329,9 @@ export default function ToolsPage() {
 							</button>
 							<button
 								onClick={() => setActiveFilter("optional")}
-								className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+								className={`px-3 py-1.5 rounded-[50px] text-xs font-regular transition-colors ${
 									activeFilter === "optional"
-										? "bg-blue-600 text-white"
+										? "bg-[#1484A3] text-white"
 										: "bg-gray-200 text-gray-700 hover:bg-gray-300"
 								}`}
 							>

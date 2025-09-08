@@ -6,6 +6,7 @@ import StepCard from "../components/StepCard";
 import EstimatedBreakdown from "../components/EstimationBreakdown";
 import ChatWindow2 from "../components/Chat/ChatWindow2";
 import defaultTools from "../assets/default_tools.svg";
+import {ReactComponent as Bot} from '../assets/Bot.svg';
 
 
 export default function ProjectOverview() {
@@ -199,17 +200,17 @@ export default function ProjectOverview() {
 	};
 
 	return (
-		<div className="min-h-screen flex justify-center bg-white">
+		<div className="min-h-screen flex justify-center bg-[#fffef6]">
 			<div className="w-full max-w-md flex flex-col h-screen">
 				{/* Sticky Project Title Only */}
-				<div className="sticky top-0 z-20 bg-white shadow-sm border-b border-gray-100">
+				<div className="sticky top-0 z-20 bg-[#fffef6]">
 					<div className="pt-5 pb-3 px-4">
 						<div className="flex items-center justify-center relative">
-							<h1 className="text-[16px] font-semibold">Project Overview</h1>
+							<h1 className="text-[20px] font-semibold">Project Overview</h1>
 							<button
 								aria-label="Close"
 								onClick={handleClose}
-								className="absolute right-0 text-xl leading-none px-2 py-1 rounded hover:bg-gray-100">
+								className="absolute right-0 text-3xl leading-none px-2 py-1 rounded hover:bg-gray-100">
 								×
 							</button>
 						</div>
@@ -340,16 +341,12 @@ export default function ProjectOverview() {
 				</div>
 
 				{/* Fixed Bottom Section */}
-				<div className="px-4 pb-4 space-y-3">
+				<div className="px-4 pb-4 space-y-3 bg-[white] border-t">
 					{/* Assistant prompt pill */}
-					<div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-600 flex items-center justify-between">
+					<button onClick={openAssistant} className="rounded-xl w-full shadow-xl border justify-center items-center gap-[10px] flex border-gray-200 bg-[#1484A3] transition-all ease-in-out duration-200 hover:bg-[#026e8c] px-3 py-2 mt-2 text-[12px] text-white font-light">
+						<Bot width = {20} height = {20} />
 						<span>Hi {getFirstName(userName)}, Need MyHandyAI Assistant?</span>
-						<button
-							onClick={openAssistant}
-							className="ml-3 px-3 py-1 rounded-lg bg-[#6FCBAE] text-white text-[12px] font-semibold">
-							Ask
-						</button>
-					</div>
+					</button>
 
 					{/* Chat Assistant Modal */}
 					{openModal && (
@@ -367,12 +364,12 @@ export default function ProjectOverview() {
 					<div className="grid grid-cols-2 gap-3">
 						<button
 							onClick={goPrev}
-							className="py-2 rounded-lg border border-gray-300 bg-gray-50 text-sm font-medium">
+							className="py-2 rounded-lg bg-[#E9FAFF] shadow-md text-[12px] font-regular hover:bg-[#d9f7ff] transition-all ease-in-out duration-200">
 							Previous
 						</button>
 						<button
 							onClick={goNext}
-							className="py-2 rounded-lg bg-black text-white text-sm font-semibold">
+							className="py-2 rounded-lg bg-[#E9FAFF] shadow-md text-black text-[12px] font-regular hover:bg-[#d9f7ff] transition-all ease-in-out duration-200">
 							Next Step
 						</button>
 					</div>

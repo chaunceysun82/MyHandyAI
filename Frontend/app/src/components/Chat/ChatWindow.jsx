@@ -487,7 +487,7 @@ export default function ChatWindow({
           }
         }}
       >
-        <div className="mx-auto max-w-[380px] bg-white shadow-md flex flex-col h-full overflow-hidden">
+        <div className="mx-auto max-w-[380px] bg-[#fffef6] shadow-md flex flex-col h-full overflow-hidden">
           <ChatHeader onClose={onClose} dragHandleProps={{ onPointerDown: startDrag }} />
 
           {status === false ? (

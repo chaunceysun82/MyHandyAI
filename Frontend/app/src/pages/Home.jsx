@@ -329,7 +329,7 @@ export default function Home() {
 
       
       {/* Main Content Container */}
-      <div className="flex-1 flex flex-col bg-white h-screen overflow-hidden relative">
+      <div className="flex-1 flex flex-col bg-[#fffef6] h-screen overflow-hidden relative">
         {/* Header */}
         <div className="p-4 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center justify-between">
@@ -513,7 +513,7 @@ export default function Home() {
         </div>
 
         {/* Footer - Always at bottom */}
-        <div className="flex-shrink-0 border-t border-gray-100 bg-white">
+        <div className="flex-shrink-0 border-gray-100 bg-[#fffef6]">
           <div className="p-4">
             <div className="text-left">
               <p className="text-base ml-1 font-medium text-[#000000] mb-4">
