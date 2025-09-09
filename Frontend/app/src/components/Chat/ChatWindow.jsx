@@ -206,7 +206,7 @@ export default function ChatWindow({
   // Load or start session
   useEffect(() => {
     async function loadOrStartSession() {
-      const sessionRes= await axios.get(`${URL}/${api}/chatbot/session/${projectId}`);
+      const sessionRes= await axios.get(`${URL}/${api}/session/${projectId}`);
       if (!sessionRes.data?.session) {
         try {
           const res = await axios.post(
