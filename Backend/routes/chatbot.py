@@ -557,10 +557,14 @@ async def chat_with_bot(chat_message: ChatMessage):
             # No image available - use AgenticChatbot
         uploaded_image = None
         if chat_message.uploaded_image:
-            image_data = chat_message.uploaded_image
-            if image_data.startswith('data:image'):
-                image_data = image_data.split(',')[1]
-            uploaded_image = base64.b64decode(image_data)
+            try:
+                image_data = chat_message.uploaded_image
+                if image_data.startswith('data:image'):
+                    image_data = image_data.split(',')[1]
+                uploaded_image = base64.b64decode(image_data)
+            except Exception as e:
+                print(f"Error decoding image in chatbot: {e}")
+                raise HTTPException(status_code=400, detail="Invalid image data provided")
 
             # Get bot response from AgenticChatbot
         response = chatbot.process_message(chat_message.message, uploaded_image)

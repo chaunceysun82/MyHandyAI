@@ -286,21 +286,14 @@ export default function ChatWindow2({
     let messageContent = text.trim();
 
     try {
-      if (files.length > 0) {
-        const fileNames = files.map(f => f.name).join('\n');
-        if (messageContent) {
-          messageContent = `${messageContent}\nFiles:\n${fileNames}`;
-        } else {
-          messageContent = `Files: ${fileNames}`;
-        }
+      // Only create text message if there's actual content
+      if (messageContent) {
+        const userMsg = {
+          sender: "user",
+          content: messageContent
+        };
+        setMessages((prev) => [...prev, userMsg]);
       }
-
-      const userMsg = {
-        sender: "user",
-        content: messageContent
-      };
-
-      setMessages((prev) => [...prev, userMsg]);
 
       // Prepare payload for backend (combine text and first image)
       const currInput = text;
@@ -308,7 +301,20 @@ export default function ChatWindow2({
 
       const currFile = files[0];
       if (currFile && currFile.type.startsWith('image/')) {
-        uploadedimage = await toBase64(currFile);
+        try {
+          uploadedimage = await toBase64(currFile);
+        } catch (error) {
+          console.error("Error converting image to base64:", error);
+          setMessages((prev) => [
+            ...prev,
+            { 
+              sender: "bot", 
+              content: "Error processing image. Please try again with a smaller file or different image format." 
+            },
+          ]);
+          setLoading(false);
+          return;
+        }
       }
 
       const payload = {
@@ -365,9 +371,39 @@ export default function ChatWindow2({
   const toBase64 = (file) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = (error) => reject(error);
+      
+      reader.onload = () => {
+        try {
+          const result = reader.result;
+          // Clean up immediately to prevent memory leaks
+          reader.onload = null;
+          reader.onerror = null;
+          reader.onabort = null;
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      reader.onerror = (error) => {
+        reader.onload = null;
+        reader.onerror = null;
+        reader.onabort = null;
+        reject(error);
+      };
+      
+      reader.onabort = () => {
+        reader.onload = null;
+        reader.onerror = null;
+        reader.onabort = null;
+        reject(new Error('File reading was aborted'));
+      };
+      
+      try {
+        reader.readAsDataURL(file);
+      } catch (error) {
+        reject(error);
+      }
     });
 
   // Don't render if not open

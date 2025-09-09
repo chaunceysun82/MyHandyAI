@@ -337,14 +337,8 @@ export default function ChatWindow({
         }
       }
 
-      // 2) Build visible user text + file list
+      // 2) Build visible user text (without file names) - only if there's actual text
       let messageContent = text.trim();
-      if (validFiles.length > 0) {
-        const fileNames = validFiles.map((f) => f.name).join("\n");
-        messageContent = messageContent
-          ? `${messageContent}\nFiles:\n${fileNames}`
-          : `Files: ${fileNames}`;
-      }
       if (messageContent) {
         setMessages((prev) => [...prev, { sender: "user", content: messageContent }]);
       }
@@ -368,9 +362,10 @@ export default function ChatWindow({
             ...prev,
             { 
               sender: "bot", 
-              content: "Error processing image. Please try again with a smaller file." 
+              content: "Error processing image. Please try again with a smaller file or different image format." 
             },
           ]);
+          setLoading(false);
           return;
         }
       }
@@ -429,9 +424,39 @@ export default function ChatWindow({
   const toBase64 = (file) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = (error) => reject(error);
+      
+      reader.onload = () => {
+        try {
+          const result = reader.result;
+          // Clean up immediately to prevent memory leaks
+          reader.onload = null;
+          reader.onerror = null;
+          reader.onabort = null;
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      reader.onerror = (error) => {
+        reader.onload = null;
+        reader.onerror = null;
+        reader.onabort = null;
+        reject(error);
+      };
+      
+      reader.onabort = () => {
+        reader.onload = null;
+        reader.onerror = null;
+        reader.onabort = null;
+        reject(new Error('File reading was aborted'));
+      };
+      
+      try {
+        reader.readAsDataURL(file);
+      } catch (error) {
+        reject(error);
+      }
     });
 
   // When ChatInput detects tools, save and show a visible bot note

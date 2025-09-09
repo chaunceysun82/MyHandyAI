@@ -311,11 +311,15 @@ def chat_with_step_guidance(payload: ChatMessage):
     # Process uploaded image if provided
     uploaded_image = None
     if payload.uploaded_image:
-        image_data = payload.uploaded_image
-        if image_data.startswith('data:image'):
-            # Extract base64 part if it includes data URL prefix
-            image_data = image_data.split(',')[1]
-        uploaded_image = base64.b64decode(image_data)
+        try:
+            image_data = payload.uploaded_image
+            if image_data.startswith('data:image'):
+                # Extract base64 part if it includes data URL prefix
+                image_data = image_data.split(',')[1]
+            uploaded_image = base64.b64decode(image_data)
+        except Exception as e:
+            print(f"Error decoding image in step_guidance: {e}")
+            raise HTTPException(status_code=400, detail="Invalid image data provided")
     
     # Call chat method with image support
     reply = bot.chat(payload.message, payload.step, uploaded_image)
