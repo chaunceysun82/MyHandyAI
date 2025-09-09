@@ -206,7 +206,8 @@ export default function ChatWindow({
   // Load or start session
   useEffect(() => {
     async function loadOrStartSession() {
-      if (!sessionId) {
+      const sessionRes= await axios.get(`${URL}/${api}/chatbot/session/${projectId}`);
+      if (!sessionRes.data?.session) {
         try {
           const res = await axios.post(
             `${URL}/${api}/start`,
@@ -238,7 +239,7 @@ export default function ChatWindow({
       } else {
         // Console log the existing session ID
         console.log("🔄 Existing Chat Session Loaded:", {
-          sessionId: sessionId,
+          sessionId: sessionRes.data.session,
           api: api,
           projectId: projectId,
           userId: userId
@@ -247,7 +248,7 @@ export default function ChatWindow({
         try {
           // fetch history from the right API family
           const historyRes = await axios.get(
-            `${URL}/${api}/session/${sessionId}/history`
+            `${URL}/${api}/session/${sessionRes.data.session}/history`
           );
           const formattedMessages = historyRes.data.map(
             ({ role, message }) => ({
