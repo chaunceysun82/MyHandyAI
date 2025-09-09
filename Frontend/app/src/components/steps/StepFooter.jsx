@@ -264,7 +264,7 @@ export default function StepFooter({
 					<div className="bg-white rounded-lg p-4 max-w-xs w-full mx-4">
 						{/* Header */}
 						<div className="text-center mb-3">
-							<div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
+							<div className="w-12 h-12 bg-[#E9FAFF] rounded-full flex items-center justify-center mx-auto mb-2">
 								<span className="text-xl">🎉</span>
 							</div>
 							<h3 className="text-base font-semibold text-gray-900 mb-1">
@@ -290,7 +290,7 @@ export default function StepFooter({
 							<button
 								onClick={handleProjectCompletionConfirm}
 								disabled={isCompleting}
-								className="flex-1 py-2 px-3 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 transition-colors disabled:opacity-50"
+								className="flex-1 py-2 px-3 bg-[#1484A3] text-white rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
 							>
 								{isCompleting ? "Completing..." : "Yes, Finish Project"}
 							</button>
