@@ -13,7 +13,7 @@ const StepValidationModal = ({
 
 	return (
 		<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-			<div className="bg-white rounded-lg p-4 max-w-xs w-full mx-4">
+			<div className="bg-[#fffef6] rounded-lg p-4 max-w-xs w-full mx-4">
 				{/* Header */}
 				<div className="text-center mb-3">
 					<h3 className="text-base font-semibold text-gray-900 mb-2">
@@ -34,7 +34,7 @@ const StepValidationModal = ({
 					</button>
 					<button
 						onClick={onConfirm}
-						className="flex-1 py-2 px-3 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 transition-colors"
+						className="flex-1 py-2 px-3 bg-[#1484A3] text-white rounded-lg text-xs font-medium transition-colors"
 					>
 						{confirmText}
 					</button>

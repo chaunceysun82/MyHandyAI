@@ -3,6 +3,8 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import MobileWrapper from "../components/MobileWrapper";
 import { getCompletionMessage, submitFeedback } from "../services/feedback";
+import { ReactComponent as ShareSuccess } from '../assets/share_success.svg';
+import { ReactComponent as AllProjects } from '../assets/all_projects.svg';
 
 export default function ProjectCompleted() {
   const navigate = useNavigate();
@@ -79,11 +81,11 @@ export default function ProjectCompleted() {
 
   return (
     <MobileWrapper>
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen bg-[#fffef6]">
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-white pt-5 pb-3 px-4">
+        <div className="sticky top-0 z-10 bg-white pt-3 pb-1 px-4">
           <div className="flex items-center justify-center relative">
-            <h1 className="text-[16px] font-semibold">Project Completed</h1>
+            <h1 className="text-[18px] font-semibold">Project Completed</h1>
             <button
               aria-label="Close"
               onClick={handleClose}
@@ -97,8 +99,8 @@ export default function ProjectCompleted() {
         {/* Main Content */}
         <div className="flex-1 px-4 py-6">
           {/* Celebration Icon */}
-          <div className="flex justify-center mb-6">
-            <div className="w-24 h-24 bg-gradient-to-br from-yellow-400 to-purple-500 rounded-full flex items-center justify-center">
+          <div className="flex justify-center mb-4">
+            <div className="w-24 h-24 rounded-full flex items-center justify-center" style={{backgroundColor: '#E3F2FD'}}>
               <span className="text-4xl">🎉</span>
             </div>
           </div>
@@ -112,16 +114,16 @@ export default function ProjectCompleted() {
           </div>
 
           {/* Rating & Review Section */}
-          <div className="bg-gray-50 rounded-lg p-4 mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3">Rating & Review</h3>
+          <div className="rounded-lg border-l-2 border-[#1484A3] p-4 mb-4 shadow-md" style={{backgroundColor: '#ffffff'}}>
+            <h3 className="text-lg font-semibold text-center text-gray-900 mb-1">Rating & Review</h3>
 
             {/* Star Rating */}
-            <div className="flex justify-center mb-4">
+            <div className="flex justify-center mb-2">
               {[1,2,3,4,5].map((n) => (
                 <button
                   key={n}
                   onClick={() => handleRatingClick(n)}
-                  className={`text-2xl mx-1 transition-colors ${
+                  className={`text-2xl mx-1 transition-colors hover:scale-110 ${
                     n <= rating ? "text-yellow-400" : "text-gray-300"
                   }`}
                   aria-label={`Rate ${n} star${n>1?"s":""}`}
@@ -140,48 +142,50 @@ export default function ProjectCompleted() {
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}
               placeholder="Write us a feedback..."
-              className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-green-500"
-              rows={3}
+              className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+              rows={2}
             />
           </div>
 
-          {/* Helper / Error */}
-          <div className="space-y-2 mb-4">
-            <p className="text-gray-600 text-center">
+          {/* Helper Text & Navigation */}
+          <div className="rounded-lg border-l-2 border-[#1484A3] px-4 py-2 mb-4 bg-white shadow-md">
+            <p className="text-gray-600 text-center text-sm mb-4">
               If you need to go back and edit your steps, or revisit any parts you feel stuck on, we're here to help!
             </p>
             {error && (
-              <div className="text-center text-red-600 text-sm">{error}</div>
+              <div className="text-center text-red-600 text-sm mb-4">{error}</div>
             )}
-          </div>
-
-          {/* Go Back / Finish */}
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <button
-              onClick={handleGoBack}
-              className="py-3 px-4 border border-green-500 bg-white text-black rounded-lg font-medium hover:bg-gray-50"
-            >
-              Go back
-            </button>
-            <button
-              onClick={handleFinish}
-              disabled={saving}
-              className={`py-3 px-4 text-white rounded-lg font-medium ${
-                saving ? "bg-green-300" : "bg-green-600 hover:bg-green-700"
-              }`}
-            >
-              {saving ? "Saving…" : "Finish"}
-            </button>
+            
+            {/* Go Back / Finish */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={handleGoBack}
+                className="py-3 px-4 border border-gray-300 bg-white text-gray-900 rounded-lg font-medium hover:bg-gray-50 shadow-sm hover:shadow-md transition-shadow"
+              >
+                Go back
+              </button>
+              <button
+                onClick={handleFinish}
+                disabled={saving}
+                className={`py-3 px-4 rounded-lg font-medium shadow-sm hover:shadow-md transition-shadow ${
+                  saving ? "bg-[#E9FAFF]" : "bg-[#E9FAFF] hover:bg-[#D1F2FF]"
+                }`}
+              >
+                {saving ? "Saving…" : "Finish"}
+              </button>
+            </div>
           </div>
 
           {/* Share / All Projects */}
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-2 gap-3 mb-4">
             <button
               onClick={handleShareSuccess}
-              className="p-4 border border-gray-200 rounded-lg bg-white hover:bg-gray-50"
+              className="p-2 border border-gray-200 rounded-lg bg-[#E9FAFF] hover:bg-gray-50 shadow-sm hover:shadow-md transition-shadow"
             >
               <div className="flex flex-col items-center">
-                <span className="text-2xl mb-2">✅</span>
+                <div className="w-8 h-8 mb-1 flex items-center justify-center">
+                  <ShareSuccess className="w-6 h-6" />
+                </div>
                 <span className="font-medium text-gray-900">Share Success</span>
                 <span className="text-sm text-gray-500">Show off your work</span>
               </div>
@@ -189,23 +193,25 @@ export default function ProjectCompleted() {
 
             <button
               onClick={handleAllProjects}
-              className="p-4 border border-gray-200 rounded-lg bg-white hover:bg-gray-50"
+              className="p-2 border border-gray-200 rounded-lg bg-[#E9FAFF] hover:bg-gray-50 shadow-sm hover:shadow-md transition-shadow"
             >
               <div className="flex flex-col items-center">
-                <span className="text-2xl mb-2">📁</span>
+                <div className="w-8 h-8 mb-1 flex items-center justify-center">
+                  <AllProjects className="w-6 h-6" />
+                </div>
                 <span className="font-medium text-gray-900">All Projects</span>
                 <span className="text-sm text-gray-500">View history</span>
               </div>
             </button>
           </div>
 
-          {/* Done */}
+          {/* Start New Project */}
           <button
-            onClick={handleDone}
-            disabled={saving}
-            className="w-full py-3 px-4 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800"
+            onClick={() => navigate("/home")}
+            className="w-full py-3 px-4 text-white rounded-xl font-medium hover:opacity-90 shadow-md hover:shadow-lg transition-shadow"
+            style={{backgroundColor: '#1484A3'}}
           >
-            {saving ? "Saving…" : "Done"}
+            Start New Project
           </button>
         </div>
       </div>

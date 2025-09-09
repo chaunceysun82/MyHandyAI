@@ -133,7 +133,7 @@ export default function StepMediaGuide({ videoUrl, imageData, title = "Step Guid
 						<div className="flex items-center space-x-2">
 							<button
 								onClick={goToPrevious}
-								className="p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
+								className="p-1.5 rounded-full bg-[#E9FAFF] hover:bg-gray-200 transition-colors"
 								title="Previous"
 							>
 								<svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -148,7 +148,7 @@ export default function StepMediaGuide({ videoUrl, imageData, title = "Step Guid
 							
 							<button
 								onClick={goToNext}
-								className="p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
+								className="p-1.5 rounded-full bg-[#E9FAFF] hover:bg-gray-200 transition-colors"
 								title="Next"
 							>
 								<svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

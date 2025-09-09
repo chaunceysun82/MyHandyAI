@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import defaultNavLogo from '../assets/default_nav_logo.png';
 
 export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
   const navigate = useNavigate();
@@ -82,7 +83,7 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
 
       {/* Sidebar */}
       <div 
-        className={`absolute top-0 right-0 h-full w-72 bg-white rounded-l-2xl shadow-2xl transform transition-transform duration-300 ease-in-out z-50 flex flex-col ${
+        className={`absolute top-0 right-0 h-full w-72 bg-[#fffef6] rounded-l-2xl shadow-2xl transform transition-transform duration-300 ease-in-out z-50 flex flex-col ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
         style={{ height: '100%' }}
@@ -91,10 +92,19 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
         <div className="px-4 py-4 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center space-x-3">
             {/* Profile Picture */}
-            <div className="w-12 h-12 bg-gray-300 rounded-full flex items-center justify-center">
-              <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
+            <div className="w-16 h-16 bg-gray-300 rounded-full flex items-center justify-center">
+              <img 
+                src={defaultNavLogo} 
+                alt="Default Nav Logo" 
+                className="w-full h-full object-cover rounded-full"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'flex';
+                }}
+              />
+              <div className="w-full h-full bg-gray-400 rounded-full flex items-center justify-center text-white font-semibold text-lg" style={{display: 'none'}}>
+                {userName.charAt(0).toUpperCase()}
+              </div>
             </div>
             
             {/* User Info */}
@@ -109,12 +119,9 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
         <div className="px-4 py-3 flex-shrink-0">
           <button
             onClick={handleStartNewProject}
-            className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium text-sm"
+            className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 bg-[#1484A3] text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium text-sm"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            <span>Start New Project</span>
+            <span className="text-white text-semibold text-md">+ Start New Project</span>
           </button>
         </div>
 
@@ -166,9 +173,10 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
             {/* Ask A Pro */}
             <button
               onClick={handleAskAPro}
-              className="w-full flex items-center space-x-3 px-2 py-2.5 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+              className="w-full flex items-center justify-between px-2 py-2.5 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
             >
               <span className="font-medium text-sm">Ask A Pro</span>
+              <span className="text-[#1484A3] text-semibold text-sm">Coming Soon</span>
             </button>
 
             {/* Terms & Conditions */}
@@ -186,7 +194,7 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
           {/* Logout Button */}
           <button
             onClick={handleSignOut}
-            className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm mb-2"
+            className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 bg-[#E9FAFF] shadow-md  rounded-lg font-medium text-sm mb-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -204,9 +212,9 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
       {/* Sign Out Confirmation Modal */}
       {showSignoutConfirm && (
         <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-4 max-w-xs w-full mx-4">
+          <div className="bg-[#fffef6] rounded-lg p-4 max-w-xs w-full mx-4">
             <div className="text-center">
-              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <div className="w-10 h-10 bg-[#E9FAFF] rounded-full flex items-center justify-center mx-auto mb-3">
                 <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
@@ -228,7 +236,7 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
               </button>
               <button
                 onClick={confirmSignOut}
-                className="flex-1 px-3 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors text-sm"
+                className="flex-1 px-3 py-2 bg-[#E9FAFF] rounded-lg font-medium  transition-colors text-sm"
               >
                 Yes, Sign Out
               </button>

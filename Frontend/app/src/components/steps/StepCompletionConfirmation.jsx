@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { toggleStepCompletion } from "../../services/steps";
+import { toggleStepCompletion, resetStepCompletion } from "../../services/steps";
 import { completeProject } from "../../services/projects";
 import StepValidationModal from "./StepValidationModal";
 
@@ -299,7 +299,7 @@ export default function StepCompletionConfirmation({
 		try {
 			if (stepCompleted) {
 				console.log(`Project ID: ${projectId}, Step ${stepNumber} - Undoing completion`);
-				await toggleStepCompletion(projectId, stepNumber);
+				await resetStepCompletion(projectId, stepNumber);
 				if (onStepUpdate) onStepUpdate();
 			} else {
 				console.log(`Project ID: ${projectId}, Step ${stepNumber} is complete`);
@@ -479,7 +479,7 @@ export default function StepCompletionConfirmation({
 						className={`py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
 							stepCompleted
 								? "bg-yellow-200 text-yellow-800 hover:bg-yellow-300"
-								: "bg-gray-200 text-gray-900 hover:bg-gray-300"
+								: "bg-[#E9FAFF] text-gray-900 hover:bg-gray-300"
 						}`}
 					>
 						{stepCompleted ? "Undo" : "Yes"}
@@ -497,8 +497,8 @@ export default function StepCompletionConfirmation({
 
 			{/* Congratulatory Card */}
 			{showCongratulatoryCard && completedStepData && (
-				<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-					<div className="bg-white rounded-2xl p-6 max-w-xs w-full mx-4 text-center shadow-2xl">
+				<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2">
+					<div className="bg-[#fffef6] rounded-2xl p-4 max-w-xs w-full mx-4 text-center shadow-2xl">
 						{/* Celebration Icon */}
 						<div className="w-12 h-12 flex items-center justify-center mx-auto mb-4">
 							<span className="text-4xl">🎉</span>
@@ -516,9 +516,7 @@ export default function StepCompletionConfirmation({
 							) : (
 								<>
 									Step {completedStepData.stepNumber}/{completedStepData.total} {completedStepData.stepTitle} is complete!
-									{completedStepData.nextStepTitle && (
-										<> You can continue with Step {completedStepData.stepNumber + 1}/{completedStepData.total} {completedStepData.nextStepTitle}.</>
-									)}
+									
 								</>
 							)}
 						</p>
