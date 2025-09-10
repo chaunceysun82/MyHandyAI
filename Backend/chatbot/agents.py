@@ -1137,7 +1137,7 @@ class AgenticChatbot:
                 if isinstance(image_result, dict) and "analysis" in image_result and "questions" in image_result:
                     self.image_analysis = str(image_result.get("analysis") or "Image analysis completed")
                     # Skip waiting_for_photos state and go directly to questions
-                    return self._prepare_questions_from_result(image_result)
+                    return self._prepare_questions_from_result(image_result, True)
                 else:
                     # Image analysis failed, fall back to asking for photo again
                     self.current_state = "waiting_for_photos"
@@ -1162,7 +1162,7 @@ class AgenticChatbot:
                     return "Sorry, I had trouble analyzing the image. Please try uploading it again."
                 
                 self.image_analysis = str(result.get("analysis") or "Image analysis completed")
-                return self._prepare_questions_from_result(result)
+                return self._prepare_questions_from_result(result, True)
             
             # Only check for skip if no image was uploaded
             if self.image_agent.skip_image(user_message):
@@ -1172,8 +1172,8 @@ class AgenticChatbot:
                     return "Sorry, I had trouble processing your request. Please try again."
                 
                 self.image_analysis = str(result.get("analysis") or "")
-                return self._prepare_questions_from_result(result)
-            
+                return self._prepare_questions_from_result(result, False)
+
             # No image uploaded and no skip command
             return "Please upload the requested photo so I can analyse it, or type 'skip' if you prefer not to share photos."
 
@@ -1346,7 +1346,7 @@ class AgenticChatbot:
             f"{self.problem_type.replace('_', ' ')} project."
         )
     
-    def _prepare_questions_from_result(self, result: Dict[str, Any]) -> str:
+    def _prepare_questions_from_result(self, result: Dict[str, Any], image:bool) -> str:
         """Helper method to prepare questions from image analysis result"""
                     
         if self.description_agent.assess(self.user_description):
@@ -1360,7 +1360,7 @@ class AgenticChatbot:
                 self.current_state = "showing_summary"
                 
                 # Determine the appropriate message based on whether we have meaningful image analysis
-                if self.image_analysis and self.image_analysis.strip() and self.image_analysis != "Image analysis completed":
+                if image and self.image_analysis and self.image_analysis.strip() and self.image_analysis != "Image analysis completed":
                     intro_message = f"Great, thanks for the photo!\n\n📸 **What I can see:** {self.image_analysis}\n\n"
                 else:
                     intro_message = f"Got it! Based on your description:\n\n"
