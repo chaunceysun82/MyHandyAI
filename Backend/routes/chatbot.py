@@ -567,6 +567,8 @@ async def chat_with_bot(chat_message: ChatMessage):
                 raise HTTPException(status_code=400, detail="Invalid image data provided")
 
             # Get bot response from AgenticChatbot
+
+        print(f"Processing message for session {session_id} with image: {uploaded_image}")
         response = chatbot.process_message(chat_message.message, uploaded_image)
 
         # Log bot response
