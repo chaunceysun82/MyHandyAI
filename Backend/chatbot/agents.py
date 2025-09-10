@@ -1397,7 +1397,7 @@ class AgenticChatbot:
             self.current_state = "showing_summary"
             
             # Determine the appropriate message based on whether we have meaningful image analysis
-            if self.image_analysis and self.image_analysis.strip() and self.image_analysis != "Image analysis completed":
+            if image and self.image_analysis and self.image_analysis.strip() and self.image_analysis != "Image analysis completed":
                 intro_message = f"Great, thanks for the photo!\n\n📸 **What I can see:** {self.image_analysis}\n\n"
             else:
                 intro_message = f"Got it! Based on your description:\n\n"
@@ -1413,7 +1413,7 @@ class AgenticChatbot:
         self.current_state = "asking_questions"
         
         # Determine the appropriate message based on whether we have meaningful image analysis
-        if self.image_analysis and self.image_analysis.strip() and self.image_analysis != "Image analysis completed":
+        if image and self.image_analysis and self.image_analysis.strip() and self.image_analysis != "Image analysis completed":
             intro_message = f"Great, thanks for the photo!\n\n📸 **What I can see:** {self.image_analysis}\n\n"
         else:
             intro_message = f"Got it!\n\n"
