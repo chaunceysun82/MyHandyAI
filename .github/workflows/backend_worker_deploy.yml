@@ -2,7 +2,7 @@ name: Deploy Backend to AWS Lambda Worker
 
 on:
   push:
-    branches: [main]
+    branches: [stage]
 
 jobs:
   deploy:
