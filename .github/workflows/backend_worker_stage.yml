@@ -2,7 +2,7 @@ name: Deploy Backend to AWS Lambda Worker
 
 on:
   push:
-    branches: [main]
+    branches: [stage]
 
 jobs:
   deploy:
@@ -27,12 +27,12 @@ jobs:
             alternatives --install /usr/bin/pip pip /usr/bin/pip3.11 1 &&
             cd /app &&
             pip install -r requirements.txt -t . &&
-            zip -r9 /app/function_worker.zip .
+            zip -r9 /app/function_worker-stage.zip .
           '
 
       - name: Move ZIP from Docker volume to root
         run: |
-          mv lambda_package/function_worker.zip .
+          mv lambda_package/function_worker-stage.zip .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -43,11 +43,11 @@ jobs:
 
       - name: Upload ZIP to S3
         run: |
-          aws s3 cp function_worker.zip s3://my-handy-ai-bucket-deploy/function_worker.zip
+          aws s3 cp function_worker-stage.zip s3://my-handy-ai-bucket-deploy/function_worker-stage.zip
 
       - name: Deploy from S3
         run: |
           aws lambda update-function-code \
-          --function-name MyHandyWorker \
+          --function-name MyHandyWorker-Stage \
           --s3-bucket my-handy-ai-bucket-deploy \
-          --s3-key function_worker.zip
+          --s3-key function_worker-stage.zip

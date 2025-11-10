@@ -1,8 +1,8 @@
-name: Deploy Backend to AWS Lambda Worker
+name: Deploy FastAPI Backend to AWS Lambda Endpoints
 
 on:
   push:
-    branches: [main]
+    branches: [stage]
 
 jobs:
   deploy:
@@ -15,7 +15,10 @@ jobs:
       - name: Prepare lambda build folder
         run: |
           mkdir -p lambda_package
-          cp Backend/worker/*.py lambda_package/
+          cp Backend/*.py lambda_package/
+          cp -r Backend/routes lambda_package/
+          cp -r Backend/chatbot lambda_package/
+          cp -r Backend/content_generation lambda_package/
           cp -r Backend/prompts lambda_package/
           cp Backend/requirements.txt lambda_package/
 
@@ -27,12 +30,12 @@ jobs:
             alternatives --install /usr/bin/pip pip /usr/bin/pip3.11 1 &&
             cd /app &&
             pip install -r requirements.txt -t . &&
-            zip -r9 /app/function_worker.zip .
+            zip -r9 /app/function-stage.zip .
           '
 
       - name: Move ZIP from Docker volume to root
         run: |
-          mv lambda_package/function_worker.zip .
+          mv lambda_package/function-stage.zip .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -43,11 +46,11 @@ jobs:
 
       - name: Upload ZIP to S3
         run: |
-          aws s3 cp function_worker.zip s3://my-handy-ai-bucket-deploy/function_worker.zip
+          aws s3 cp function-stage.zip s3://my-handy-ai-bucket-deploy/function-stage.zip
 
       - name: Deploy from S3
         run: |
           aws lambda update-function-code \
-          --function-name MyHandyWorker \
+          --function-name MyHandyEndpoints-Stage \
           --s3-bucket my-handy-ai-bucket-deploy \
-          --s3-key function_worker.zip
+          --s3-key function-stage.zip
