@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyHandyAI - Information Gathering Agent</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+            min-height: 100vh;
+        }
+        .chat-container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .header h1 {
+            color: #f97316;
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 700;
+        }
+        .header p {
+            color: #6b7280;
+            margin: 10px 0 0 0;
+            font-size: 1.1em;
+        }
+        .tool-icon {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            border: 1px solid #d1d5db;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            background-color: #f9fafb;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .user-message {
+            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+        .bot-message {
+            background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+            color: white;
+            margin-right: auto;
+        }
+        .system-message {
+            background-color: #fef3c7;
+            color: #92400e;
+            margin: 10px auto;
+            text-align: center;
+            max-width: 60%;
+        }
+        .input-container {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            width: 100%;
+            min-width: 0;
+        }
+        #messageInput {
+            flex: 1;
+            min-width: 0;
+            padding: 15px;
+            border: 2px solid #d1d5db;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s ease;
+            background-color: #e5e7eb;
+            color: #1f2937;
+        }
+        #messageInput:focus {
+            border-color: #f97316;
+            background-color: #f9fafb;
+        }
+        button {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: transform 0.2s ease;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .start-button {
+            background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+            font-size: 18px;
+            padding: 20px 40px;
+        }
+        .image-button {
+            padding: 15px;
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        #sendButton {
+            flex-shrink: 0;
+        }
+        .image-preview {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 10px;
+            margin-top: 10px;
+        }
+        .message-image {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
+        #imageInput {
+            display: none;
+        }
+        .status {
+            margin-bottom: 15px;
+            padding: 10px 20px;
+            border-radius: 25px;
+            text-align: center;
+            font-weight: 600;
+        }
+        .connected {
+            background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+            color: white;
+        }
+        .disconnected {
+            background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+            color: white;
+        }
+        .typing-indicator {
+            display: none;
+            padding: 15px;
+            background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+            color: white;
+            border-radius: 10px;
+            margin-right: auto;
+            max-width: 80%;
+            margin-bottom: 20px;
+        }
+        .typing-dots {
+            display: inline-block;
+        }
+        .typing-dots::after {
+            content: '';
+            animation: typing 1.5s infinite;
+        }
+        @keyframes typing {
+            0%, 20% { content: ''; }
+            40% { content: '.'; }
+            60% { content: '..'; }
+            80%, 100% { content: '...'; }
+        }
+        .welcome-message {
+            text-align: center;
+            color: #6b7280;
+            font-style: italic;
+            margin-bottom: 20px;
+        }
+        .start-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .home-container {
+            text-align: center;
+            padding: 40px 20px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .home-container h1 {
+            color: #f97316;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        .home-container p {
+            color: #6b7280;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        #chatInterface {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        .project-form {
+            max-width: 500px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            text-align: left;
+        }
+        .form-group label {
+            color: #374151;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        .form-group input {
+            padding: 15px;
+            border: 2px solid #d1d5db;
+            border-radius: 10px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s ease;
+            background-color: #f9fafb;
+            color: #1f2937;
+        }
+        .form-group input:focus {
+            border-color: #f97316;
+            background-color: white;
+        }
+        .create-project-button {
+            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 18px 40px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            margin-top: 10px;
+        }
+        .create-project-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .create-project-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .error-message {
+            background-color: #fee2e2;
+            color: #991b1b;
+            padding: 12px 20px;
+            border-radius: 10px;
+            margin-top: 15px;
+            display: none;
+        }
+        /* Markdown styling */
+        .bot-message h1, .bot-message h2, .bot-message h3 {
+            color: white;
+            margin: 10px 0 5px 0;
+            font-weight: 700;
+        }
+        .bot-message h1 {
+            font-size: 1.5em;
+        }
+        .bot-message h2 {
+            font-size: 1.3em;
+        }
+        .bot-message h3 {
+            font-size: 1.1em;
+        }
+        .bot-message ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .bot-message li {
+            margin: 5px 0;
+            list-style-type: disc;
+        }
+        .bot-message pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        .bot-message code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .bot-message pre code {
+            background: none;
+            padding: 0;
+        }
+        .bot-message a {
+            color: #93c5fd;
+            text-decoration: underline;
+        }
+        .bot-message a:hover {
+            color: #dbeafe;
+        }
+        
+        /* Mobile Responsive Styles */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            .chat-container {
+                padding: 15px;
+                height: 85vh;
+            }
+            .header h1 {
+                font-size: 1.8em;
+            }
+            .header p {
+                font-size: 0.9em;
+            }
+            .tool-icon {
+                font-size: 2em;
+            }
+            .chat-messages {
+                padding: 15px;
+            }
+            .input-container {
+                gap: 8px;
+            }
+            #messageInput {
+                padding: 12px;
+                font-size: 14px;
+            }
+            button {
+                padding: 12px 20px;
+                font-size: 14px;
+            }
+            .image-button {
+                padding: 12px;
+                font-size: 18px;
+                min-width: 44px;
+            }
+            #sendButton {
+                padding: 12px 16px;
+                font-size: 14px;
+            }
+            .start-button {
+                font-size: 16px;
+                padding: 15px 30px;
+            }
+            .message {
+                max-width: 85%;
+                padding: 12px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            body {
+                padding: 5px;
+            }
+            .chat-container {
+                padding: 10px;
+                border-radius: 10px;
+            }
+            .header h1 {
+                font-size: 1.5em;
+            }
+            .header p {
+                font-size: 0.85em;
+            }
+            .input-container {
+                gap: 6px;
+            }
+            #messageInput {
+                padding: 10px;
+                font-size: 14px;
+            }
+            button {
+                padding: 10px 14px;
+                font-size: 13px;
+            }
+            .image-button {
+                padding: 10px;
+                font-size: 16px;
+                min-width: 40px;
+            }
+            #sendButton {
+                padding: 10px 12px;
+                font-size: 13px;
+            }
+            .start-button {
+                font-size: 15px;
+                padding: 12px 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <!-- Home Page (Project Creation) -->
+        <div id="homePage" class="home-container">
+            <div class="tool-icon">🔧</div>
+            <h1>MyHandyAI</h1>
+            <p>Create a new project to get started</p>
+            
+            <div class="project-form">
+                <div class="form-group">
+                    <label for="projectTitle">Project Title</label>
+                    <input type="text" id="projectTitle" placeholder="e.g., Fix kitchen outlet" required />
+                </div>
+                <div class="form-group">
+                    <label for="userId">User ID</label>
+                    <input type="text" id="userId" placeholder="Enter your user ID" required />
+                </div>
+                <button class="create-project-button" onclick="createProject()" id="createProjectButton">
+                    Create Project & Start
+                </button>
+                <div class="error-message" id="errorMessage"></div>
+            </div>
+        </div>
+        
+        <!-- Chat Interface (Hidden Initially) -->
+        <div id="chatInterface" style="display: none; height: 100%;">
+            <div class="header">
+                <div class="tool-icon">🔧</div>
+                <h1>MyHandyAI</h1>
+                <p>Information Gathering Agent</p>
+            </div>
+            
+            <div id="status" class="status disconnected">
+                Ready to diagnose your home issue
+            </div>
+            
+            <div class="chat-messages" id="chatMessages">
+                <div class="welcome-message">
+                    Welcome! I'm MyHandyAI, your virtual handyman assistant. I'm here to help diagnose your home repair issue by gathering the necessary information.
+                </div>
+            </div>
+            
+            <div class="typing-indicator" id="typingIndicator">
+                <strong>MyHandyAI</strong> is thinking<span class="typing-dots"></span>
+            </div>
+            
+            <div class="input-container" id="inputContainer">
+                <input type="file" id="imageInput" accept="image/*" />
+                <input type="text" id="messageInput" placeholder="Describe your home issue..." />
+                <button onclick="document.getElementById('imageInput').click()" class="image-button" id="imageButton">📷</button>
+                <button onclick="sendMessage()" id="sendButton">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let threadId = null;
+        let projectId = null;
+        let selectedImage = null;
+        
+        async function createProject() {
+            const projectTitle = document.getElementById('projectTitle').value.trim();
+            const userId = document.getElementById('userId').value.trim();
+            const errorMessage = document.getElementById('errorMessage');
+            const createButton = document.getElementById('createProjectButton');
+            
+            // Clear previous errors
+            errorMessage.style.display = 'none';
+            errorMessage.textContent = '';
+            
+            // Validate inputs
+            if (!projectTitle || !userId) {
+                errorMessage.textContent = 'Please fill in both Project Title and User ID';
+                errorMessage.style.display = 'block';
+                return;
+            }
+            
+            try {
+                createButton.disabled = true;
+                createButton.textContent = 'Creating Project...';
+                
+                // Create project
+                const projectResponse = await fetch('/projects', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        projectTitle: projectTitle,
+                        userId: userId
+                    })
+                });
+                
+                if (!projectResponse.ok) {
+                    const errorData = await projectResponse.json().catch(() => ({}));
+                    throw new Error(errorData.detail || 'Failed to create project');
+                }
+                
+                const projectData = await projectResponse.json();
+                projectId = projectData.id;
+                
+                // Initialize conversation with project_id
+                await startConversation();
+                
+            } catch (error) {
+                console.error('Error creating project:', error);
+                errorMessage.textContent = `Error: ${error.message || 'Failed to create project. Please try again.'}`;
+                errorMessage.style.display = 'block';
+                createButton.disabled = false;
+                createButton.textContent = 'Create Project & Start';
+            }
+        }
+        
+        async function startConversation() {
+            try {
+                if (!projectId) {
+                    throw new Error('Project ID is required');
+                }
+                
+                const response = await fetch('/api/v1/information-gathering-agent/initialize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        project_id: projectId
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to initialize conversation');
+                }
+                
+                const data = await response.json();
+                threadId = data.thread_id;
+                
+                // Hide home page and show chat interface
+                document.getElementById('homePage').style.display = 'none';
+                document.getElementById('chatInterface').style.display = 'flex';
+                
+                document.getElementById('status').className = 'status connected';
+                document.getElementById('status').textContent = 'Connected';
+                document.getElementById('messageInput').disabled = false;
+                document.getElementById('sendButton').disabled = false;
+                
+                // Show the initial greeting
+                addMessage('MyHandyAI', data.initial_message, 'bot-message');
+                
+            } catch (error) {
+                console.error('Error starting conversation:', error);
+                const errorMessage = document.getElementById('errorMessage');
+                errorMessage.textContent = `Error: ${error.message || 'Failed to start conversation. Please try again.'}`;
+                errorMessage.style.display = 'block';
+                document.getElementById('createProjectButton').disabled = false;
+                document.getElementById('createProjectButton').textContent = 'Create Project & Start';
+            }
+        }
+        
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if ((!message && !selectedImage) || !threadId) return;
+            
+            // Add user message to chat
+            if (selectedImage) {
+                addMessageWithImage('You', message, selectedImage);
+            } else {
+                addMessage('You', message, 'user-message');
+            }
+            
+            input.value = '';
+            document.getElementById('sendButton').disabled = true;
+            showTypingIndicator();
+            
+            try {
+                const payload = {
+                    project_id: projectId
+                };
+                
+                // Convert image to base64 if provided
+                if (selectedImage) {
+                    const base64Image = await fileToBase64(selectedImage);
+                    payload.image_base64 = base64Image;
+                    payload.image_mime_type = selectedImage.type;
+                    if (message) {
+                        payload.text = message;
+                    }
+                } else {
+                    payload.text = message;
+                }
+                
+                const response = await fetch(`/api/v1/information-gathering-agent/chat/${threadId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to send message');
+                }
+                
+                const data = await response.json();
+                addMessage('MyHandyAI', data.agent_response, 'bot-message');
+                
+                // Clear selected image
+                selectedImage = null;
+                document.getElementById('imageInput').value = '';
+                
+            } catch (error) {
+                console.error('Error sending message:', error);
+                addMessage('System', 'Error: Failed to send message. Please try again.', 'system-message');
+            } finally {
+                hideTypingIndicator();
+                updateSendButtonState();
+            }
+        }
+        
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => {
+                    // Remove the data:image/jpeg;base64, prefix
+                    const base64 = reader.result.split(',')[1];
+                    resolve(base64);
+                };
+                reader.onerror = error => reject(error);
+            });
+        }
+        
+        function addMessageWithImage(sender, text, imageFile) {
+            const messagesDiv = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message user-message`;
+            
+            let html = `<strong>${sender}:</strong>`;
+            if (text) {
+                html += `<br>${text}`;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = document.createElement('img');
+                img.src = e.target.result;
+                img.className = 'message-image';
+                messageDiv.innerHTML = html;
+                messageDiv.appendChild(img);
+                messagesDiv.appendChild(messageDiv);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            };
+            reader.readAsDataURL(imageFile);
+        }
+        
+        function addMessage(sender, text, className) {
+            const messagesDiv = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${className}`;
+            
+            // Only render markdown for bot messages
+            if (className === 'bot-message') {
+                const renderedText = renderMarkdown(text);
+                messageDiv.innerHTML = `<strong>${sender}:</strong> ${renderedText}`;
+            } else {
+                messageDiv.innerHTML = `<strong>${sender}:</strong> ${escapeHtml(text)}`;
+            }
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function renderMarkdown(text) {
+            if (!text) return '';
+            
+            // Split by lines to process line-by-line
+            const lines = text.split('\n');
+            let html = '';
+            let inList = false;
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const escapedLine = escapeHtml(line);
+                
+                // Check for list items
+                if (escapedLine.match(/^(\* |- )(.*)/)) {
+                    if (!inList) {
+                        html += '<ul>';
+                        inList = true;
+                    }
+                    const listContent = escapedLine.replace(/^(\* |- )(.*)/, '$2');
+                    html += `<li>${listContent}</li>`;
+                } else {
+                    if (inList) {
+                        html += '</ul>';
+                        inList = false;
+                    }
+                    
+                    // Headers
+                    if (escapedLine.match(/^### (.*)/)) {
+                        html += escapedLine.replace(/^### (.*)/, '<h3>$1</h3>');
+                    } else if (escapedLine.match(/^## (.*)/)) {
+                        html += escapedLine.replace(/^## (.*)/, '<h2>$1</h2>');
+                    } else if (escapedLine.match(/^# (.*)/)) {
+                        html += escapedLine.replace(/^# (.*)/, '<h1>$1</h1>');
+                    } else {
+                        html += escapedLine + '<br>';
+                    }
+                }
+            }
+            
+            // Close any open list
+            if (inList) {
+                html += '</ul>';
+            }
+            
+            // Process inline formatting (bold, italic, code, links)
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+            
+            // Code blocks (before inline code)
+            html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+            
+            // Inline code
+            html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+            
+            // Links
+            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+            
+            return html;
+        }
+        
+        function showTypingIndicator() {
+            document.getElementById('typingIndicator').style.display = 'block';
+            document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
+            document.getElementById('messageInput').disabled = true;
+        }
+        
+        function hideTypingIndicator() {
+            document.getElementById('typingIndicator').style.display = 'none';
+            document.getElementById('messageInput').disabled = false;
+        }
+        
+        function updateSendButtonState() {
+            const input = document.getElementById('messageInput');
+            const hasText = input.value.trim().length > 0;
+            const hasImage = selectedImage !== null;
+            const isInputEnabled = !input.disabled;
+            document.getElementById('sendButton').disabled = !(hasText || hasImage) || !isInputEnabled;
+        }
+        
+        // Set up event listeners when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Allow creating project with Enter key in form fields
+            document.getElementById('projectTitle').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    document.getElementById('userId').focus();
+                }
+            });
+            
+            document.getElementById('userId').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !document.getElementById('createProjectButton').disabled) {
+                    createProject();
+                }
+            });
+            
+            // Allow sending message with Enter key
+            const messageInput = document.getElementById('messageInput');
+            if (messageInput) {
+                messageInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter' && !e.target.disabled) {
+                        sendMessage();
+                    }
+                });
+                
+                // Update send button state when input changes
+                messageInput.addEventListener('input', function() {
+                    updateSendButtonState();
+                });
+            }
+            
+            // Handle image selection
+            const imageInput = document.getElementById('imageInput');
+            if (imageInput) {
+                imageInput.addEventListener('change', function(e) {
+                    if (e.target.files.length > 0) {
+                        selectedImage = e.target.files[0];
+                        document.getElementById('sendButton').disabled = false;
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
