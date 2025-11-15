@@ -1,7 +1,15 @@
 # Backend/main.py
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
+from starlette.staticfiles import StaticFiles
+
+from config.logger import setup_logging
+from config.settings import get_settings
+
+settings = get_settings()
 
 # Routers
 from routes import (
@@ -13,9 +21,22 @@ from routes import (
     feedback,
     step_guidance,
     tool_detection,
+    information_gathering_agent
 )
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    setup_logging()
+
+    yield
+
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    lifespan=lifespan
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,9 +46,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 def root():
     return {"message": "Hello, FastAPI!"}
+
 
 # Register routes
 app.include_router(user.router)
@@ -38,6 +61,8 @@ app.include_router(generation.router)
 app.include_router(feedback.router)
 app.include_router(step_guidance.router)
 app.include_router(tool_detection.router, prefix="/chatbot/tools")
+app.include_router(information_gathering_agent.router, prefix="/api/v1", tags=["Information Gathering Agent"])
+app.mount("/static", StaticFiles(directory="./static", html=True), name="static")
 
 # handler for AWS
 handler = Mangum(app)
