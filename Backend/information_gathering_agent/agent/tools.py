@@ -65,7 +65,8 @@ def store_home_issue(
     description="Call this tool at the END of the conversation, AFTER the user has confirmed your summary. This finalizes the diagnostic phase and hands off to the Solution Generation Agent."
 )
 def store_summary(
-        runtime: ToolRuntime, summary: str = Field(
+        runtime: ToolRuntime,
+        summary: str = Field(
             description="A comprehensive, structured summary of ALL facts gathered during the information gathering phase. Include: Category, Issue, Location, Duration, Specific symptoms/details, Safety concerns, Material/equipment info (if applicable). Format clearly with bullet points or structured text.",
             examples=[
                 "Category: Electrical. Issue: Dead outlet. Location: Kitchen countertop, near sink. Details: No visible discoloration initially, GFCI reset did not resolve issue, breaker not tripped. Single outlet affected, others on circuit working fine."]

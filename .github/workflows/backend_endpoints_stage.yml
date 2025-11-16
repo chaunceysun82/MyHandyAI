@@ -20,6 +20,7 @@ jobs:
           cp -r Backend/chatbot lambda_package/
           cp -r Backend/content_generation lambda_package/
           cp -r Backend/prompts lambda_package/
+          cp -r Backend/information_gathering_agent lambda_package/
           cp Backend/requirements.txt lambda_package/
 
       - name: Build dependencies inside Amazon Linux 2023 (compatible with Lambda)
