@@ -85,8 +85,8 @@ information_gathering_agent/
 - **`InformationGatheringAgentService`**: Service layer that initializes conversations, routes messages, and manages
   conversation state
 - **Tools**: LangChain tools for storing structured information:
-    - `store_home_issue`: Stores categorized home issue information
-    - `store_summary`: Stores conversation summaries for handoff
+  - `store_home_issue`: Stores categorized home issue information
+  - `store_summary`: Stores conversation summaries for handoff
 - **Prompt Templates**: System prompts defining agent personality, workflow, and knowledge base (v2 is current)
 
 ---
@@ -134,4 +134,3 @@ Response:
 ```
 
 **Note**: At least one of `text` or `image_base64` must be provided in the request.
-
