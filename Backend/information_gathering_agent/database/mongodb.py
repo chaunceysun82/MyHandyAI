@@ -18,7 +18,7 @@ class MongoDB:
     def initialize(self):
         """Initialize the MongoDB client and database."""
         try:
-            uri = settings.MongoUri
+            uri = settings.MONGODB_URI
             db_name = settings.MONGODB_DATABASE
             
             self._client = MongoClient(uri)

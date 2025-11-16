@@ -28,7 +28,7 @@ class InformationGatheringAgent:
     @contextmanager
     def get_checkpointer(self):
         """Context manager for MongoDB checkpointer."""
-        with MongoDBSaver.from_conn_string(conn_string=self.settings.MongoUri,
+        with MongoDBSaver.from_conn_string(conn_string=self.settings.MONGODB_URI,
                                            db_name=self.settings.INFORMATION_GATHERING_AGENT_CHECKPOINT_DATABASE,
                                            checkpoint_collection_name=self.settings.INFORMATION_GATHERING_AGENT_CHECKPOINT_COLLECTION_NAME,
                                            writes_collection_name=self.settings.INFORMATION_GATHERING_AGENT_CHECKPOINT_WRITES_COLLECTION_NAME) as checkpointer:

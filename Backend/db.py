@@ -5,7 +5,7 @@ import os
 
 load_dotenv()
 
-MONGO_URI = os.getenv("MongoUri")
+MONGO_URI = os.getenv("MONGODB_URI")
 
 # Connect to Mongo Atlas
 try:

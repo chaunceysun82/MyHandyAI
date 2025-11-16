@@ -55,8 +55,9 @@ setup):
 
 - `OPENAI_API_KEY`: OpenAI API key for the language model
 - `MONGODB_URI`: MongoDB connection string for conversation persistence
-- `INFORMATION_GATHERING_AGENT_MODEL`: OpenAI model name (e.g., `gpt-5`)
-- `INFORMATION_GATHERING_AGENT_CHECKPOINT_DATABASE`: MongoDB database name for checkpoints
+- `MONGODB_DATABASE`: MongoDB database name for project data storage
+- `INFORMATION_GATHERING_AGENT_MODEL`: OpenAI model name (e.g., `gpt-4o-mini`)
+- `INFORMATION_GATHERING_AGENT_CHECKPOINT_DATABASE`: MongoDB database name for agent checkpoints
 - `INFORMATION_GATHERING_AGENT_CHECKPOINT_COLLECTION_NAME`: MongoDB collection for checkpoints
 - `INFORMATION_GATHERING_AGENT_CHECKPOINT_WRITES_COLLECTION_NAME`: MongoDB collection for checkpoint writes
 

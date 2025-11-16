@@ -109,6 +109,7 @@ The application requires the following environment variables, defined in `.env` 
 | `APP_PORT` | Port number for the FastAPI server | `8000` |
 | `OPENAI_API_KEY` | OpenAI API key for the language model | `sk-...` |
 | `MONGODB_URI` | MongoDB connection string for conversation persistence | `mongodb://localhost:27017` or `mongodb://user:pass@host:port/db` |
+| `MONGODB_DATABASE` | MongoDB database name | `MainHandyDB` |
 | `LANGSMITH_TRACING` | Enable/disable LangSmith tracing | `true`, `false` |
 | `LANGSMITH_ENDPOINT` | LangSmith API endpoint | `https://api.smith.langchain.com` |
 | `LANGSMITH_API_KEY` | LangSmith API key for observability | `lsv2_...` |
@@ -131,6 +132,7 @@ APP_VERSION=0.1.0
 APP_PORT=8000
 OPENAI_API_KEY=sk-your-openai-key-here
 MONGODB_URI=mongodb://localhost:27017
+MONGODB_DATABASE=MainHandyDB
 LANGSMITH_TRACING=true
 LANGSMITH_ENDPOINT=https://api.smith.langchain.com
 LANGSMITH_API_KEY=lsv2-your-langsmith-key-here

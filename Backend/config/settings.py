@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: str
     QDRANT_URL: str
 
-    MongoUri: str
+    MONGODB_URI: str
     MONGODB_DATABASE: str
 
     SERPAPI_API_KEY: str
