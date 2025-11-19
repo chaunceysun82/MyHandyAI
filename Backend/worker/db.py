@@ -6,6 +6,7 @@ import os
 load_dotenv()
 
 MONGO_URI = os.getenv("MongoUri")
+DB_NAME = os.getenv("DB")
 
 # Connect to Mongo Atlas
 try:
@@ -15,7 +16,7 @@ except Exception as e:
     print("❌ ERROR:", str(e))
     raise HTTPException(status_code=500, detail="Internal Server Error")
 
-db = client["MainHandyDB"]
+db = client[DB_NAME]
 users_collection = db["Users"]
 project_collection = db["Project"]
 steps_collection = db["ProjectSteps"]
