@@ -25,18 +25,14 @@ from routes import (
 )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    setup_logging()
+# @asynccontextmanager
+# async def lifespan(app: FastAPI):
+#     setup_logging()
 
-    yield
+#     yield
 
 
-app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.APP_VERSION,
-    lifespan=lifespan
-)
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
