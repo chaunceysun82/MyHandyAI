@@ -49,6 +49,7 @@ app.add_middleware(
 
 @app.get("/")
 def root():
+    print("Root endpoint called")
     return {"message": "Hello, FastAPI!"}
 
 
