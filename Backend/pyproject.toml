@@ -1,0 +1,31 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "boto3>=1.40.74",
+    "dotenv>=0.9.9",
+    "fastapi[standard]>=0.121.2",
+    "google-genai>=1.50.1",
+    "google-search-results>=2.4.2",
+    "langchain>=1.0.7",
+    "langchain-openai>=1.0.3",
+    "langgraph>=1.0.3",
+    "langgraph-checkpoint-mongodb>=0.2.2",
+    "loguru>=0.7.3",
+    "mangum>=0.19.0",
+    "numpy>=2.3.4",
+    "openai>=2.8.0",
+    "pillow>=12.0.0",
+    "pydantic>=2.12.4",
+    "pydantic-settings>=2.12.0",
+    "pymongo>=4.15.4",
+    "python-dateutil>=2.9.0.post0",
+    "python-dotenv>=1.2.1",
+    "python-multipart>=0.0.20",
+    "qdrant-client>=1.15.1",
+    "serpapi>=0.1.5",
+    "uvicorn>=0.38.0",
+]

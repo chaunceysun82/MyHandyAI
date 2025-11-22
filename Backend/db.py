@@ -23,6 +23,6 @@ steps_collection = db["ProjectSteps"]
 conversations_collection = db["Conversations"]
 conversations_step_collection = db["StepConversations"]
 questions_collection = db["Questions"]
-tools_collection = db["Tools"]  # New collection for reusable tools
+tools_collection = db["Tools"] 
 
 
