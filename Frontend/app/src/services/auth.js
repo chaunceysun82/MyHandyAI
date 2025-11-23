@@ -212,6 +212,7 @@ export async function createUserDuringSignup(userData) {
 
 		return await response.json();
 	} catch (error) {
+		console.log("Signup error:", error);
 		throw error;
 	}
 }
