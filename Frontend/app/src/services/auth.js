@@ -206,6 +206,7 @@ export async function createUserDuringSignup(userData) {
 
 		if (!response.ok) {
 			const error = await response.json();
+			console.log("Signup error:", error);
 			throw new Error(error.detail || "Signup failed");
 		}
 
