@@ -2,7 +2,6 @@ from ast import Dict
 from contextlib import contextmanager
 from typing import List, Optional
 from uuid import UUID
-import msgpack
 
 from pymongo import MongoClient
 
