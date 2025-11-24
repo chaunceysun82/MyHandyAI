@@ -164,7 +164,7 @@ class InformationGatheringAgent:
             return "I apologize, but I'm having trouble processing your image. Please try again."
 
 
-    def get_history(self, thread_id: UUID, project_id: str) -> List[Dict]:
+    def get_history(self, thread_id: UUID) -> List[Dict]:
         """
         Read conversation history for a thread using LangGraph's get_state.
         No direct msgpack / Mongo handling.
@@ -180,7 +180,6 @@ class InformationGatheringAgent:
             config: RunnableConfig = {
                 "configurable": {
                     "thread_id": str(thread_id),
-                    "project_id": project_id,
                 }
             }
 

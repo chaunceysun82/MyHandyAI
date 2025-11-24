@@ -56,7 +56,6 @@ async def chat(
             status_code=status.HTTP_200_OK)
 async def get_conversation_history(
         thread_id: UUID,
-        project_id: str,
         orchestrator: InformationGatheringAgentServiceDependency
 ) -> ConversationHistoryResponse:
     """
@@ -64,7 +63,7 @@ async def get_conversation_history(
     """
     logger.info(f"get_conversation_history called with thread_id: {thread_id}")
 
-    history_dicts = orchestrator.get_history(thread_id=thread_id, project_id=project_id)
+    history_dicts = orchestrator.get_history(thread_id=thread_id)
 
     messages = [HistoryMessage(**m) for m in history_dicts]
 
