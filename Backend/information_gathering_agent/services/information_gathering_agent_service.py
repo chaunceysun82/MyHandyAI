@@ -93,5 +93,5 @@ class InformationGatheringAgentService:
             logger.error(f"Error processing message: {e}")
             raise
 
-    def get_history(self, thread_id: UUID) -> List[Dict]:
-        return self.information_gathering_agent.get_history(thread_id)
+    def get_history(self, thread_id: UUID, project_id: str) -> List[Dict]:
+        return self.information_gathering_agent.get_history(thread_id, project_id=project_id)
