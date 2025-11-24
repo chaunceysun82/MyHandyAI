@@ -225,6 +225,7 @@ export default function ChatWindow({
           //   console.log("💬 Suggested messages received:", res.data.suggested_messages);
           // }
           
+          // Save detected tools if any
           // Console log the new session ID
           console.log("🆕 New Chat Session Started:", {
             sessionId: res.thread_id || res.data.session_id,
