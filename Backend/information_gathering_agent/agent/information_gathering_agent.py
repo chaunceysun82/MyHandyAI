@@ -165,41 +165,38 @@ class InformationGatheringAgent:
             return "I apologize, but I'm having trouble processing your image. Please try again."
 
 
-    def get_history(self, thread_id: UUID) -> List[Dict]:
-            """
-            Get conversation history for a thread_id by reading LangGraph
-            MongoDBSaver writes (channel='messages').
-
-            Returns a list of dicts: [{ "role": "...", "content": "..." }, ...]
-            """
-            client = MongoClient(self.settings.MONGODB_URI)
-            db = client[self.settings.
-                        INFORMATION_GATHERING_AGENT_CHECKPOINT_DATABASE]
-            writes_col = db[self.settings.
-                            INFORMATION_GATHERING_AGENT_CHECKPOINT_WRITES_COLLECTION_NAME]
-
-            # Get the latest messages write for this thread
-            doc = writes_col.find_one(
-                {"thread_id": str(thread_id), "channel": "messages"},
-                sort=[("checkpoint_id", -1), ("idx", -1)]
+    def get_history(self, thread_id: UUID, project_id: str) -> List[Dict]:
+        """
+        Read conversation history for a thread using LangGraph's get_state.
+        No direct msgpack / Mongo handling.
+        """
+        with self.get_checkpointer() as checkpointer:
+            agent = create_agent(
+                model=self.llm,
+                tools=[store_home_issue, store_summary],
+                system_prompt=INFORMATION_GATHERING_AGENT_SYSTEM_PROMPT,
+                checkpointer=checkpointer,
             )
 
-            if not doc:
-                return []
+            config: RunnableConfig = {
+                "configurable": {
+                    "thread_id": str(thread_id),
+                    "project_id": project_id,
+                }
+            }
 
-            if doc.get("type") != "msgpack":
-                return []
+            # LangGraph handles Mongo + msgpack for you here
+            snapshot = agent.get_state(config)
 
-            # value is a Binary; convert to bytes and unpack
-            packed = bytes(doc["value"])
-            raw_messages = msgpack.unpackb(packed, raw=False)
+            # snapshot.values is your graph state; in your case it should contain "messages"
+            messages = snapshot.values.get("messages", [])
 
-            # raw_messages is usually a list of serialized LC messages
             history: List[Dict] = []
+            for m in messages:
+                # m is a LangChain message object (HumanMessage, AIMessage, SystemMessage, etc.)
+                # Map it to a simple {role, content}
+                msg_type = getattr(m, "type", None) or m.__class__.__name__.lower()
 
-            for m in raw_messages:
-                # LangChain’s serialization usually has "type" and "content"
-                msg_type = m.get("type") or m.get("role") or "unknown"
                 role = {
                     "human": "user",
                     "ai": "assistant",
@@ -207,21 +204,7 @@ class InformationGatheringAgent:
                     "tool": "tool",
                 }.get(msg_type, msg_type)
 
-                content = m.get("content", "")
-
-                # If content is a list of parts (e.g. images + text), flatten text
-                if isinstance(content, list):
-                    text_parts = [
-                        c.get("text", "") if isinstance(c, dict) else str(c)
-                        for c in content
-                    ]
-                    content = "\n".join(text_parts)
-
-                history.append(
-                    {
-                        "role": role,
-                        "content": content,
-                    }
-                )
+                content = m.content
+                history.append({"role": role, "content": content})
 
             return history
