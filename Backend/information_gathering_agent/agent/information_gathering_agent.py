@@ -1,6 +1,10 @@
+from ast import Dict
 from contextlib import contextmanager
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
+import msgpack
+
+from pymongo import MongoClient
 
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
@@ -159,3 +163,65 @@ class InformationGatheringAgent:
         except Exception as e:
             logger.error(f"Error in process_image_response: {e}")
             return "I apologize, but I'm having trouble processing your image. Please try again."
+
+
+    def get_history(self, thread_id: UUID) -> List[Dict]:
+            """
+            Get conversation history for a thread_id by reading LangGraph
+            MongoDBSaver writes (channel='messages').
+
+            Returns a list of dicts: [{ "role": "...", "content": "..." }, ...]
+            """
+            client = MongoClient(self.settings.MONGODB_URI)
+            db = client[self.settings.
+                        INFORMATION_GATHERING_AGENT_CHECKPOINT_DATABASE]
+            writes_col = db[self.settings.
+                            INFORMATION_GATHERING_AGENT_CHECKPOINT_WRITES_COLLECTION_NAME]
+
+            # Get the latest messages write for this thread
+            doc = writes_col.find_one(
+                {"thread_id": str(thread_id), "channel": "messages"},
+                sort=[("checkpoint_id", -1), ("idx", -1)]
+            )
+
+            if not doc:
+                return []
+
+            if doc.get("type") != "msgpack":
+                return []
+
+            # value is a Binary; convert to bytes and unpack
+            packed = bytes(doc["value"])
+            raw_messages = msgpack.unpackb(packed, raw=False)
+
+            # raw_messages is usually a list of serialized LC messages
+            history: List[Dict] = []
+
+            for m in raw_messages:
+                # LangChain’s serialization usually has "type" and "content"
+                msg_type = m.get("type") or m.get("role") or "unknown"
+                role = {
+                    "human": "user",
+                    "ai": "assistant",
+                    "system": "system",
+                    "tool": "tool",
+                }.get(msg_type, msg_type)
+
+                content = m.get("content", "")
+
+                # If content is a list of parts (e.g. images + text), flatten text
+                if isinstance(content, list):
+                    text_parts = [
+                        c.get("text", "") if isinstance(c, dict) else str(c)
+                        for c in content
+                    ]
+                    content = "\n".join(text_parts)
+
+                history.append(
+                    {
+                        "role": role,
+                        "content": content,
+                    }
+                )
+
+            return history

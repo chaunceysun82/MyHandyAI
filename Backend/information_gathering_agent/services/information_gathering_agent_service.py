@@ -1,3 +1,4 @@
+from typing import Dict, List
 from uuid import UUID
 
 from dotenv import load_dotenv
@@ -91,3 +92,6 @@ class InformationGatheringAgentService:
         except Exception as e:
             logger.error(f"Error processing message: {e}")
             raise
+
+    def get_history(self, thread_id: UUID) -> List[Dict]:
+        return self.information_gathering_agent.get_history(thread_id)

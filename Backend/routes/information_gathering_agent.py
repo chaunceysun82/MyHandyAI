@@ -7,7 +7,8 @@ from information_gathering_agent.dependencies import InformationGatheringAgentSe
 from routes.schemas.request.information_gathering_agent import ChatMessageRequest
 from routes.schemas.request.information_gathering_agent import InitializeConversationRequest
 from routes.schemas.response.information_gathering_agent import InitializeConversationResponse, \
-    ChatMessageResponse
+    ChatMessageResponse, ConversationHistoryResponse, HistoryMessage
+
 
 router = APIRouter(prefix="/information-gathering-agent")
 
@@ -49,3 +50,40 @@ async def chat(
         thread_id=thread_id,
         agent_response=agent_response
     )
+
+@router.get("/chat/{thread_id}/history",
+            response_model=ConversationHistoryResponse,
+            status_code=status.HTTP_200_OK)
+async def get_conversation_history(
+        thread_id: UUID,
+        orchestrator: InformationGatheringAgentServiceDependency
+) -> ConversationHistoryResponse:
+    """
+    Return full conversation history for a given thread_id.
+    """
+    logger.info(f"get_conversation_history called with thread_id: {thread_id}")
+
+    history_dicts = orchestrator.get_history(thread_id=thread_id)
+
+    messages = [HistoryMessage(**m) for m in history_dicts]
+
+    return ConversationHistoryResponse(
+        thread_id=thread_id,
+        messages=messages
+    )
+
+
+@router.get("/thread/{project_id}",
+            status_code=status.HTTP_200_OK)
+async def get_thread_id(
+        project_id: str,
+        orchestrator: InformationGatheringAgentServiceDependency
+) -> dict:
+    """
+    Return existing thread_id for a given project_id, if any.
+    """
+    logger.info(f"get_thread_id called with project_id: {project_id}")
+
+    thread_id = orchestrator.get_thread_id(project_id=project_id)
+
+    return {"thread_id": thread_id}

@@ -43,7 +43,7 @@ export default function ChatWindow({
   }, [status, tips.length]);
 
   // Which API to talk to
-  const api = secondChatStatus ? "step-guidance" : "chatbot";
+  const api = "information-gathering-agent";
 
   // Step-guidance bootstrap flag
   const [bool, setBool] = useState(null);
@@ -81,7 +81,7 @@ export default function ChatWindow({
       sessionId: saved || "No existing session",
       projectId: projectId,
       userId: userId,
-      api: secondChatStatus ? "step-guidance" : "chatbot"
+      api: "chatbot"
     });
     return saved || null;
   });
@@ -206,32 +206,32 @@ export default function ChatWindow({
   // Load or start session
   useEffect(() => {
     async function loadOrStartSession() {
-      const sessionRes= await axios.get(`${URL}/${api}/session/${projectId}`);
+      const sessionRes= await axios.get(`${URL}/${api}/thread/${projectId}`);
       if (!sessionRes.data?.session) {
         try {
           const res = await axios.post(
-            `${URL}/${api}/start`,
+            `${URL}/${api}/initialize`,
             // chatbot expects {user, project}; step-guidance ignores user.
-            { user: userId, project: projectId },
+            { project_id: projectId },
             { headers: { "Content-Type": "application/json" } }
           );
-          setSessionId(res.data.session_id);
-          localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
-          setMessages([{ sender: "bot", content: res.data.intro_message }]);
+          setSessionId(res.thread_id || res.data.session_id);
+          localStorage.setItem(STORAGE_SESSION_KEY, res.thread_id || res.data.session_id);
+          setMessages([{ sender: "bot", content: res.initial_message }]);
           
           // Set suggested messages from backend response
-          if (res.data.suggested_messages) {
-            setSuggestedMessages(res.data.suggested_messages);
-            console.log("💬 Suggested messages received:", res.data.suggested_messages);
-          }
+          // if (res.data.suggested_messages) {
+          //   setSuggestedMessages(res.data.suggested_messages);
+          //   console.log("💬 Suggested messages received:", res.data.suggested_messages);
+          // }
           
           // Console log the new session ID
           console.log("🆕 New Chat Session Started:", {
-            sessionId: res.data.session_id,
+            sessionId: res.thread_id || res.data.session_id,
             api: api,
             projectId: projectId,
             userId: userId,
-            suggestedMessages: res.data.suggested_messages
+            //suggestedMessages: res.data.suggested_messages
           });
         } catch (err) {
           console.error("Intro message error", err);
@@ -239,7 +239,7 @@ export default function ChatWindow({
       } else {
         // Console log the existing session ID
         console.log("🔄 Existing Chat Session Loaded:", {
-          sessionId: sessionRes.data.session,
+          sessionId: sessionRes.thread_id || sessionRes.data.session_id,
           api: api,
           projectId: projectId,
           userId: userId
@@ -248,30 +248,16 @@ export default function ChatWindow({
         try {
           // fetch history from the right API family
           const historyRes = await axios.get(
-            `${URL}/${api}/session/${sessionRes.data.session}/history`
+            `${URL}/${api}/chat/${sessionRes.thread_id || sessionRes.data.session_id}/history`
           );
-          const formattedMessages = historyRes.data.map(
-            ({ role, message }) => ({
+          const formattedMessages = historyRes.messages.map(
+            ({ role, content }) => ({
               sender: role === "user" ? "user" : "bot",
-              content: message,
+              content: content,
             })
           );
           setMessages(formattedMessages);
 
-          // If step-guidance mode and not started, kick it off using the existing session
-          if (secondChatStatus && !bool) {
-            const res = await axios.post(
-              `${URL}/${api}/start`,
-              { project: projectId, session_id: sessionId },
-              { headers: { "Content-Type": "application/json" } }
-            );
-            setSessionId(res.data.session_id);
-            localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
-            setMessages((prev) => [
-              ...prev,
-              { sender: "bot", content: res.data.response },
-            ]);
-          }
         } catch (err) {
           setMessages([{ sender: "bot", content: "Failed to load chat history." }]);
         }

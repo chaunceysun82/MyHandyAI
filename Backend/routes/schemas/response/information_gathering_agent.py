@@ -1,3 +1,4 @@
+from typing import List
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -13,3 +14,11 @@ class ChatMessageResponse(BaseModel):
     """Response to a chat message."""
     thread_id: UUID = Field(..., description="Thread ID for the conversation")
     agent_response: str = Field(..., description="Agent's response message")
+
+class HistoryMessage(BaseModel):
+    role: str
+    content: str
+
+class ConversationHistoryResponse(BaseModel):
+    thread_id: UUID = Field(..., description="Thread ID for the conversation")
+    messages: List[HistoryMessage]
