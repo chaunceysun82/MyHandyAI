@@ -216,9 +216,9 @@ export default function ChatWindow({
             { headers: { "Content-Type": "application/json" } }
           );
            console.log("🆕 New Chat: ", res);
-          setSessionId(res.thread_id);
-          localStorage.setItem(STORAGE_SESSION_KEY, res.thread_id);
-          setMessages([{ sender: "bot", content: res.initial_message }]);
+          setSessionId(res.data.thread_id);
+          localStorage.setItem(STORAGE_SESSION_KEY, res.data.thread_id);
+          setMessages([{ sender: "bot", content: res.data.initial_message }]);
           
           // Set suggested messages from backend response
           // if (res.data.suggested_messages) {
@@ -229,7 +229,7 @@ export default function ChatWindow({
           // Save detected tools if any
           // Console log the new session ID
           console.log("🆕 New Chat Session Started:", {
-            sessionId: res.thread_id,
+            sessionId: res.data.thread_id,
             api: api,
             projectId: projectId,
             userId: userId,
@@ -241,7 +241,7 @@ export default function ChatWindow({
       } else {
         // Console log the existing session ID
         console.log("🔄 Existing Chat Session Loaded:", {
-          sessionId: sessionRes.thread_id || sessionRes.data.session_id,
+          sessionId: sessionRes.data.thread_id,
           api: api,
           projectId: projectId,
           userId: userId
@@ -250,7 +250,7 @@ export default function ChatWindow({
         try {
           // fetch history from the right API family
           const historyRes = await axios.get(
-            `${URL}/${api}/chat/${sessionRes.thread_id || sessionRes.data.session_id}/history`
+            `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`
           );
           const formattedMessages = historyRes.messages.map(
             ({ role, content }) => ({
