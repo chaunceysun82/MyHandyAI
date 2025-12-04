@@ -16,7 +16,7 @@ from routes import (
     user,
     project,
     steps,
-    chatbot,
+    #chatbot,
     generation,
     feedback,
     step_guidance,
@@ -56,7 +56,7 @@ def root():
 app.include_router(user.router)
 app.include_router(project.router)
 app.include_router(steps.router)
-app.include_router(chatbot.router)
+#app.include_router(chatbot.router)
 app.include_router(generation.router)
 app.include_router(feedback.router)
 app.include_router(step_guidance.router)
