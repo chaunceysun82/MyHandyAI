@@ -25,7 +25,7 @@ async def initialize_conversation(
 
     orchestrator.project_collection.update_one(
         {"project_id": request.project_id},
-        {"$set": {"thread_id": thread_id}},
+        {"$set": {"thread_id": str(thread_id)}},
         upsert=True
     )
 
