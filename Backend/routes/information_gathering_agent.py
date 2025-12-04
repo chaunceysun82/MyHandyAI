@@ -23,6 +23,12 @@ async def initialize_conversation(
 
     thread_id, initial_message = orchestrator.initialize_conversation(project_id=request.project_id)
 
+    orchestrator.project_collection.update_one(
+        {"project_id": request.project_id},
+        {"$set": {"thread_id": thread_id}},
+        upsert=True
+    )
+
     return InitializeConversationResponse(
         thread_id=thread_id,
         initial_message=initial_message
@@ -84,6 +90,9 @@ async def get_thread_id(
     """
     logger.info(f"get_thread_id called with project_id: {project_id}")
 
-    thread_id = orchestrator.get_thread_id(project_id=project_id)
+    thread_id = orchestrator.project_collection.find_one(
+        {"project_id": project_id},
+        {"_id": 0, "thread_id": 1}
+    ).get("thread_id")
 
     return {"thread_id": thread_id}
