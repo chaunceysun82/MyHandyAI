@@ -43,7 +43,7 @@ export default function ChatWindow({
   }, [status, tips.length]);
 
   // Which API to talk to
-  const api = "information-gathering-agent";
+  const api = "api/v1/information-gathering-agent";
 
   // Step-guidance bootstrap flag
   const [bool, setBool] = useState(null);
@@ -81,7 +81,7 @@ export default function ChatWindow({
       sessionId: saved || "No existing session",
       projectId: projectId,
       userId: userId,
-      api: "chatbot"
+      api: "api/v1/information-gathering-agent"
     });
     return saved || null;
   });
