@@ -207,7 +207,7 @@ export default function ChatWindow({
   useEffect(() => {
     async function loadOrStartSession() {
       const sessionRes= await axios.get(`${URL}/${api}/thread/${projectId}`);
-      if (!sessionRes.data?.session) {
+      if (!sessionRes.data?.thread_id) {
         try {
           const res = await axios.post(
             `${URL}/${api}/initialize`,
@@ -215,8 +215,9 @@ export default function ChatWindow({
             { project_id: projectId },
             { headers: { "Content-Type": "application/json" } }
           );
-          setSessionId(res.thread_id || res.data.session_id);
-          localStorage.setItem(STORAGE_SESSION_KEY, res.thread_id || res.data.session_id);
+           console.log("🆕 New Chat: ", res);
+          setSessionId(res.thread_id);
+          localStorage.setItem(STORAGE_SESSION_KEY, res.thread_id);
           setMessages([{ sender: "bot", content: res.initial_message }]);
           
           // Set suggested messages from backend response
@@ -228,7 +229,7 @@ export default function ChatWindow({
           // Save detected tools if any
           // Console log the new session ID
           console.log("🆕 New Chat Session Started:", {
-            sessionId: res.thread_id || res.data.session_id,
+            sessionId: res.thread_id,
             api: api,
             projectId: projectId,
             userId: userId,

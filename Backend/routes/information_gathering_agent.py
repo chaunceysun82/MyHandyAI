@@ -95,6 +95,6 @@ async def get_thread_id(
     )
 
     if not project or "thread_id" not in project:
-        return {"session": None}
-
-    return {"session": project["thread_id"]}
+        return {"thread_id": None}
+    
+    return {"thread_id": project["thread_id"]}
