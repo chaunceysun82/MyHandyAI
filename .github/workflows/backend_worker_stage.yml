@@ -1,4 +1,4 @@
-name: Deploy Backend to AWS Lambda Worker
+name: Deploy Backend to AWS Lambda Worker Stage
 
 on:
   push:
