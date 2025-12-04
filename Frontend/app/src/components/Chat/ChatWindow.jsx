@@ -252,7 +252,7 @@ export default function ChatWindow({
           const historyRes = await axios.get(
             `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`
           );
-          const formattedMessages = historyRes.messages.map(
+          const formattedMessages = historyRes.data.messages.map(
             ({ role, content }) => ({
               sender: role === "user" ? "user" : "bot",
               content: content,
@@ -384,7 +384,7 @@ export default function ChatWindow({
         headers: { "Content-Type": "application/json" },
       });
 
-      const botMsg = { sender: "bot", content: res.data.response };
+      const botMsg = { sender: "bot", content: res.data.agent_response };
       setLoading(false);
       setMessages((prev) => [...prev, botMsg]);
       
