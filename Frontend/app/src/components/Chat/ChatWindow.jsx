@@ -360,15 +360,13 @@ export default function ChatWindow({
       }
 
       let payload;
-      let endpoint = `${URL}/${api}/chat`;
-      if (api === "chatbot") {
+      let endpoint = `${URL}/${api}/chat/${sessionId}`;
+      if (api === "api/v1/information-gathering-agent") {
         payload = {
-          message: currInput,
-          user: userId,
-          project: projectId,
-          session_id: sessionId,
-          uploaded_image,
-          owned_tools: ownedTools,
+          text: currInput,
+          project_id: projectId,
+          thread_id: sessionId,
+          image_base64: uploaded_image
         };
       } else {
         // step-guidance
