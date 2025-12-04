@@ -90,9 +90,11 @@ async def get_thread_id(
     """
     logger.info(f"get_thread_id called with project_id: {project_id}")
 
-    thread_id = orchestrator.project_collection.find_one(
-        {"project_id": project_id},
-        {"_id": 0, "thread_id": 1}
-    ).get("thread_id")
+    project = orchestrator.project_collection.find_one(
+        {"project_id": project_id}
+    )
 
-    return {"thread_id": thread_id}
+    if not project or "thread_id" not in project:
+        return {"session": None}
+
+    return {"session": project["thread_id"]}
