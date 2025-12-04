@@ -14,6 +14,7 @@ jobs:
 
       - name: Prepare lambda build folder
         run: |
+          rm -rf lambda_package
           mkdir -p lambda_package
           cp Backend/worker/*.py lambda_package/
           cp -r Backend/prompts lambda_package/
