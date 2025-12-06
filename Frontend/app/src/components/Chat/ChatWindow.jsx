@@ -253,10 +253,26 @@ export default function ChatWindow({
             `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`
           );
           const formattedMessages = historyRes.data.messages.map(
-            ({ role, content }) => ({
-              sender: role === "user" ? "user" : "bot",
-              content: content,
-            })
+            ({ role, content }) => {
+              // Check if content is a base64 image data URL
+              const isBase64Image = content && typeof content === 'string' && content.startsWith('data:image/');
+              
+              if (isBase64Image) {
+                // Extract image from content
+                return {
+                  sender: role === "user" ? "user" : "bot",
+                  content: "", // Empty content for image-only messages
+                  images: [content], // Store the full data URL
+                  isImageOnly: true,
+                };
+              }
+              
+              // Regular text message
+              return {
+                sender: role === "user" ? "user" : "bot",
+                content: content,
+              };
+            }
           );
           setMessages(formattedMessages);
 
@@ -341,10 +357,27 @@ export default function ChatWindow({
 
       // 4) Prepare payload per API
       let uploaded_image = null;
+      let image_mime_type = null;
       const firstImage = validFiles.find((f) => f.type.startsWith("image/"));
       if (firstImage) {
         try {
-          uploaded_image = await toBase64(firstImage);
+          const dataUrl = await toBase64(firstImage);
+          // Extract base64 string by splitting on comma (remove data:image/jpeg;base64, prefix)
+          // Format: "data:image/jpeg;base64,/9j/4AAQS..." -> "/9j/4AAQS..."
+          uploaded_image = dataUrl.split(',')[1];
+          
+          if (!uploaded_image) {
+            throw new Error("Failed to extract base64 string from data URL");
+          }
+          
+          // Use file.type directly for MIME type (more reliable than parsing data URL)
+          // Normalize common MIME types to ensure backend compatibility
+          let mimeType = firstImage.type || "image/jpeg";
+          // Ensure we have a valid MIME type (compression converts to JPEG)
+          if (!mimeType || !mimeType.startsWith("image/")) {
+            mimeType = "image/jpeg"; // Default fallback
+          }
+          image_mime_type = mimeType;
         } catch (error) {
           console.error("Error converting image to base64:", error);
           setMessages((prev) => [
@@ -366,8 +399,23 @@ export default function ChatWindow({
           text: currInput,
           project_id: projectId,
           thread_id: sessionId,
-          image_base64: uploaded_image
         };
+        
+        // Always include image fields together if image exists
+        if (uploaded_image) {
+          payload.image_base64 = uploaded_image;
+          payload.image_mime_type = image_mime_type || "image/jpeg"; // Fallback to jpeg if type is missing
+        }
+        
+        // Debug logging
+        if (uploaded_image) {
+          console.log("📤 Sending image payload:", {
+            has_image: !!uploaded_image,
+            image_length: uploaded_image?.length,
+            mime_type: payload.image_mime_type,
+            image_preview: uploaded_image?.substring(0, 50) + "..."
+          });
+        }
       } else {
         // step-guidance
         payload = {

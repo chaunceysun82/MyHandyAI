@@ -3,8 +3,6 @@ from contextlib import contextmanager
 from typing import List, Optional
 from uuid import UUID
 
-from pymongo import MongoClient
-
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -13,7 +11,7 @@ from langgraph.checkpoint.mongodb import MongoDBSaver
 from loguru import logger
 
 from config.settings import get_settings
-from information_gathering_agent.agent.prompt_templates.v2.information_gathering_agent import \
+from information_gathering_agent.agent.prompt_templates.v3.information_gathering_agent import \
     INFORMATION_GATHERING_AGENT_SYSTEM_PROMPT
 from information_gathering_agent.agent.tools import store_home_issue, store_summary
 
@@ -79,13 +77,6 @@ class InformationGatheringAgent:
                     last_message = result["messages"][-1]
                     logger.info(f"Agent responded successfully for thread_id: {thread_id}")
                     logger.debug(f"Agent response: {last_message.content}")
-
-                    # Log any tool calls
-                    for msg in result["messages"]:
-                        if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                            for tool_call in msg.tool_calls:
-                                logger.info(
-                                    f"Tool called: {tool_call.get('name')} with args: {tool_call.get('args', {})}")
 
                     return last_message.content
                 else:
@@ -163,11 +154,10 @@ class InformationGatheringAgent:
             logger.error(f"Error in process_image_response: {e}")
             return "I apologize, but I'm having trouble processing your image. Please try again."
 
-
     def get_history(self, thread_id: UUID) -> List[Dict]:
         """
         Read conversation history for a thread using LangGraph's get_state.
-        No direct msgpack / Mongo handling.
+        Extracts text content from messages, handling both string and multimodal content.
         """
         with self.get_checkpointer() as checkpointer:
             agent = create_agent(
@@ -191,18 +181,48 @@ class InformationGatheringAgent:
 
             history: List[Dict] = []
             for m in messages:
-                # m is a LangChain message object (HumanMessage, AIMessage, SystemMessage, etc.)
-                # Map it to a simple {role, content}
+                # Skip tool messages as they're not part of user-facing conversation
                 msg_type = getattr(m, "type", None) or m.__class__.__name__.lower()
+                if msg_type == "tool":
+                    continue
 
+                # Map message type to role
                 role = {
                     "human": "user",
                     "ai": "assistant",
                     "system": "system",
-                    "tool": "tool",
-                }.get(msg_type, msg_type)
+                }.get(msg_type, "user")
 
+                # Extract text content - handle both string and list (multimodal) content
                 content = m.content
-                history.append({"role": role, "content": content})
+                if isinstance(content, str):
+                    text_content = content
+                elif isinstance(content, list):
+                    # Extract text from content blocks (multimodal messages)
+                    text_parts = []
+                    for item in content:
+                        if isinstance(item, dict):
+                            if item.get("type") == "text" and "text" in item:
+                                text_parts.append(item["text"])
+                            elif item.get("type") == "image":
+                                # Extract base64 content from image block
+                                base64_data = item.get("base64")
+                                mime_type = item.get("mime_type", "image/jpeg")
+                                if base64_data:
+                                    # Format as data URI for easy use in frontend
+                                    text_parts.append(f"data:{mime_type};base64,{base64_data}")
+                                elif item.get("url"):
+                                    # Fallback to URL if base64 not available
+                                    text_parts.append(f"[Image URL: {item.get('url')}]")
+                                else:
+                                    text_parts.append("[Image attached]")
+                        elif isinstance(item, str):
+                            text_parts.append(item)
+                    text_content = " ".join(text_parts) if text_parts else ""
+                else:
+                    # Fallback: convert to string
+                    text_content = str(content) if content else ""
+
+                history.append({"role": role, "content": text_content})
 
             return history
