@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { detectTools } from "../../services/toolDetection";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
 import QuickReplyButtons from "./QuickReplyButtons";
 

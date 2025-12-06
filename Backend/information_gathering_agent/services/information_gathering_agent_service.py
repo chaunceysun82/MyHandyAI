@@ -4,8 +4,8 @@ from uuid import UUID
 from dotenv import load_dotenv
 from langsmith import uuid7
 from loguru import logger
-from pymongo.database import Database
 from pymongo.collection import Collection
+from pymongo.database import Database
 
 from information_gathering_agent.agent.information_gathering_agent import InformationGatheringAgent
 
