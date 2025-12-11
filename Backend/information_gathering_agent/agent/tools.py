@@ -4,12 +4,16 @@ from loguru import logger
 from pydantic import Field
 from pymongo.collection import Collection
 from pymongo.database import Database
+import os
 
+from information_gathering_agent.agent.embeddings_generation import embed_and_store_project_summary
 from information_gathering_agent.agent.utils import extract_qa_pairs_from_messages
 from information_gathering_agent.database.mongodb import mongodb
 
 database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
+
+DEFAULT_EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
 
 
 @tool(
@@ -90,12 +94,10 @@ def store_summary(
 
     try:
         # Get messages from state to extract Q&A pairs
-        # In LangGraph, state is typically a dict with 'messages' key
         state = runtime.state if hasattr(runtime, 'state') else {}
         if isinstance(state, dict):
             messages = state.get("messages", [])
         else:
-            # If state is not a dict, try to get messages directly
             messages = getattr(state, "messages", []) if hasattr(state, "messages") else []
 
         # Extract Q&A pairs from conversation history
@@ -103,18 +105,15 @@ def store_summary(
 
         logger.info(f"Extracted {len(questions)} questions and {len(answers)} answers from conversation")
 
-        # Prepare update data matching old system format
-        # Store both 'answers' and 'user_answers' for compatibility (generation code checks both)
         update_data = {
             "summary": summary,
             "hypotheses": hypotheses,
             "questions": questions if questions else [],
-            "answers": answers if answers else {},  # Primary field (old system format)
-            "user_answers": answers if answers else {},  # Alternative field name (generation code fallback)
-            "image_analysis": image_analysis or ""  # Default empty string if no image analysis
+            "answers": answers if answers else {},
+            "user_answers": answers if answers else {},
+            "image_analysis": image_analysis or ""
         }
 
-        # Update project with all collected data
         result = project_collection.update_one(
             {"_id": ObjectId(project_id)},
             {"$set": update_data}
@@ -122,11 +121,30 @@ def store_summary(
 
         if result.matched_count == 0:
             logger.warning(f"Project {project_id} not found, could not save summary")
+            project_doc = {**update_data, "_id": ObjectId(project_id)}
         else:
             logger.info(f"Successfully saved summary and Q&A data to project {project_id}")
+            project_doc = project_collection.find_one({"_id": ObjectId(project_id)})
+
+        do_embeddings = runtime.config.get("configurable", {}).get("do_embeddings", False)
+        embedding_result = None
+        if do_embeddings:
+            try:
+                embedding_model = runtime.config.get("configurable", {}).get("embedding_model", DEFAULT_EMBEDDING_MODEL)
+                if project_doc is None:
+                    project_doc = {**update_data, "_id": ObjectId(project_id)}
+                embedding_result = embed_and_store_project_summary(project_doc, model=embedding_model)
+                print(embedding_result)
+                logger.info(f"Embeddings stored: {embedding_result}")
+            except Exception as e:
+                logger.error(f"Error creating/storing embeddings: {e}")
 
     except Exception as e:
         logger.error(f"Error storing summary data: {e}")
-        # Don't fail the tool call, just log the error
 
+    if do_embeddings:
+        if embedding_result and embedding_result.get("status") == "ok":
+            return "✓ Summary stored. Embeddings created and saved to Qdrant. Ready for handoff to Solution Generation Agent."
+        else:
+            return "✓ Summary stored. Embeddings were attempted but failed — check logs. Ready for handoff to Solution Generation Agent."
     return "✓ Summary stored. Ready for handoff to Solution Generation Agent."
