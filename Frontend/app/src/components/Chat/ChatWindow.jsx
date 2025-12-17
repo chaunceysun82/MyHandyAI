@@ -209,6 +209,7 @@ export default function ChatWindow({
       const sessionRes= await axios.get(`${URL}/${api}/thread/${projectId}`);
       if (!sessionRes.data?.thread_id) {
         try {
+          setLoading(true);
           const res = await axios.post(
             `${URL}/${api}/initialize`,
             // chatbot expects {user, project}; step-guidance ignores user.
@@ -219,6 +220,7 @@ export default function ChatWindow({
           setSessionId(res.data.thread_id);
           localStorage.setItem(STORAGE_SESSION_KEY, res.data.thread_id);
           setMessages([{ sender: "bot", content: res.data.initial_message }]);
+          setLoading(false);
           
           // Set suggested messages from backend response
           // if (res.data.suggested_messages) {
@@ -240,6 +242,7 @@ export default function ChatWindow({
         }
       } else {
         // Console log the existing session ID
+        setLoading(true);
         console.log("🔄 Existing Chat Session Loaded:", {
           sessionId: sessionRes.data.thread_id,
           api: api,
@@ -275,6 +278,7 @@ export default function ChatWindow({
             }
           );
           setMessages(formattedMessages);
+          setLoading(false);
 
         } catch (err) {
           setMessages([{ sender: "bot", content: "Failed to load chat history." }]);

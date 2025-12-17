@@ -195,6 +195,9 @@ export default function Home() {
 
       setShowModal(false);
 
+      /*Navigate to chat page with new project*/
+      navigate("/chat", {state: {projectId: newProject._id, projectName: newProject.projectTitle, userId: token, userName: userName}});
+
     } catch (err) {
       console.error("createProject:", err);
       setError("Could not create project: " + err.message);
