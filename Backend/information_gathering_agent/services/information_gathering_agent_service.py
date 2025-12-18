@@ -8,6 +8,7 @@ from pymongo.collection import Collection
 from pymongo.database import Database
 
 from information_gathering_agent.agent.information_gathering_agent import InformationGatheringAgent
+from routes.project import get_project
 
 load_dotenv()
 
@@ -29,7 +30,8 @@ class InformationGatheringAgentService:
         """
         logger.info(f"Initializing new conversation for project_id: {project_id}")
         thread_id = uuid7()
-        initial_message = "Hello"
+        project_title=get_project(project_id).get("projectTitle","No Title")
+        initial_message = "Hello I want to gather information regarding my project titled '"+project_title+"'."
 
         response = self.information_gathering_agent.process_text_response(
             message=initial_message,
