@@ -192,9 +192,34 @@ export default function ChatWindow({
     }
   }, [status2, navigate, URL, projectId]);
 
-  // Persist messages/tools locally
+  // Persist messages/tools locally (exclude images to avoid quota issues)
   useEffect(() => {
-    localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messages));
+    try {
+      // Strip images from messages before saving to localStorage (images are stored in backend)
+      const messagesWithoutImages = messages.map(({ images, isImageOnly, ...msg }) => ({
+        ...msg,
+        // Keep a flag that image existed, but don't store the actual image data
+        hasImage: !!images && images.length > 0,
+      }));
+      localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messagesWithoutImages));
+    } catch (error) {
+      // Handle quota exceeded or other storage errors gracefully
+      if (error.name === 'QuotaExceededError') {
+        console.warn('localStorage quota exceeded, clearing old messages');
+        try {
+          // Try to clear and save only recent messages (last 50)
+          const recentMessages = messages.slice(-50).map(({ images, isImageOnly, ...msg }) => ({
+            ...msg,
+            hasImage: !!images && images.length > 0,
+          }));
+          localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(recentMessages));
+        } catch (e) {
+          console.error('Failed to save messages to localStorage:', e);
+        }
+      } else {
+        console.error('Error saving messages to localStorage:', error);
+      }
+    }
   }, [messages, STORAGE_MESSAGES_KEY]);
 
   useEffect(() => {
@@ -257,16 +282,32 @@ export default function ChatWindow({
           );
           const formattedMessages = historyRes.data.messages.map(
             ({ role, content }) => {
-              // Check if content is a base64 image data URL
-              const isBase64Image = content && typeof content === 'string' && content.startsWith('data:image/');
-              
-              if (isBase64Image) {
-                // Extract image from content
+              if (!content || typeof content !== 'string') {
                 return {
                   sender: role === "user" ? "user" : "bot",
-                  content: "", // Empty content for image-only messages
-                  images: [content], // Store the full data URL
-                  isImageOnly: true,
+                  content: content || "",
+                };
+              }
+              
+              // Check if content contains a base64 image data URL
+              const base64ImageRegex = /data:image\/[^;]+;base64,[^\s]+/g;
+              const imageMatches = content.match(base64ImageRegex);
+              
+              if (imageMatches && imageMatches.length > 0) {
+                // Extract images and remove them from text
+                const images = imageMatches;
+                let textContent = content;
+                
+                // Remove all image data URLs from the text
+                imageMatches.forEach(img => {
+                  textContent = textContent.replace(img, '').trim();
+                });
+                
+                return {
+                  sender: role === "user" ? "user" : "bot",
+                  content: textContent,
+                  images: images,
+                  isImageOnly: !textContent || textContent.length === 0,
                 };
               }
               
