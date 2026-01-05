@@ -31,7 +31,7 @@ class InformationGatheringAgentService:
         logger.info(f"Initializing new conversation for project_id: {project_id}")
         thread_id = uuid7()
         project = self.project_collection.find_one({"_id": ObjectId(project_id)})
-        initial_message = f"Hello, I want to gather information regarding my project titled {project.get("projectTitle", "No Title")}."
+        initial_message = f'Hello, I want to gather information regarding my project titled {project.get("projectTitle", "No Title")}.'
 
         response = self.information_gathering_agent.process_text_response(
             message=initial_message,
