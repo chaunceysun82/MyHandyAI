@@ -5,8 +5,8 @@ from pydantic import Field
 from pymongo.collection import Collection
 from pymongo.database import Database
 
-from information_gathering_agent.agent.utils import extract_qa_pairs_from_messages
-from information_gathering_agent.database.mongodb import mongodb
+from agents.information_gathering_agent.agent.utils import extract_qa_pairs_from_messages
+from database.mongodb import mongodb
 
 database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")

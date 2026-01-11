@@ -1,15 +1,17 @@
 # agents.py  (fixed & defensive)
-import os
-import requests
-from typing import List, Dict, Any, Optional, Iterable
-from dotenv import load_dotenv
 import base64
-from PIL import Image
-import re
 import json
-from .smart_questions import SmartQuestionManager
+import os
+import re
+from typing import List, Dict, Any, Optional
+
+import requests
+from dotenv import load_dotenv
+
+from smart_questions import SmartQuestionManager
 
 load_dotenv()
+
 
 def clean_and_parse_json(raw_str: str):
     """
@@ -18,8 +20,8 @@ def clean_and_parse_json(raw_str: str):
     if raw_str is None:
         raise ValueError("No input string")
     s = raw_str.strip()
-    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)           # strip fences
-    m = re.search(r"\{.*\}\s*$", s, flags=re.S)               # grab last JSON object
+    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)  # strip fences
+    m = re.search(r"\{.*\}\s*$", s, flags=re.S)  # grab last JSON object
     if m: s = m.group(0)
     try:
         return json.loads(s)
@@ -70,6 +72,7 @@ def extract_number_from_maybe_price(value) -> Optional[float]:
             return None
     return None
 
+
 def load_prompt(filename):
     """Load prompt from file, removing comment lines starting with #"""
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -77,7 +80,7 @@ def load_prompt(filename):
     try:
         with open(path, "r", encoding="utf-8") as f:
             lines = f.readlines()
-        
+
         return "".join(line for line in lines if not line.strip().startswith("#"))
     except FileNotFoundError:
         print(f"❌ Could not find prompt file: {path}")
@@ -94,11 +97,11 @@ question_clarification_prompt_text = load_prompt("chat_question_clarification_pr
 problem_recognition_prompt_text = load_prompt("chat_problem_recognition_prompt.txt")
 image_analysis_prompt_text = load_prompt("chat_image_analysis_prompt.txt")
 description_assessment_prompt_text = load_prompt("chat_description_assessment_prompt.txt")
-greetings_prompt_text=load_prompt("chat_greetings_prompt.txt")
-valid_description_prompt_text=load_prompt("chat_valid_description_prompt.txt")
-skip_image_prompt_text=load_prompt("chat_skip_image_prompt.txt")
-revision_request_prompt_text=load_prompt("chat_revision_request_prompt.txt")
-summary_answer_prompt_text=load_prompt("chat_summary_answer_prompt.txt")
+greetings_prompt_text = load_prompt("chat_greetings_prompt.txt")
+valid_description_prompt_text = load_prompt("chat_valid_description_prompt.txt")
+skip_image_prompt_text = load_prompt("chat_skip_image_prompt.txt")
+revision_request_prompt_text = load_prompt("chat_revision_request_prompt.txt")
+summary_answer_prompt_text = load_prompt("chat_summary_answer_prompt.txt")
 
 
 class ProblemRecognitionAgent:
@@ -120,7 +123,7 @@ class ProblemRecognitionAgent:
             ],
             "max_completion_tokens": 200,
             "reasoning_effort": "minimal",
-            "verbosity":"low"
+            "verbosity": "low"
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -132,14 +135,14 @@ class ProblemRecognitionAgent:
         payload = {
             "model": "gpt-5-mini",
             "messages": [
-                {"role": "system", 
+                {"role": "system",
                  "content": valid_description_prompt_text
                  },
                 {"role": "user", "content": message}
             ],
             "max_completion_tokens": 60,
             "reasoning_effort": "low",
-            "verbosity":"low"
+            "verbosity": "low"
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -167,18 +170,18 @@ class ProblemRecognitionAgent:
                 self.api_url,
                 headers=self.headers,
                 json={
-                    "model": "gpt-5-nano", 
-                    "messages": messages, 
-                    "max_completion_tokens": 300, 
+                    "model": "gpt-5-nano",
+                    "messages": messages,
+                    "max_completion_tokens": 300,
                     "reasoning_effort": "minimal",
-                    "verbosity":"low"
+                    "verbosity": "low"
                 },
                 timeout=15,
             )
 
             if response.status_code == 200:
                 data = response.json()
-                
+
                 # Check if model was stopped due to content filtering
                 if "choices" in data and len(data["choices"]) > 0:
                     choice = data["choices"][0]
@@ -186,7 +189,7 @@ class ProblemRecognitionAgent:
                         pass
                     if "finish_details" in choice:
                         pass
-                
+
                 text = data["choices"][0]["message"]["content"].strip()
 
                 # Check if model returned empty response
@@ -205,16 +208,16 @@ class ProblemRecognitionAgent:
                     "Photo of the problem area",
                     "A wider photo showing the surrounding context"
                 ]
-                
+
                 # Use custom prompt content if no response_message, not generic fallback
                 if raw.get("response_message"):
                     response_message = raw["response_message"]
                 else:
                     # Create response using the photo requests but mention they're optional
                     response_message = (
-                        "Got it — please share:\n"
-                        + "\n".join(f"{i+1}. {p}" for i, p in enumerate(photo_requests))
-                        + "\n\n(Photos are optional — you can also type 'skip'.)"
+                            "Got it — please share:\n"
+                            + "\n".join(f"{i + 1}. {p}" for i, p in enumerate(photo_requests))
+                            + "\n\n(Photos are optional — you can also type 'skip'.)"
                     )
 
                 # Preserve any extra fields the model added (e.g., triage_state)
@@ -232,7 +235,7 @@ class ProblemRecognitionAgent:
 
     def _get_fallback_response(self, user_message: str) -> Dict[str, Any]:
         """Fallback response if API fails - use simple AI-based approach"""
-        
+
         system_prompt = """You are a DIY problem recognition agent. Analyze the user's problem and determine what photos would be most helpful.
 
 Return a JSON response with:
@@ -251,7 +254,8 @@ Be specific about what photos would help diagnose the problem."""
             response = requests.post(
                 self.api_url,
                 headers=self.headers,
-                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 500, "reasoning_effort": "low"}
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 500,
+                      "reasoning_effort": "low"}
             )
 
             if response.status_code == 200:
@@ -307,17 +311,17 @@ class ImageAnalysisAgent:
             ],
             "max_completion_tokens": 100,
             "reasoning_effort": "minimal",
-            "verbosity":"low"
+            "verbosity": "low"
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload)
             content = r.json()["choices"][0]["message"]["content"]
-            
+
             if r.status_code == 200:
                 return content == "True"
             else:
                 return True  # Default to allowing skip on error
-                
+
         except Exception as e:
             return True  # Default to allowing skip on error
 
@@ -352,25 +356,26 @@ class ImageAnalysisAgent:
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800,"reasoning_effort": "medium", "verbosity":"low"},
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800,
+                      "reasoning_effort": "medium", "verbosity": "low"},
             )
             if r.status_code == 200:
                 txt = r.json()["choices"][0]["message"]["content"].strip()
                 try:
                     result = json.loads(txt)
-                   
+
                     if isinstance(result, dict) and "analysis" in result and "questions" in result:
                         return result
                     else:
-                        
+
                         return self._get_fallback_questions(problem_type)
                 except (json.JSONDecodeError, KeyError, TypeError):
-                    
+
                     return self._get_fallback_questions(problem_type)
         except Exception:
-            pass  
+            pass
 
-        # ─── fallback set ───
+            # ─── fallback set ───
         return self._get_fallback_questions(problem_type)
 
     def analyze_image_without_image(self, problem_type: str, user_description: str) -> Dict[str, Any]:
@@ -389,13 +394,15 @@ class ImageAnalysisAgent:
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Please analyse this {problem_type} problem based on the description: {user_description}"}
+            {"role": "user",
+             "content": f"Please analyse this {problem_type} problem based on the description: {user_description}"}
         ]
 
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800, "reasoning_effort": "low", "verbosity":"low"}
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 800,
+                      "reasoning_effort": "low", "verbosity": "low"}
             )
             if r.status_code == 200:
                 txt = r.json()["choices"][0]["message"]["content"].strip()
@@ -406,12 +413,12 @@ class ImageAnalysisAgent:
                     else:
                         return self._get_fallback_questions(problem_type)
                 except (json.JSONDecodeError, KeyError, TypeError):
-                   
+
                     return self._get_fallback_questions(problem_type)
         except Exception:
-            pass  
+            pass
 
-        # ─── fallback set ───
+            # ─── fallback set ───
         return self._get_fallback_questions(problem_type)
 
     def _get_fallback_questions(self, problem_type: str) -> Dict[str, Any]:
@@ -501,7 +508,7 @@ class SummaryAgent:
             ],
             "max_completion_tokens": 100,
             "reasoning_effort": "minimal",
-            "verbosity":"low"
+            "verbosity": "low"
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -515,7 +522,7 @@ class SummaryAgent:
         # Format user answers for the prompt
         answers_text = ""
         for i, answer in user_answers.items():
-            answers_text += f"Q{i+1}: {answer}\n"
+            answers_text += f"Q{i + 1}: {answer}\n"
 
         system_prompt = f"""{summary_prompt_text}
 
@@ -528,13 +535,15 @@ Please create a summary of this DIY problem. Dont ask for more information, just
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": "Please create a summary of this DIY problem. Dont ask for more information or confirmation, just create the summary."}
+            {"role": "user",
+             "content": "Please create a summary of this DIY problem. Dont ask for more information or confirmation, just create the summary."}
         ]
 
         try:
             r = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 1000, "reasoning_effort": "low"}
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 1000,
+                      "reasoning_effort": "low"}
             )
             if r.status_code == 200:
                 return r.json()["choices"][0]["message"]["content"].strip()
@@ -547,7 +556,7 @@ Please create a summary of this DIY problem. Dont ask for more information, just
 
 class ImageQuestionAnalyzer:
     """Analyzes images in the context of specific clarification questions"""
-    
+
     def __init__(self):
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.api_url = "https://api.openai.com/v1/chat/completions"
@@ -555,7 +564,7 @@ class ImageQuestionAnalyzer:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-    
+
     def detect_help_request(self, user_message: str) -> bool:
         """Detect if user is asking for help/guidance"""
         help_keywords = [
@@ -565,13 +574,13 @@ class ImageQuestionAnalyzer:
         ]
         user_lower = user_message.lower()
         return any(keyword in user_lower for keyword in help_keywords)
-    
+
     def analyze_question_image(
-        self,
-        image_data: bytes,
-        question: str,
-        user_message: str,
-        problem_type: str
+            self,
+            image_data: bytes,
+            question: str,
+            user_message: str,
+            problem_type: str
     ) -> Dict[str, Any]:
         """
         Analyze image in context of specific question
@@ -583,18 +592,18 @@ class ImageQuestionAnalyzer:
         - confidence: Confidence in the analysis
         - follow_up_needed: Whether more clarification is needed
         """
-        
+
         b64 = base64.b64encode(image_data).decode("utf-8")
         is_help_request = self.detect_help_request(user_message)
-        
+
         if is_help_request:
             return self._provide_visual_guidance(b64, question, user_message, problem_type)
         else:
             return self._extract_answer_from_image(b64, question, user_message, problem_type)
-    
+
     def _provide_visual_guidance(self, b64: str, question: str, user_message: str, problem_type: str) -> Dict[str, Any]:
         """Generate helpful guidance based on image"""
-        
+
         system_prompt = f"""You are a helpful DIY assistant analyzing an image to provide guidance for a clarification question.
 
 The user asked: "{question}"
@@ -637,18 +646,18 @@ Return JSON with:
             if r.status_code == 200:
                 result = clean_and_parse_json(r.json()["choices"][0]["message"]["content"])
                 result["is_help_request"] = True
-                
+
                 # Ensure visual_indicators is always a list
                 if "visual_indicators" in result and not isinstance(result["visual_indicators"], list):
                     if isinstance(result["visual_indicators"], str):
                         result["visual_indicators"] = [result["visual_indicators"]]
                     else:
                         result["visual_indicators"] = []
-                
+
                 return result
         except Exception:
             pass
-        
+
         return {
             "analysis": "I can see your image",
             "guidance": "I can help analyze what's shown to answer your question.",
@@ -658,13 +667,14 @@ Return JSON with:
             "follow_up_needed": True,
             "is_help_request": True
         }
-    
-    def _extract_answer_from_image(self, b64: str, question: str, user_message: str, problem_type: str) -> Dict[str, Any]:
+
+    def _extract_answer_from_image(self, b64: str, question: str, user_message: str, problem_type: str) -> Dict[
+        str, Any]:
         """Extract direct answer from image"""
-        
+
         # Create question-type specific prompts
         question_lower = question.lower()
-        
+
         if any(word in question_lower for word in ["wall", "material", "surface"]):
             analysis_focus = "material identification, wall type, surface characteristics"
         elif any(word in question_lower for word in ["size", "dimension", "big", "wide", "tall"]):
@@ -699,7 +709,7 @@ Return JSON with:
         messages = [
             {"role": "system", "content": system_prompt},
             {
-                "role": "user", 
+                "role": "user",
                 "content": [
                     {"type": "text", "text": f"Question: {question}\nUser said: {user_message}"},
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
@@ -715,18 +725,18 @@ Return JSON with:
             if r.status_code == 200:
                 result = clean_and_parse_json(r.json()["choices"][0]["message"]["content"])
                 result["is_help_request"] = False
-                
+
                 # Ensure supporting_evidence is always a list
                 if "supporting_evidence" in result and not isinstance(result["supporting_evidence"], list):
                     if isinstance(result["supporting_evidence"], str):
                         result["supporting_evidence"] = [result["supporting_evidence"]]
                     else:
                         result["supporting_evidence"] = []
-                
+
                 return result
         except Exception:
             pass
-        
+
         return {
             "analysis": "I can see your image",
             "answer_extracted": user_message,  # Fall back to user's text
@@ -743,9 +753,9 @@ class QuestionClarificationAgent:
                 (3) detect irrelevant/unrealistic answers and re-ask, or (4) accept."""
 
     def __init__(self):
-        self.api_key  = os.getenv("OPENAI_API_KEY")
-        self.api_url  = "https://api.openai.com/v1/chat/completions"
-        self.headers  = {
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_url = "https://api.openai.com/v1/chat/completions"
+        self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
@@ -758,16 +768,17 @@ class QuestionClarificationAgent:
           advance: bool  – True to move to next question, False to re-ask
         """
         # Replace placeholders manually to avoid conflicts with JSON braces in the prompt
-        system_prompt = question_clarification_prompt_text.replace("{question}", question).replace("{user_response}", user_response)
+        system_prompt = question_clarification_prompt_text.replace("{question}", question).replace("{user_response}",
+                                                                                                   user_response)
         payload = {
             "model": "gpt-5-mini",
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user",   "content": "Please classify and respond in JSON."}
+                {"role": "user", "content": "Please classify and respond in JSON."}
             ],
             "max_completion_tokens": 1000,
             "reasoning_effort": "low",
-            "verbosity":"low"
+            "verbosity": "low"
         }
         try:
             resp = requests.post(self.api_url, headers=self.headers, json=payload, timeout=15)
@@ -779,22 +790,22 @@ class QuestionClarificationAgent:
                 return (msg, True)
             if act == "accept":
                 return ("", True)
-            
+
             return (msg, False)
         except Exception:
-            
+
             fallback = (
                 f"I didn't quite catch that. Could you clarify your answer to:\n\n**{question}**"
             )
             return (fallback, False)
 
     def handle_user_response_with_image(
-        self, 
-        question: str, 
-        user_response: str, 
-        uploaded_image: Optional[bytes] = None,
-        problem_type: str = "",
-        context: Dict = None
+            self,
+            question: str,
+            user_response: str,
+            uploaded_image: Optional[bytes] = None,
+            problem_type: str = "",
+            context: Dict = None
     ) -> tuple[str, bool, Optional[str]]:
         """
         Enhanced response handler that supports image analysis
@@ -804,23 +815,23 @@ class QuestionClarificationAgent:
             advance: bool - Whether to move to next question
             enhanced_answer: Optional[str] - Combined text + image insights for storage
         """
-        
+
         if uploaded_image:
             # Analyze the image in context of the question
             image_result = self.image_analyzer.analyze_question_image(
                 uploaded_image, question, user_response, problem_type
             )
-            
+
             if image_result.get("is_help_request", False):
                 # User asked for help - provide guidance and re-ask
                 guidance = image_result.get("guidance", "")
                 visual_indicators = image_result.get("visual_indicators", [])
                 suggested_answer = image_result.get("suggested_answer", "")
-                
+
                 response_parts = []
                 if guidance:
                     response_parts.append(f"📸 Looking at your photo: {guidance}")
-                
+
                 if visual_indicators:
                     # Ensure visual_indicators is properly formatted
                     if isinstance(visual_indicators, str):
@@ -830,15 +841,16 @@ class QuestionClarificationAgent:
                     else:
                         indicators_text = str(visual_indicators)
                     response_parts.append(f"I can see: {indicators_text}")
-                
+
                 if suggested_answer:
                     response_parts.append(f"Based on the image, it appears to be: **{suggested_answer}**")
-                    response_parts.append("Does this help? Please confirm or let me know if you need more clarification.")
+                    response_parts.append(
+                        "Does this help? Please confirm or let me know if you need more clarification.")
                 else:
                     response_parts.append(f"Please let me know what you think based on this guidance.")
-                
+
                 return ("\n\n".join(response_parts), False, None)
-            
+
             else:
                 # User provided answer with image evidence
                 answer_extracted = image_result.get("answer_extracted", user_response)
@@ -846,14 +858,14 @@ class QuestionClarificationAgent:
                 confidence = image_result.get("confidence", 0.5)
                 follow_up_needed = image_result.get("follow_up_needed", False)
                 additional_context = image_result.get("additional_context", "")
-                
+
                 # Combine text and image insights
                 enhanced_answer = user_response
                 if answer_extracted and answer_extracted != user_response:
                     enhanced_answer = f"{user_response} [Image analysis: {answer_extracted}]"
                 if additional_context:
                     enhanced_answer += f" [Context: {additional_context}]"
-                
+
                 # High confidence and no follow-up needed = accept
                 if confidence >= 0.7 and not follow_up_needed:
                     confirmation_msg = ""
@@ -866,9 +878,9 @@ class QuestionClarificationAgent:
                         else:
                             evidence_text = str(supporting_evidence)
                         confirmation_msg = f"✅ Great! I can confirm from the photo: {evidence_text}"
-                    
+
                     return (confirmation_msg, True, enhanced_answer)
-                
+
                 # Medium confidence or follow-up needed = ask for confirmation
                 elif confidence >= 0.4:
                     response_parts = []
@@ -883,22 +895,23 @@ class QuestionClarificationAgent:
                         else:
                             evidence_text = str(supporting_evidence)
                         response_parts.append(f"Supporting evidence: {evidence_text}")
-                    
+
                     response_parts.append("Does this match what you were trying to tell me?")
-                    
+
                     return ("\n\n".join(response_parts), False, enhanced_answer)
-                
+
                 # Low confidence = ask for clarification
                 else:
                     response_msg = f"I can see your photo, but I'm not entirely sure about the answer. Could you provide a bit more detail about: **{question}**"
                     return (response_msg, False, enhanced_answer)
-        
+
         else:
             # No image provided - use standard text-only logic
             message, advance = self.handle_user_response(question, user_response)
             return (message, advance, user_response)
 
-    def detect_revision_request(self, user_message: str, current_question: str, question_history: List[str]) -> tuple[bool, Optional[int], str]:
+    def detect_revision_request(self, user_message: str, current_question: str, question_history: List[str]) -> tuple[
+        bool, Optional[int], str]:
         """
         Detects if user wants to revise a previous answer using natural language.
         
@@ -907,32 +920,35 @@ class QuestionClarificationAgent:
             target_question_index: Optional[int] - Which question to go back to (None if unclear)
             clarification_message: str - Message to send to user
         """
-        previous_questions=""
-        previous_questions+= "".join(f"\n {i+1}. {q}" for i, q in enumerate(question_history))
-        question_number=len(question_history) + 1
-        
-        system_prompt=revision_request_prompt_text.replace("{current_question}", current_question).replace("{previous_questions}", previous_questions).replace("{user_message}", user_message).replace("{question_number}", question_number)
+        previous_questions = ""
+        previous_questions += "".join(f"\n {i + 1}. {q}" for i, q in enumerate(question_history))
+        question_number = len(question_history) + 1
+
+        system_prompt = revision_request_prompt_text.replace("{current_question}", current_question).replace(
+            "{previous_questions}", previous_questions).replace("{user_message}", user_message).replace(
+            "{question_number}", question_number)
 
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message}
         ]
-        
+
         try:
             response = requests.post(
                 self.api_url, headers=self.headers,
-                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 500, "reasoning_effort": "low"}
+                json={"model": "gpt-5-mini", "messages": messages, "max_completion_tokens": 500,
+                      "reasoning_effort": "low"}
             )
-            
+
             if response.status_code == 200:
                 result = clean_and_parse_json(response.json()["choices"][0]["message"]["content"])
-                
+
                 is_revision = result.get("is_revision_request", False)
                 target_index = result.get("target_question_index")
                 message = result.get("message", "")
                 action = result.get("action", "continue")
                 confidence = result.get("confidence", 0.0)
-                
+
                 # Only proceed if confidence is high enough
                 if confidence >= 0.7:
                     return is_revision, target_index, message
@@ -945,15 +961,15 @@ class QuestionClarificationAgent:
                             # Extract key topic from question
                             topic = self._extract_question_topic(q)
                             examples.append(f"'{topic}'")
-                        
+
                         example_text = " or ".join(examples)
                         return True, None, f"I'm not sure which question you want to re-answer. Could you be more specific? For example: {example_text}"
                     else:
                         return True, None, "I'm not sure which question you want to re-answer. Could you be more specific?"
-                
+
         except Exception:
             pass
-        
+
         # Fallback: simple keyword detection
         revision_keywords = ["change", "mistake", "wrong", "re-answer", "previous", "go back"]
         if any(keyword in user_message.lower() for keyword in revision_keywords):
@@ -964,14 +980,14 @@ class QuestionClarificationAgent:
                     # Extract key topic from question
                     topic = self._extract_question_topic(q)
                     examples.append(f"'{topic}'")
-                
+
                 example_text = " or ".join(examples)
                 return True, None, f"Which question would you like to re-answer? Please be specific, like {example_text}"
             else:
                 return True, None, "Which question would you like to re-answer? Please be specific."
-        
+
         return False, None, ""
-    
+
     def _extract_question_topic(self, question: str) -> str:
         """
         Extract a short, descriptive topic from a question for use in examples.
@@ -987,9 +1003,9 @@ class QuestionClarificationAgent:
             r"when.*?(start|happen|notice)",
             r"is it.*?(affecting|causing|damaging)"
         ]
-        
+
         question_lower = question.lower()
-        
+
         for pattern in topic_patterns:
             match = re.search(pattern, question_lower)
             if match:
@@ -1011,23 +1027,26 @@ class QuestionClarificationAgent:
                     return "experience level"
                 else:
                     return key_word.replace("_", " ")
-        
+
         # Fallback: extract first few meaningful words
         words = question.split()
         meaningful_words = []
         for word in words[:4]:  # Take first 4 words
-            if len(word) > 3 and word.lower() not in ["what", "where", "when", "how", "do", "you", "have", "the", "and", "for", "with", "that", "this"]:
+            if len(word) > 3 and word.lower() not in ["what", "where", "when", "how", "do", "you", "have", "the", "and",
+                                                      "for", "with", "that", "this"]:
                 meaningful_words.append(word)
-        
+
         if meaningful_words:
             return " ".join(meaningful_words[:2])  # Return first 2 meaningful words
-        
+
         # Final fallback
         return "previous question"
-        
+
+
 class DescriptionAssessmentAgent:
     """Agent: Decides if the user’s initial problem description is
        detailed enough to skip clarifying questions."""
+
     def __init__(self):
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.api_url = "https://api.openai.com/v1/chat/completions"
@@ -1046,11 +1065,11 @@ Description: \"\"\"{description}\"\"\"
             "model": "gpt-5-nano",
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user",   "content": "Please respond with JSON only."}
+                {"role": "user", "content": "Please respond with JSON only."}
             ],
             "max_completion_tokens": 50,
             "reasoning_effort": "minimal",
-            "verbosity":"low"
+            "verbosity": "low"
         }
         try:
             r = requests.post(self.api_url, headers=self.headers, json=payload, timeout=10)
@@ -1059,40 +1078,41 @@ Description: \"\"\"{description}\"\"\"
         except:
             return False
 
+
 class AgenticChatbot:
     """Main chatbot that coordinates between agents."""
-    
+
     def __init__(self):
-        self.problem_agent         = ProblemRecognitionAgent()
-        self.image_agent           = ImageAnalysisAgent()
-        self.summary_agent         = SummaryAgent()
-        self.clarification_agent   = QuestionClarificationAgent()
-        self.description_agent     = DescriptionAssessmentAgent()
+        self.problem_agent = ProblemRecognitionAgent()
+        self.image_agent = ImageAnalysisAgent()
+        self.summary_agent = SummaryAgent()
+        self.clarification_agent = QuestionClarificationAgent()
+        self.description_agent = DescriptionAssessmentAgent()
         self.smart_question_manager = SmartQuestionManager()
-        
+
         self.reset()
 
     def reset(self):
-        self.current_state          = "waiting_for_problem"
-        self.problem_type           = None
-        self.user_description       = ""
-        self.summary                = ""
-        self.questions              = []
+        self.current_state = "waiting_for_problem"
+        self.problem_type = None
+        self.user_description = ""
+        self.summary = ""
+        self.questions = []
         self.current_question_index = 0
-        self.user_answers           = {}
-        self.image_analysis         = None
+        self.user_answers = {}
+        self.image_analysis = None
         self.triage_state = {
-            "domain": None,          # plumbing | electrical | carpentry | hvac | general
-            "system": None,          # supply | drain | fixture | wiring | structure | other
-            "thing": None,           # sink | pipe | faucet | outlet | mirror | shelf | ...
-            "area_type": None,       # indoor | outdoor | vehicle | other
-            "location": None,        # kitchen | bathroom | hallway | garden | garage | ...
-            "room": None,            # finer indoor granularity
-            "materials": [],         # ["drywall","tile","pvc","copper",...]
-            "symptoms": [],          # ["slow_drain","no_power","leaking",...]
-            "dimensions": {},        # e.g. {"item":{"w_in":24,"h_in":36}}
-            "tools_available": [],   # ["stud_finder","plunger","multimeter"]
-            "hazards": []            # ["live_electric","active_leak","gas_smell"]
+            "domain": None,  # plumbing | electrical | carpentry | hvac | general
+            "system": None,  # supply | drain | fixture | wiring | structure | other
+            "thing": None,  # sink | pipe | faucet | outlet | mirror | shelf | ...
+            "area_type": None,  # indoor | outdoor | vehicle | other
+            "location": None,  # kitchen | bathroom | hallway | garden | garage | ...
+            "room": None,  # finer indoor granularity
+            "materials": [],  # ["drywall","tile","pvc","copper",...]
+            "symptoms": [],  # ["slow_drain","no_power","leaking",...]
+            "dimensions": {},  # e.g. {"item":{"w_in":24,"h_in":36}}
+            "tools_available": [],  # ["stud_finder","plunger","multimeter"]
+            "hazards": []  # ["live_electric","active_leak","gas_smell"]
         }
 
     def update_triage_state(self, patch: dict):
@@ -1113,23 +1133,22 @@ class AgenticChatbot:
     def greet(self):
         return self.problem_agent.greetings()
 
-
     def process_message(self, user_message: str, uploaded_image: Optional[bytes] = None) -> str:
         # 1) Capture the user's free‐form description
         if self.current_state == "waiting_for_problem":
             if not self.problem_agent.valid_description(user_message):
                 return "Not quite understand the description, could you please send again a description of the issue, repair or project you are facing?"
-            
+
             self.user_description = user_message
             result = self.problem_agent.analyze_problem(user_message)
-            
+
             # Don't assume keys exist
             self.problem_type = (result.get("problem_type") or "general_repair").strip()
-            
+
             # Optional triage bootstrap if the recognizer returns any
             if isinstance(result, dict) and result.get("triage_state"):
                 self.update_triage_state(result["triage_state"])
-            
+
             # NEW: Check if image was provided with initial description
             if uploaded_image:
                 # User provided both description AND image - process both immediately
@@ -1160,17 +1179,17 @@ class AgenticChatbot:
                 result = self.image_agent.analyze_image(uploaded_image, self.problem_type)
                 if not isinstance(result, dict) or "analysis" not in result or "questions" not in result:
                     return "Sorry, I had trouble analyzing the image. Please try uploading it again."
-                
+
                 self.image_analysis = str(result.get("analysis") or "Image analysis completed")
                 return self._prepare_questions_from_result(result, True)
-            
+
             # Only check for skip if no image was uploaded
             if self.image_agent.skip_image(user_message):
                 # Skip photos and go directly to questions based on description
                 result = self.image_agent.analyze_image_without_image(self.problem_type, self.user_description)
                 if not isinstance(result, dict) or "analysis" not in result or "questions" not in result:
                     return "Sorry, I had trouble processing your request. Please try again."
-                
+
                 self.image_analysis = str(result.get("analysis") or "")
                 return self._prepare_questions_from_result(result, False)
 
@@ -1180,12 +1199,12 @@ class AgenticChatbot:
         # 3) Q&A loop with image support
         if self.current_state == "asking_questions":
             current_q = self.questions[self.current_question_index]
-            
+
             # NEW: Check for revision request first
             # is_revision, target_index, revision_message = self.clarification_agent.detect_revision_request(
             #     user_message, current_q, self.questions[:self.current_question_index]
             # )
-            
+
             # if is_revision:
             #     if target_index is not None and 1 <= target_index <= len(self.questions):
             #         # Go back to specific question
@@ -1194,7 +1213,7 @@ class AgenticChatbot:
             #     else:
             #         # Ask user to specify which question
             #         return revision_message
-            
+
             # Use enhanced image-aware clarification logic
             clarification, advance, enhanced_answer = self.clarification_agent.handle_user_response_with_image(
                 current_q, user_message, uploaded_image, self.problem_type, self.triage_state
@@ -1205,9 +1224,9 @@ class AgenticChatbot:
                 final_answer = enhanced_answer if enhanced_answer else user_message
                 if clarification.startswith("Got it"):
                     final_answer = "skipped"
-                
+
                 self.user_answers[self.current_question_index] = final_answer
-                
+
                 # 6a) Heuristic: if this looks like a dimensions question, parse and store
                 if isinstance(current_q, str) and re.search(r"\b(dimension|size|width|height)\b", current_q.lower()):
                     dims = self.smart_question_manager.parse_dimensions(final_answer)
@@ -1219,7 +1238,7 @@ class AgenticChatbot:
                     {self.current_question_index: final_answer}
                 )
                 self.update_triage_state(ctx_patch)
-                
+
                 # 6c) Extract additional context from image analysis if available
                 if uploaded_image and enhanced_answer and "[Context:" in enhanced_answer:
                     # Try to extract structured info from image context
@@ -1231,7 +1250,7 @@ class AgenticChatbot:
                         self.update_triage_state(image_ctx_patch)
                     except Exception:
                         pass  # Don't fail if context extraction fails
-                
+
                 self.current_question_index += 1
                 return self._proceed_after_question(preamble=clarification)
 
@@ -1265,13 +1284,14 @@ class AgenticChatbot:
                     if self.triage_state.get("dimensions"):
                         for item, dims in self.triage_state["dimensions"].items():
                             if isinstance(dims, dict) and "w_in" in dims and "h_in" in dims:
-                                triage_context.append(f"{item.title()} dimensions: {dims['w_in']}×{dims['h_in']} inches")
+                                triage_context.append(
+                                    f"{item.title()} dimensions: {dims['w_in']}×{dims['h_in']} inches")
                     if self.triage_state.get("tools_available"):
                         triage_context.append(f"Tools available: {', '.join(self.triage_state['tools_available'])}")
                     if triage_context:
                         final_summary += f"\n\n**Context:** {' | '.join(triage_context)}"
 
-                self.summary= final_summary
+                self.summary = final_summary
 
                 # The tools, steps, and estimations are now handled by the content planner
                 # The chatbot's job is complete - hand off to the next webapp page
@@ -1314,7 +1334,7 @@ class AgenticChatbot:
             self.image_analysis,
             combined
         )
-        
+
         # Enrich the summary with triage context
         if self.triage_state and any(v for v in self.triage_state.values() if v):
             triage_context = []
@@ -1330,7 +1350,7 @@ class AgenticChatbot:
                 triage_context.append(f"Tools available: {', '.join(self.triage_state['tools_available'])}")
             if triage_context:
                 summary += f"\n\n**Context:** {' | '.join(triage_context)}"
-        
+
         return (
             (preamble + "\n\n") if preamble else ""
         ) + (
@@ -1339,37 +1359,37 @@ class AgenticChatbot:
         )
 
     def _generate_solution(self) -> str:
-        answers = "\n".join(f"Q{i+1}: {ans}" for i, ans in self.user_answers.items())
+        answers = "\n".join(f"Q{i + 1}: {ans}" for i, ans in self.user_answers.items())
         return (
             f"Perfect! Based on your answers:\n{answers}\n\n"
             f"I'll now provide a detailed step-by-step solution for your "
             f"{self.problem_type.replace('_', ' ')} project."
         )
-    
-    def _prepare_questions_from_result(self, result: Dict[str, Any], image:bool) -> str:
+
+    def _prepare_questions_from_result(self, result: Dict[str, Any], image: bool) -> str:
         """Helper method to prepare questions from image analysis result"""
-                    
+
         if self.description_agent.assess(self.user_description):
-                
-                combined = {0: self.user_description}
-                summary = self.summary_agent.create_summary(
-                    self.problem_type,
-                    self.image_analysis,
-                    combined
-                )
-                self.current_state = "showing_summary"
-                
-                # Determine the appropriate message based on whether we have meaningful image analysis
-                if image and self.image_analysis and self.image_analysis.strip() and self.image_analysis != "Image analysis completed":
-                    intro_message = f"Great, thanks for the photo!\n\n📸 **What I can see:** {self.image_analysis}\n\n"
-                else:
-                    intro_message = f"Got it! Based on your description:\n\n"
-                
-                return (
-                    f"{intro_message}"
-                    f"Since you already provided full details up front, here's a summary:\n\n**{summary}**\n\n"
-                    "Does this look right? Reply 'yes' or 'no'."
-                )
+
+            combined = {0: self.user_description}
+            summary = self.summary_agent.create_summary(
+                self.problem_type,
+                self.image_analysis,
+                combined
+            )
+            self.current_state = "showing_summary"
+
+            # Determine the appropriate message based on whether we have meaningful image analysis
+            if image and self.image_analysis and self.image_analysis.strip() and self.image_analysis != "Image analysis completed":
+                intro_message = f"Great, thanks for the photo!\n\n📸 **What I can see:** {self.image_analysis}\n\n"
+            else:
+                intro_message = f"Got it! Based on your description:\n\n"
+
+            return (
+                f"{intro_message}"
+                f"Since you already provided full details up front, here's a summary:\n\n**{summary}**\n\n"
+                "Does this look right? Reply 'yes' or 'no'."
+            )
 
         # 2b) Otherwise, prepare the questions
         raw_qs = result.get("questions") or []
@@ -1395,13 +1415,13 @@ class AgenticChatbot:
                 combined
             )
             self.current_state = "showing_summary"
-            
+
             # Determine the appropriate message based on whether we have meaningful image analysis
             if image and self.image_analysis and self.image_analysis.strip() and self.image_analysis != "Image analysis completed":
                 intro_message = f"Great, thanks for the photo!\n\n📸 **What I can see:** {self.image_analysis}\n\n"
             else:
                 intro_message = f"Got it! Based on your description:\n\n"
-            
+
             return (
                 f"{intro_message}"
                 f"Your description covered everything, here's a summary:\n\n**{summary}**\n\n"
@@ -1411,13 +1431,13 @@ class AgenticChatbot:
         # 2e) Otherwise start the Q&A loop
         self.current_question_index = 0
         self.current_state = "asking_questions"
-        
+
         # Determine the appropriate message based on whether we have meaningful image analysis
         if image and self.image_analysis and self.image_analysis.strip() and self.image_analysis != "Image analysis completed":
             intro_message = f"Great, thanks for the photo!\n\n📸 **What I can see:** {self.image_analysis}\n\n"
         else:
             intro_message = f"Got it!\n\n"
-        
+
         return (
             f"{intro_message}"
             "I'll ask a few quick questions one-by-one so I can give you "

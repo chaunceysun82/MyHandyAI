@@ -1,19 +1,18 @@
 from typing import Annotated
 
 from fastapi import Depends
-from pymongo.database import Database
 
-from information_gathering_agent.agent.information_gathering_agent import InformationGatheringAgent
-from information_gathering_agent.database.mongodb import mongodb
-from information_gathering_agent.services.information_gathering_agent_service import InformationGatheringAgentService
+from agents.information_gathering_agent.agent.information_gathering_agent import InformationGatheringAgent
+from database.mongodb import mongodb, MongoDB
+from agents.information_gathering_agent.services.information_gathering_agent_service import InformationGatheringAgentService
 
 
 # =============================================================================
 # DATABASE DEPENDENCIES
 # =============================================================================
 
-def get_database() -> Database:
-    return mongodb.get_database()
+def get_mongodb() -> MongoDB:
+    return mongodb
 
 
 # =============================================================================
@@ -31,9 +30,9 @@ def get_information_gathering_agent() -> InformationGatheringAgent:
 def get_information_gathering_agent_service(
         information_gathering_agent: Annotated[
             InformationGatheringAgent, Depends(get_information_gathering_agent)],
-        database: Annotated[Database, Depends(get_database)]) -> InformationGatheringAgentService:
+        mongodb_instance: Annotated[MongoDB, Depends(get_mongodb)]) -> InformationGatheringAgentService:
     """Provide a configured OrchestratorService instance."""
-    return InformationGatheringAgentService(information_gathering_agent, database)
+    return InformationGatheringAgentService(information_gathering_agent, mongodb_instance)
 
 
 # =============================================================================

@@ -1,31 +1,38 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
-import os
-import sys
-import uuid
+import base64
 import json
+import os
 import pickle
 import re
-import base64
+import sys
 from datetime import datetime
+from typing import List, Dict, Any, Optional
+
 from bson import ObjectId
-from pymongo import DESCENDING
 from dotenv import load_dotenv
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from pymongo import DESCENDING
 
 load_dotenv()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'chatbot'))
 from chatbot.step_guidance_chatbot import StepGuidanceChatbot
-
-from db import conversations_step_collection, project_collection, conversations_collection  # noqa: F401
+from database.mongodb import mongodb
+from pymongo.database import Database
+from pymongo.collection import Collection
 
 router = APIRouter(prefix="/step-guidance", tags=["step-guidance"])
+database: Database = mongodb.get_database()
+conversations_step_collection: Collection = database.get_collection("StepConversations")
+project_collection: Collection = database.get_collection("Project")
+conversations_collection: Collection = database.get_collection("Conversations")
+
 
 # -------------------- Models --------------------
 
 class StartTaskRequest(BaseModel):
     project: str
+
 
 class ChatMessage(BaseModel):
     message: str
@@ -33,12 +40,14 @@ class ChatMessage(BaseModel):
     step: int
     uploaded_image: Optional[str] = None  # base64 image for step guidance and troubleshooting
 
+
 class ChatResponse(BaseModel):
     response: str
     session_id: str
     current_step: Optional[int] = None
     total_steps: Optional[int] = None
     suggested_messages: Optional[List[str]] = None
+
 
 # class TaskStatus(BaseModel):
 #     session_id: str
@@ -73,6 +82,7 @@ class ChatResponse(BaseModel):
 
 CHAT_TYPE = "step_guidance"
 
+
 # def _normalize_steps_data(steps: Any) -> Optional[Dict[int, Dict[str, Any]]]:
 #     if steps is None:
 #         return None
@@ -95,13 +105,14 @@ def clean_and_parse_json(raw_str: str):
     if raw_str is None:
         raise ValueError("No input string")
     s = raw_str.strip()
-    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)           # strip fences
-    m = re.search(r"\{.*\}\s*$", s, flags=re.S)               # grab last JSON object
+    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)  # strip fences
+    m = re.search(r"\{.*\}\s*$", s, flags=re.S)  # grab last JSON object
     if m: s = m.group(0)
     try:
         return json.loads(s)
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON format: {e}")
+
 
 def _log(session_id: str, role: str, message: str, bot: StepGuidanceChatbot,
          user: str, project: str, msg_type: str = CHAT_TYPE):
@@ -117,6 +128,7 @@ def _log(session_id: str, role: str, message: str, bot: StepGuidanceChatbot,
     }
     conversations_step_collection.insert_one(doc)
 
+
 def get_latest_chatbot(session_id):
     doc = conversations_step_collection.find_one(
         {"session_id": session_id},
@@ -126,10 +138,12 @@ def get_latest_chatbot(session_id):
         return pickle.loads(doc["chatbot_state"])
     else:
         return StepGuidanceChatbot()
-    
+
+
 def get_conversation_history(session_id):
     cursor = conversations_step_collection.find({"session_id": session_id}).sort("timestamp", 1)
     return [{"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]} for doc in cursor]
+
 
 def get_step_guidance_suggested_messages(current_step: int, total_steps: int, step_data: Dict = None) -> List[str]:
     """
@@ -184,6 +198,7 @@ def get_step_guidance_suggested_messages(current_step: int, total_steps: int, st
             "I'm confused"
         ]
 
+
 def _fetch_project_data(project_id: str) -> Dict[str, Any]:
     """Fetch project and its steps/tools from DB; map to chatbot schema."""
     try:
@@ -211,8 +226,8 @@ def _fetch_project_data(project_id: str) -> Dict[str, Any]:
                 "reference_links": doc.get("referenceLinks", []),
                 "completed": bool(doc.get("completed", False)),
             }
-            
-        print ("steps_data: ", steps_data)
+
+        print("steps_data: ", steps_data)
 
         total_steps = len(steps_data)
 
@@ -221,12 +236,11 @@ def _fetch_project_data(project_id: str) -> Dict[str, Any]:
 
         # 3) Map project fields to chatbot expectations
         problem_summary = project.get("summary") or project.get("user_description") or ""
-            
+
         print("total_steps ", total_steps)
         print("steps_data ", steps_data)
         print("tools_data ", tools_data)
         print("problem_summary ", problem_summary)
-        
 
         return {
             "total_steps": total_steps,
@@ -240,27 +254,31 @@ def _fetch_project_data(project_id: str) -> Dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch project data: {str(e)}")
 
+
 # -------------------- Endpoints --------------------
 
 @router.get("/started/{project}")
 def is_started(project):
-    cursor = conversations_step_collection.find_one({"project":project, "chat_type":CHAT_TYPE})
+    cursor = conversations_step_collection.find_one({"project": project, "chat_type": CHAT_TYPE})
     if cursor:
         return True
     return False
 
+
 @router.get("/session/{project}")
 def get_session(project):
-    cursor = conversations_step_collection.find_one({"project":project})
+    cursor = conversations_step_collection.find_one({"project": project})
     if not cursor:
         return {"session": None}
     return {"session": cursor["session_id"]}
 
+
 def get_prev_session(project):
-    cursor = conversations_collection.find_one({"project":project})
+    cursor = conversations_collection.find_one({"project": project})
     if not cursor:
         return {"session": None}
     return {"session": cursor["session_id"]}
+
 
 @router.post("/start", response_model=ChatResponse)
 def start_step_guidance_task(payload: StartTaskRequest):
@@ -269,9 +287,9 @@ def start_step_guidance_task(payload: StartTaskRequest):
 
     # Fetch project data from database
     project_data = _fetch_project_data(payload.project)
-    
+
     # Normalize steps data if it exists
-    steps_data = project_data.get("steps_data",{})
+    steps_data = project_data.get("steps_data", {})
     tools_data = project_data.get("tools_data", {})
     total_steps = project_data.get("total_steps", 1)
 
@@ -281,7 +299,7 @@ def start_step_guidance_task(payload: StartTaskRequest):
         tools_data=tools_data,
         problem_summary=project_data.get("problem_summary", "")
     )
-    
+
     project = project_collection.find_one({"_id": ObjectId(payload.project)})
 
     _log(session_id, "assistant", welcome, bot, project["userId"], payload.project)
@@ -297,17 +315,18 @@ def start_step_guidance_task(payload: StartTaskRequest):
         suggested_messages=suggested_messages
     )
 
+
 @router.post("/chat", response_model=ChatResponse)
 def chat_with_step_guidance(payload: ChatMessage):
     session_id = get_session(payload.project)['session']
     bot = get_latest_chatbot(session_id)
-    
-    print (payload)
-    
+
+    print(payload)
+
     project = project_collection.find_one({"_id": ObjectId(payload.project)})
 
     _log(session_id, "user", payload.message, bot, project["userId"], payload.project)
-    
+
     # Process uploaded image if provided
     uploaded_image = None
     if payload.uploaded_image:
@@ -320,7 +339,7 @@ def chat_with_step_guidance(payload: ChatMessage):
         except Exception as e:
             print(f"Error decoding image in step_guidance: {e}")
             raise HTTPException(status_code=400, detail="Invalid image data provided")
-    
+
     # Call chat method with image support
     reply = bot.chat(payload.message, payload.step, uploaded_image)
     _log(session_id, "assistant", reply, bot, project["userId"], payload.project)
@@ -328,15 +347,15 @@ def chat_with_step_guidance(payload: ChatMessage):
     # Get current step info and generate suggested messages
     current_step = getattr(bot, "current_step", None)
     total_steps = getattr(bot, "total_steps", None)
-    
+
     # Get step data if available
     step_data = None
     if hasattr(bot, "steps_data") and current_step and current_step in bot.steps_data:
         step_data = bot.steps_data[current_step]
-    
+
     suggested_messages = get_step_guidance_suggested_messages(
-        current_step or -1, 
-        total_steps or 1, 
+        current_step or -1,
+        total_steps or 1,
         step_data
     )
 
@@ -347,6 +366,7 @@ def chat_with_step_guidance(payload: ChatMessage):
         total_steps=total_steps,
         suggested_messages=suggested_messages
     )
+
 
 @router.get("/session/{session_id}/history")
 def get_step_guidance_history(session_id: str):
@@ -373,16 +393,19 @@ def get_step_guidance_history(session_id: str):
     history = sorted(history, key=lambda x: x["timestamp"])
     return history
 
+
 @router.post("/session/{session_id}/reset")
 def reset_step_guidance_session(session_id: str, project: str, user: str):
     bot = StepGuidanceChatbot()
     _log(session_id, "assistant", "Session reset.", bot, user, project, msg_type=CHAT_TYPE)
     return {"message": "Step guidance session reset successfully"}
 
+
 @router.delete("/session/{session_id}")
 def delete_step_guidance_session(session_id: str):
     conversations_step_collection.delete_many({"session_id": session_id, "chat_type": CHAT_TYPE})
     return {"message": f"Step guidance session {session_id} deleted successfully"}
+
 
 @router.get("/suggested-messages/{current_step}")
 def get_step_suggested_messages(current_step: int, total_steps: int = 5):
@@ -399,6 +422,7 @@ def get_step_suggested_messages(current_step: int, total_steps: int = 5):
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid step parameters: {str(e)}")
+
 
 @router.get("/suggested-messages/preview")
 def preview_step_suggested_messages():
@@ -418,6 +442,7 @@ def preview_step_suggested_messages():
         return preview
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate preview: {str(e)}")
+
 
 @router.get("/health")
 def health_check():

@@ -49,5 +49,3 @@ class MongoDB:
 
 
 mongodb = MongoDB()
-# Auto-initialize on import
-mongodb.initialize()

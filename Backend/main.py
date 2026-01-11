@@ -8,6 +8,7 @@ from starlette.staticfiles import StaticFiles
 
 from config.logger import setup_logging
 from config.settings import get_settings
+from database.mongodb import mongodb
 
 settings = get_settings()
 
@@ -28,6 +29,7 @@ from routes import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
+    mongodb.initialize()
 
     yield
 

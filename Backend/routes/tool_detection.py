@@ -1,12 +1,15 @@
+import base64
+import json
+import os
+import re
+from typing import List, Dict, Any
+
+from dotenv import load_dotenv
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
-from typing import List, Dict, Any
 from openai import OpenAI
-from dotenv import load_dotenv
-import os, base64, json, re
 
 load_dotenv()
-
 
 router = APIRouter(tags=["chatbot"])
 
@@ -88,7 +91,7 @@ async def detect_tools(file: UploadFile = File(...)):
                     "role": "user",
                     "content": [
                         {"type": "text", "text": "Identify any physical tools visible in this image."},
-                        {"type": "image_url", "image_url": {"url": f"data:{file.content_type};base64,{b64}" }},
+                        {"type": "image_url", "image_url": {"url": f"data:{file.content_type};base64,{b64}"}},
                     ],
                 },
             ],
@@ -100,4 +103,4 @@ async def detect_tools(file: UploadFile = File(...)):
         tools = _parse_tools(raw)
         return JSONResponse(content={"tools": tools})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Detection error: {e}" )
+        raise HTTPException(status_code=500, detail=f"Detection error: {e}")
