@@ -1,17 +1,24 @@
-
-from fastapi import HTTPException
-from typing import List, Dict, Any, Optional
 import os
 import uuid
-from db import project_collection, tools_collection
 from datetime import datetime
-from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, VectorParams, Distance
-from bson import ObjectId
-from openai import OpenAI
-from qdrant_client.http.exceptions import UnexpectedResponse
+from typing import List, Dict, Any, Optional
 
-client=OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+from bson import ObjectId
+from fastapi import HTTPException
+from openai import OpenAI
+from pymongo.collection import Collection
+from pymongo.database import Database
+from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.models import PointStruct, VectorParams, Distance
+
+from database.mongodb import mongodb
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+database: Database = mongodb.get_database()
+project_collection: Collection = database.get_collection("Project")
+tools_collection: Collection = database.get_collection("Tools")
+
 
 def store_tool_in_database(tool_data: Dict[str, Any]) -> str:
     """
@@ -32,9 +39,10 @@ def store_tool_in_database(tool_data: Dict[str, Any]) -> str:
         "usage_count": 1,
         "last_used": datetime.utcnow()
     }
-    
+
     result = tools_collection.insert_one(tool_doc)
     return str(result.inserted_id)
+
 
 def create_and_store_tool_embeddings(tool_data: Dict[str, Any], tool_id: str):
     """
@@ -42,13 +50,14 @@ def create_and_store_tool_embeddings(tool_data: Dict[str, Any], tool_id: str):
     """
     # Create text representation for embedding
     tool_text = f"{tool_data['name']} {tool_data['description']} {tool_data.get('category', '')} {' '.join(tool_data.get('tags', []))}"
-    
+
     # Generate embedding
-    embedding = create_embeddings_for_texts([tool_text], model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
-    
+    embedding = create_embeddings_for_texts([tool_text],
+                                            model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
+
     if not embedding:
         return {"status": "embedding_failed"}
-    
+
     # Store in Qdrant tools collection
     qresult = upsert_embeddings_to_qdrant(
         mongo_hex_id=tool_id,
@@ -64,14 +73,14 @@ def create_and_store_tool_embeddings(tool_data: Dict[str, Any], tool_id: str):
     )
     return qresult
 
+
 def upsert_embeddings_to_qdrant(
         mongo_hex_id: str,
         embeddings: List[List[float]],
         texts: List[str],
         extra_payload: Optional[dict] = None,
         collection_name: Optional[str] = None
-    ) -> dict:
-
+) -> dict:
     qdrant_url = os.getenv("QDRANT_URL")
     qdrant_api_key = os.getenv("QDRANT_API_KEY")
     collection_name = collection_name or "projects"
@@ -86,12 +95,11 @@ def upsert_embeddings_to_qdrant(
 
     vector_size = len(embeddings[0])
 
-    
     try:
         qclient.get_collection(collection_name=collection_name)
     except UnexpectedResponse as ex:
         if ex.status_code == 404:
-            
+
             qclient.create_collection(
                 collection_name=collection_name,
                 vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
@@ -99,7 +107,6 @@ def upsert_embeddings_to_qdrant(
         else:
             raise
 
-    
     points = []
     for idx, (vec, txt) in enumerate(zip(embeddings, texts)):
         unique_str = f"{mongo_hex_id}-{idx}"
@@ -119,24 +126,26 @@ def upsert_embeddings_to_qdrant(
     qclient.upsert(collection_name=collection_name, points=points)
     return {"status": "ok", "num_points": len(points), "collection": collection_name}
 
+
 def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
     """
     Find similar tools in Qdrant based on semantic similarity.
     """
     qdrant_url = os.getenv("QDRANT_URL")
     qdrant_api_key = os.getenv("QDRANT_API_KEY")
-    
+
     if not qdrant_url or not qdrant_api_key:
         raise RuntimeError("QDRANT_URL and QDRANT_API_KEY must be set in env")
-    
+
     qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
-    
+
     # Generate embedding for the query
-    query_embedding = create_embeddings_for_texts([query], model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
-    
+    query_embedding = create_embeddings_for_texts([query],
+                                                  model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
+
     if not query_embedding:
         return []
-    
+
     try:
         # Search in tools collection
         search_result = qclient.search(
@@ -145,7 +154,7 @@ def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float =
             limit=limit,
             score_threshold=similarity_threshold
         )
-        
+
         similar_tools = []
         for result in search_result:
             if result.score >= similarity_threshold:
@@ -168,13 +177,14 @@ def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float =
                             "usage_count": tool_doc.get("usage_count", 0)
                         }
                         similar_tools.append(tool_info)
-        
+
         return similar_tools
-        
+
     except Exception as e:
         print(f"Error searching tools in Qdrant: {e}")
         return []
-    
+
+
 def update_tool_usage(tool_id: str):
     """
     Update the usage count and last used timestamp for a tool.
@@ -187,6 +197,7 @@ def update_tool_usage(tool_id: str):
         }
     )
 
+
 def create_embeddings_for_texts(texts, model: str = "text-embedding-3-small"):
     """
     Creates embeddings via OpenAI for a list of strings (batched).
@@ -194,10 +205,11 @@ def create_embeddings_for_texts(texts, model: str = "text-embedding-3-small"):
     """
     if not texts:
         return []
-    
+
     resp = client.embeddings.create(model=model, input=texts)
-    
+
     return [item.embedding for item in resp.data]
+
 
 def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "projects"):
     """
@@ -218,12 +230,10 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
- 
     summary = project.get("summary")
     if not summary or not str(summary).strip():
         raise HTTPException(status_code=400, detail="Project has no summary or user_description to embed")
 
-    
     model_name = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     try:
         embeddings = create_embeddings_for_texts([summary], model=model_name)
@@ -268,7 +278,7 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
     best_score = -1.0
 
     print(f"🔍 Found {len(hits)} hits in Qdrant for project {project_id}")
-   
+
     for hit in hits:
         payload = hit.payload or {}
         mongo_id_str = payload.get("mongo_id")
@@ -286,7 +296,7 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
             s = -1.0
 
         print(f"🔍 Hit: mongo_id={mongo_id_str} score={s} text_preview={text_preview}")
-        
+
         matched_obj = None
         matched_project_id = None
         if mongo_id_str:
@@ -297,7 +307,6 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
             except Exception:
                 matched_obj = None
 
-        
         if s > best_score:
             best_score = s
             best_hit = {"hit": hit, "payload": payload, "score": s, "mongo_id": mongo_id_str}
@@ -326,7 +335,6 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
     if not best_hit:
         return None
 
-   
     matched_mongo_id = best_hit.get("mongo_id")
     matched_doc = None
     if matched_mongo_id:

@@ -6,17 +6,18 @@ from dotenv import load_dotenv
 from langsmith import uuid7
 from loguru import logger
 from pymongo.collection import Collection
-from pymongo.database import Database
 
-from information_gathering_agent.agent.information_gathering_agent import InformationGatheringAgent
+from agents.information_gathering_agent.agent.information_gathering_agent import InformationGatheringAgent
+from database.mongodb import MongoDB
 
 load_dotenv()
 
 
 class InformationGatheringAgentService:
-    def __init__(self, information_gathering_agent: InformationGatheringAgent, database: Database):
+    def __init__(self, information_gathering_agent: InformationGatheringAgent, mongodb: MongoDB):
         self.information_gathering_agent = information_gathering_agent
-        self.project_collection: Collection = database.get_collection("Project")
+        self.mongodb = mongodb
+        self.project_collection: Collection = mongodb.get_collection("Project")
 
     def initialize_conversation(self, project_id: str) -> tuple[UUID, str]:
         """

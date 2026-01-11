@@ -10,10 +10,10 @@ from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.mongodb import MongoDBSaver
 from loguru import logger
 
-from config.settings import get_settings
-from information_gathering_agent.agent.prompt_templates.v4.information_gathering_agent import \
+from agents.information_gathering_agent.agent.prompt_templates.v4.information_gathering_agent import \
     INFORMATION_GATHERING_AGENT_SYSTEM_PROMPT
-from information_gathering_agent.agent.tools import store_home_issue, store_summary
+from agents.information_gathering_agent.agent.tools import store_home_issue, store_summary
+from config.settings import get_settings
 
 
 class InformationGatheringAgent:
