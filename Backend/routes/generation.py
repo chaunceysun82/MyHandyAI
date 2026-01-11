@@ -1,5 +1,4 @@
-from content_generation.planner import ToolsAgent, StepsAgentJSON, EstimationAgent
-from chatbot.agents import load_prompt, clean_and_parse_json, AgenticChatbot
+# from content_generation.planner import ToolsAgent, StepsAgentJSON, EstimationAgent
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from bson import ObjectId
@@ -11,7 +10,7 @@ import base64
 import uuid
 import boto3
 from pymongo import DESCENDING
-from db import project_collection, steps_collection
+from db import project_collection
 from datetime import datetime
 
 # Import tools reuse functions from chatbot
@@ -86,122 +85,122 @@ async def get_generated_steps(project_id: str):
 #         step["projectId"] = str(step["projectId"])
 #     return {"project_id": project_id, "steps_data": steps}
 
-@router.get("/estimation/{project_id}")
-async def get_generated_estimation(project_id: str):
-    doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"estimation_generation": 1})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Project not found")
-    if "estimation_generation" not in doc or doc["estimation_generation"] is None:
-        raise HTTPException(status_code=404, detail="Estimation not generated yet")
-    return {"project_id": project_id, "estimation_data": doc["estimation_generation"]}
+# @router.get("/estimation/{project_id}")
+# async def get_generated_estimation(project_id: str):
+#     doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"estimation_generation": 1})
+#     if not doc:
+#         raise HTTPException(status_code=404, detail="Project not found")
+#     if "estimation_generation" not in doc or doc["estimation_generation"] is None:
+#         raise HTTPException(status_code=404, detail="Estimation not generated yet")
+#     return {"project_id": project_id, "estimation_data": doc["estimation_generation"]}
 
-@router.post("/tools/{project}")
-async def generate_tools(project:str):
-    """
-    Generate tools and materials for a DIY project.
-    This endpoint runs independently to avoid timeout issues.
-    Now integrates with tools reuse system for better image management.
-    """
-    try:
-        # Validate project exists
-        cursor = project_collection.find_one({"_id": ObjectId(project)})
-        if not cursor:
-            raise HTTPException(status_code=404, detail="Project not found")
+# @router.post("/tools/{project}")
+# async def generate_tools(project:str):
+#     """
+#     Generate tools and materials for a DIY project.
+#     This endpoint runs independently to avoid timeout issues.
+#     Now integrates with tools reuse system for better image management.
+#     """
+#     try:
+#         # Validate project exists
+#         cursor = project_collection.find_one({"_id": ObjectId(project)})
+#         if not cursor:
+#             raise HTTPException(status_code=404, detail="Project not found")
         
         
-        # Generate tools using the independent agent
-        tools_agent = ToolsAgent()
-        tools_result = tools_agent.recommend_tools(
-            summary=cursor["summary"],
-            include_json=True
-        )
-        if tools_result is None:
-            raise HTTPException(status_code=400, detail="Missing required fields (summary, answers, questions) on project")
+#         # Generate tools using the independent agent
+#         tools_agent = ToolsAgent()
+#         tools_result = tools_agent.recommend_tools(
+#             summary=cursor["summary"],
+#             include_json=True
+#         )
+#         if tools_result is None:
+#             raise HTTPException(status_code=400, detail="Missing required fields (summary, answers, questions) on project")
 
-        # FLOW 2: Compare and enhance tools with existing ones
-        if "tools" in tools_result and tools_result["tools"]:
-            print(f"🔄 FLOW 2: Comparing {len(tools_result['tools'])} generated tools with existing tools")
+#         # FLOW 2: Compare and enhance tools with existing ones
+#         if "tools" in tools_result and tools_result["tools"]:
+#             print(f"🔄 FLOW 2: Comparing {len(tools_result['tools'])} generated tools with existing tools")
             
-            try:
-                # Use the direct function call instead of HTTP request
-                enhanced_tools = []
-                reuse_stats = {"reused": 0, "new": 0, "errors": 0}
+#             try:
+#                 # Use the direct function call instead of HTTP request
+#                 enhanced_tools = []
+#                 reuse_stats = {"reused": 0, "new": 0, "errors": 0}
                 
-                for tool in tools_result["tools"]:
-                    try:
-                        # Search for similar existing tools
-                        similar_tools = find_similar_tools(
-                            query=tool.get("name", ""),
-                            limit=3,
-                            similarity_threshold=0.75
-                        )
+#                 for tool in tools_result["tools"]:
+#                     try:
+#                         # Search for similar existing tools
+#                         similar_tools = find_similar_tools(
+#                             query=tool.get("name", ""),
+#                             limit=3,
+#                             similarity_threshold=0.75
+#                         )
                         
-                        if similar_tools and similar_tools[0]["similarity_score"] >= 0.8:
-                            # High similarity - reuse image and amazon link
-                            best_match = similar_tools[0]
-                            tool["image_link"] = best_match["image_link"]
-                            tool["amazon_link"] = best_match["amazon_link"]
-                            tool["reused_from"] = best_match["tool_id"]
-                            tool["similarity_score"] = best_match["similarity_score"]
+#                         if similar_tools and similar_tools[0]["similarity_score"] >= 0.8:
+#                             # High similarity - reuse image and amazon link
+#                             best_match = similar_tools[0]
+#                             tool["image_link"] = best_match["image_link"]
+#                             tool["amazon_link"] = best_match["amazon_link"]
+#                             tool["reused_from"] = best_match["tool_id"]
+#                             tool["similarity_score"] = best_match["similarity_score"]
                             
-                            # Update usage count
-                            update_tool_usage(best_match["tool_id"])
+#                             # Update usage count
+#                             update_tool_usage(best_match["tool_id"])
                             
-                            reuse_stats["reused"] += 1
-                            print(f"   ✅ Reused image/links for: {tool['name']}")
+#                             reuse_stats["reused"] += 1
+#                             print(f"   ✅ Reused image/links for: {tool['name']}")
                             
-                        else:
-                            # No good match - keep as new tool
-                            reuse_stats["new"] += 1
-                            print(f"   🆕 New tool: {tool['name']}")
+#                         else:
+#                             # No good match - keep as new tool
+#                             reuse_stats["new"] += 1
+#                             print(f"   🆕 New tool: {tool['name']}")
                         
-                        enhanced_tools.append(tool)
+#                         enhanced_tools.append(tool)
                         
-                    except Exception as e:
-                        print(f"❌ Error processing tool {tool.get('name', 'unknown')}: {e}")
-                        enhanced_tools.append(tool)
-                        reuse_stats["errors"] += 1
+#                     except Exception as e:
+#                         print(f"❌ Error processing tool {tool.get('name', 'unknown')}: {e}")
+#                         enhanced_tools.append(tool)
+#                         reuse_stats["errors"] += 1
                 
-                # Update tools_result with enhanced tools
-                tools_result["tools"] = enhanced_tools
-                tools_result["reuse_metadata"] = reuse_stats
+#                 # Update tools_result with enhanced tools
+#                 tools_result["tools"] = enhanced_tools
+#                 tools_result["reuse_metadata"] = reuse_stats
                 
-                print(f"✅ FLOW 2 completed: {reuse_stats['reused']} reused, {reuse_stats['new']} new")
+#                 print(f"✅ FLOW 2 completed: {reuse_stats['reused']} reused, {reuse_stats['new']} new")
                 
-            except Exception as e:
-                print(f"⚠️ FLOW 2 comparison error: {e}")
-                tools_result["reuse_metadata"] = {"error": str(e)}
+#             except Exception as e:
+#                 print(f"⚠️ FLOW 2 comparison error: {e}")
+#                 tools_result["reuse_metadata"] = {"error": str(e)}
 
-        update_project(str(cursor["_id"]), {"tool_generation":tools_result})
+#         update_project(str(cursor["_id"]), {"tool_generation":tools_result})
         
-        # FLOW 1: Extract and save tools to tools_collection after generation
-        try:
-            print(f"🔄 FLOW 1: Extracting generated tools to tools_collection")
+#         # FLOW 1: Extract and save tools to tools_collection after generation
+#         try:
+#             print(f"🔄 FLOW 1: Extracting generated tools to tools_collection")
             
-            # Import the extraction function
-            from routes.chatbot import extract_and_save_tools_from_project
+#             # Import the extraction function
+#             from routes.chatbot import extract_and_save_tools_from_project
             
-            # Extract tools from the project we just updated
-            extraction_result = await extract_and_save_tools_from_project(project)
+#             # Extract tools from the project we just updated
+#             extraction_result = await extract_and_save_tools_from_project(project)
             
-            # Add Flow 1 results to response
-            tools_result["flow1_extraction"] = extraction_result
+#             # Add Flow 1 results to response
+#             tools_result["flow1_extraction"] = extraction_result
             
-            print(f"✅ FLOW 1: Completed - tools extracted to collection")
+#             print(f"✅ FLOW 1: Completed - tools extracted to collection")
             
-        except Exception as e:
-            print(f"⚠️ FLOW 1: Failed to extract tools: {e}")
-            tools_result["flow1_extraction"] = {"error": str(e)}
+#         except Exception as e:
+#             print(f"⚠️ FLOW 1: Failed to extract tools: {e}")
+#             tools_result["flow1_extraction"] = {"error": str(e)}
         
-        return {
-            "success": True,
-            "project_id": project,
-            "tools_data": tools_result,
-            "generated_at": datetime.utcnow().isoformat()
-        }
+#         return {
+#             "success": True,
+#             "project_id": project,
+#             "tools_data": tools_result,
+#             "generated_at": datetime.utcnow().isoformat()
+#         }
         
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate tools: {str(e)}")
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Failed to generate tools: {str(e)}")
     
 @router.post("/all/{project}")
 async def generate(project):
@@ -265,122 +264,121 @@ async def status(project):
                 "tools":tools,
                 "steps": steps,
                 "estimation":estimation}
-        
     return {"message":"Something went wrong"}
 
-@router.post("/steps/{project}")
-async def generate_steps(project):
-    """
-    Generate step-by-step plan for a DIY project.
-    This endpoint runs independently to avoid timeout issues.
-    """
-    try:
-        # Validate project exists
-        cursor = project_collection.find_one({"_id": ObjectId(project)})
-        if not cursor:
-            raise HTTPException(status_code=404, detail="Project not found")
+# @router.post("/steps/{project}")
+# async def generate_steps(project):
+#     """
+#     Generate step-by-step plan for a DIY project.
+#     This endpoint runs independently to avoid timeout issues.
+#     """
+#     try:
+#         # Validate project exists
+#         cursor = project_collection.find_one({"_id": ObjectId(project)})
+#         if not cursor:
+#             raise HTTPException(status_code=404, detail="Project not found")
         
-        # Generate steps using the independent agent
-        steps_agent = StepsAgentJSON()
-        steps_result = steps_agent.generate(
-            tools= cursor["tool_generation"],
-            summary=cursor["summary"],
-            user_answers=cursor.get("user_answers") or cursor.get("answers"),
-            questions=cursor["questions"]
-        )
+#         # Generate steps using the independent agent
+#         steps_agent = StepsAgentJSON()
+#         steps_result = steps_agent.generate(
+#             tools= cursor["tool_generation"],
+#             summary=cursor["summary"],
+#             user_answers=cursor.get("user_answers") or cursor.get("answers"),
+#             questions=cursor["questions"]
+#         )
 
-        print("Steps Generated")
+#         print("Steps Generated")
 
-        step_meta = {k: v for k, v in steps_result.items() if k != "steps"}
-        step_meta["status"] = "complete"
-        update_project(str(cursor["_id"]), {"step_generation": step_meta})
-        # update_project(str(cursor["_id"]), {"step_generation":steps_result})
+#         step_meta = {k: v for k, v in steps_result.items() if k != "steps"}
+#         step_meta["status"] = "complete"
+#         update_project(str(cursor["_id"]), {"step_generation": step_meta})
+#         # update_project(str(cursor["_id"]), {"step_generation":steps_result})
         
-        for step in steps_result["steps"]:
-            step_doc = {
-                "projectId": ObjectId(project),
+#         for step in steps_result["steps"]:
+#             step_doc = {
+#                 "projectId": ObjectId(project),
 
-                "stepNumber": step["order"],
+#                 "stepNumber": step["order"],
 
-                "order": step["order"],
-                "title": step["title"],
-                "est_time_min": step.get("est_time_min", 0),
-                "time_text": step.get("time_text", ""),
-                "instructions": step.get("instructions", []),
+#                 "order": step["order"],
+#                 "title": step["title"],
+#                 "est_time_min": step.get("est_time_min", 0),
+#                 "time_text": step.get("time_text", ""),
+#                 "instructions": step.get("instructions", []),
 
-                "status": (step.get("status") or "pending").lower(),
-                "progress": 0, 
-                "tools_needed": step.get("tools_needed", []),
-                "safety_warnings": step.get("safety_warnings", []),
-                "tips": step.get("tips", []),
+#                 "status": (step.get("status") or "pending").lower(),
+#                 "progress": 0, 
+#                 "tools_needed": step.get("tools_needed", []),
+#                 "safety_warnings": step.get("safety_warnings", []),
+#                 "tips": step.get("tips", []),
 
-                "completed": False,
-                "createdAt": datetime.utcnow(),
-                "updatedAt": datetime.utcnow(),
-            }
-            steps_collection.insert_one(step_doc)
+#                 "completed": False,
+#                 "createdAt": datetime.utcnow(),
+#                 "updatedAt": datetime.utcnow(),
+#             }
+#             steps_collection.insert_one(step_doc)
 
-        return {
-            "success": True,
-            "project_id": project,
-            "steps_data": steps_result,
-            "generated_at": datetime.utcnow().isoformat()
-        }
+#         return {
+#             "success": True,
+#             "project_id": project,
+#             "steps_data": steps_result,
+#             "generated_at": datetime.utcnow().isoformat()
+#         }
         
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate steps: {str(e)}")
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Failed to generate steps: {str(e)}")
 
-@router.post("/estimation/{project}")
-async def generate_estimation(project):
-    """
-    Generate cost and time estimations for a DIY project.
-    This endpoint runs independently to avoid timeout issues.
-    """
-    try:
-        # Validate project exists
-        cursor = project_collection.find_one({"_id": ObjectId(project)})
-        if not cursor:
-            raise HTTPException(status_code=404, detail="Project not found")
+# @router.post("/estimation/{project}")
+# async def generate_estimation(project):
+#     """
+#     Generate cost and time estimations for a DIY project.
+#     This endpoint runs independently to avoid timeout issues.
+#     """
+#     try:
+#         # Validate project exists
+#         cursor = project_collection.find_one({"_id": ObjectId(project)})
+#         if not cursor:
+#             raise HTTPException(status_code=404, detail="Project not found")
         
-        # Generate estimation using the independent agent
-        estimation_agent = EstimationAgent()
+#         # Generate estimation using the independent agent
+#         estimation_agent = EstimationAgent()
 
-        meta = cursor.get("step_generation") or {}
+#         meta = cursor.get("step_generation") or {}
 
-        cur = steps_collection.find({"projectId": ObjectId(project)}).sort("order", 1)
-        steps_for_est = [{
-            "order": s.get("order"),
-            "title": s.get("title", ""),
-            "estimated_time_min": s.get("est_time_min", 0),
-            "time_text": s.get("time_text", "")
-        } for s in cur]
+#         cur = steps_collection.find({"projectId": ObjectId(project)}).sort("order", 1)
+#         steps_for_est = [{
+#             "order": s.get("order"),
+#             "title": s.get("title", ""),
+#             "estimated_time_min": s.get("est_time_min", 0),
+#             "time_text": s.get("time_text", "")
+#         } for s in cur]
 
-        steps_data_for_est = {
-            "steps": steps_for_est,
-            "total_est_time_min": meta.get("total_est_time_min", 0),
-            "total_steps": meta.get("total_steps", len(steps_for_est)),
-        }
+#         steps_data_for_est = {
+#             "steps": steps_for_est,
+#             "total_est_time_min": meta.get("total_est_time_min", 0),
+#             "total_steps": meta.get("total_steps", len(steps_for_est)),
+#         }
 
-        estimation_result = estimation_agent.generate_estimation(
-            tools_data=cursor["tool_generation"],
-            steps_data=steps_data_for_est
-        )
-        # estimation_result = estimation_agent.generate_estimation(
-        #     tools_data=cursor["tool_generation"],
-        #     steps_data=cursor["step_generation"]
-        # )
+#         estimation_result = estimation_agent.generate_estimation(
+#             tools_data=cursor["tool_generation"],
+#             steps_data=steps_data_for_est
+#         )
+#         # estimation_result = estimation_agent.generate_estimation(
+#         #     tools_data=cursor["tool_generation"],
+#         #     steps_data=cursor["step_generation"]
+#         # )
 
-        update_project(str(cursor["_id"]), {"estimation_generation": estimation_result})
+#         update_project(str(cursor["_id"]), {"estimation_generation": estimation_result})
         
-        return {
-            "success": True,
-            "project_id": project,
-            "estimation_data": estimation_result,
-            "generated_at": datetime.utcnow().isoformat()
-        }
+#         return {
+#             "success": True,
+#             "project_id": project,
+#             "estimation_data": estimation_result,
+#             "generated_at": datetime.utcnow().isoformat()
+#         }
         
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate estimation: {str(e)}")
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Failed to generate estimation: {str(e)}")
 
 # Legacy endpoints for backward compatibility (can be removed later)
 # @router.post("/tools/legacy")

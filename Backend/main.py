@@ -17,7 +17,7 @@ from routes import (
     project,
     steps,
     #chatbot,
-    #generation,
+    generation,
     feedback,
     step_guidance,
     tool_detection,
@@ -57,7 +57,7 @@ app.include_router(user.router)
 app.include_router(project.router)
 app.include_router(steps.router)
 #app.include_router(chatbot.router)
-#app.include_router(generation.router)
+app.include_router(generation.router)
 app.include_router(feedback.router)
 app.include_router(step_guidance.router)
 app.include_router(tool_detection.router, prefix="/chatbot/tools")
