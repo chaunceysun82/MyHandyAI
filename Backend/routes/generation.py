@@ -16,7 +16,6 @@ from datetime import datetime
 # Import tools reuse functions from chatbot
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from routes.chatbot import find_similar_tools, update_tool_usage
 
 router = APIRouter(prefix="/generation", tags=["generation"])
 
