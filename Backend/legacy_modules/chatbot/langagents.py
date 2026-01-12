@@ -1,14 +1,16 @@
 import os
+
 from dotenv import load_dotenv
-from langchain.prompts import PromptTemplate
-from langchain.llms import OpenAI
 from langchain.chains import LLMChain
+from langchain.llms import OpenAI
+from langchain.prompts import PromptTemplate
 
 load_dotenv()
 
+
 def load_prompt(filename):
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(script_dir, "prompts", filename)
+    path = os.path.join(script_dir, "../prompts", filename)
     try:
         with open(path, "r", encoding="utf-8") as f:
             lines = f.readlines()
@@ -16,6 +18,7 @@ def load_prompt(filename):
     except Exception as e:
         print(f"❌ Could not load {filename}: {e}")
         return ""
+
 
 # ---- PROMPT TEMPLATES ----
 qa_prompt_text = load_prompt("qa_prompt.txt")
@@ -27,8 +30,10 @@ description_assessment_prompt_text = load_prompt("description_assessment_prompt.
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+
 def LLM(model):  # shortcut
     return OpenAI(model=model, api_key=OPENAI_API_KEY)
+
 
 # ---- LLM CHAINS ----
 greetings_prompt = PromptTemplate(
@@ -55,6 +60,7 @@ skip_image_prompt = PromptTemplate(
 )
 skip_image_chain = LLMChain(prompt=skip_image_prompt, llm=LLM("gpt-4.1-nano"))
 
+
 # Custom function/tool for image analysis (example: wraps your vision API logic)
 def analyze_image_tool(image_data: bytes, problem_type: str):
     # -- implement your base64 + vision API logic here --
@@ -63,6 +69,7 @@ def analyze_image_tool(image_data: bytes, problem_type: str):
         "questions": ["What are you trying to fix here?"],
         "first_question": "What are you trying to fix here?"
     }
+
 
 # Analyze problem description (no image)
 image_analysis_no_image_prompt = PromptTemplate(
@@ -83,7 +90,8 @@ image_analysis_no_image_chain = LLMChain(prompt=image_analysis_no_image_prompt, 
 
 question_clarification_prompt = PromptTemplate(
     input_variables=["question", "user_response"],
-    template=(question_clarification_prompt_text or "Given the question and the user's response, decide if we should accept, ask follow-up, or rephrase.")
+    template=(
+                         question_clarification_prompt_text or "Given the question and the user's response, decide if we should accept, ask follow-up, or rephrase.")
              + "\nQuestion: {question}\nUser response: {user_response}"
 )
 question_clarification_chain = LLMChain(prompt=question_clarification_prompt, llm=LLM("gpt-4.1-mini"))
@@ -113,13 +121,16 @@ affirmative_negative_prompt = PromptTemplate(
 )
 affirmative_negative_chain = LLMChain(prompt=affirmative_negative_prompt, llm=LLM("gpt-4.1-nano"))
 
+
 # ---- SIMPLE STATE MACHINE ----
 class ChatState(dict):
     """Mutable dict for state."""
     pass
 
+
 def _coerce_bool(text: str) -> bool:
     return (text or "").strip().lower() == "true"
+
 
 def node_greetings(state: ChatState):
     try:
@@ -128,6 +139,7 @@ def node_greetings(state: ChatState):
         state["response_message"] = "Hi! I’m MyHandyAI. Tell me what you’d like to fix or build."
     state["current_state"] = "greetings"
     return "waiting_for_problem", state
+
 
 def node_waiting_for_problem(state: ChatState):
     user_message = state.get("user_message", "")
@@ -152,6 +164,7 @@ def node_waiting_for_problem(state: ChatState):
     state["current_state"] = "waiting_for_problem"
     return "waiting_for_photos", state
 
+
 def node_waiting_for_photos(state: ChatState):
     user_message = state.get("user_message", "")
     try:
@@ -171,7 +184,8 @@ def node_waiting_for_photos(state: ChatState):
             _ = ""
 
         state["image_analysis"] = "Image analysis (no image): based on your description."
-        state["questions"] = ["What exactly is broken or not working?", "When did this start?", "What tools do you have available?"]
+        state["questions"] = ["What exactly is broken or not working?", "When did this start?",
+                              "What tools do you have available?"]
         state["response_message"] = "Let’s clarify a few things: " + state["questions"][0]
         state["current_question_index"] = 0
         state["current_state"] = "waiting_for_photos"
@@ -181,7 +195,8 @@ def node_waiting_for_photos(state: ChatState):
         try:
             image_result = analyze_image_tool(state["uploaded_image"], state.get("problem_type", "general"))
         except Exception:
-            image_result = {"analysis": "Couldn’t process the image.", "questions": ["What are you trying to fix?"], "first_question": "What are you trying to fix?"}
+            image_result = {"analysis": "Couldn’t process the image.", "questions": ["What are you trying to fix?"],
+                            "first_question": "What are you trying to fix?"}
 
         state["image_analysis"] = image_result.get("analysis") or "No analysis."
         state["questions"] = image_result.get("questions") or ["What are you trying to fix?"]
@@ -190,16 +205,18 @@ def node_waiting_for_photos(state: ChatState):
         state["current_state"] = "waiting_for_photos"
         return "asking_questions", state
 
-    state["response_message"] = "Please upload the requested photo so I can analyze it, or type 'skip' if you prefer not to share photos."
+    state[
+        "response_message"] = "Please upload the requested photo so I can analyze it, or type 'skip' if you prefer not to share photos."
     state["current_state"] = "waiting_for_photos"
     return "waiting_for_photos", state
+
 
 def node_asking_questions(state: ChatState):
     idx = state.get("current_question_index", 0)
     questions = state.get("questions", [])
 
     if idx >= len(questions):
-        answers_text = "\n".join(f"Q{i+1}: {state.get('answer_'+str(i), '')}" for i in range(len(questions)))
+        answers_text = "\n".join(f"Q{i + 1}: {state.get('answer_' + str(i), '')}" for i in range(len(questions)))
         try:
             summary = summary_chain.run({
                 "problem_type": state.get("problem_type", "general"),
@@ -210,7 +227,8 @@ def node_asking_questions(state: ChatState):
             summary = "Summary unavailable. We collected your details and will proceed."
 
         state["summary"] = summary
-        state["response_message"] = f"Perfect! Here’s what I’ve got so far:\n\n**{summary}**\n\nDoes that look right? Reply 'yes' or 'no'."
+        state[
+            "response_message"] = f"Perfect! Here’s what I’ve got so far:\n\n**{summary}**\n\nDoes that look right? Reply 'yes' or 'no'."
         state["current_state"] = "asking_questions"
         return "showing_summary", state
 
@@ -235,6 +253,7 @@ def node_asking_questions(state: ChatState):
     state["current_state"] = "asking_questions"
     return "asking_questions", state
 
+
 def node_showing_summary(state: ChatState):
     user_message = state.get("user_message", "")
     try:
@@ -255,6 +274,7 @@ def node_showing_summary(state: ChatState):
     state["current_state"] = "showing_summary"
     return "showing_summary", state
 
+
 # ---- DISPATCHER ----
 _NODE_MAP = {
     "greetings": node_greetings,
@@ -264,6 +284,7 @@ _NODE_MAP = {
     "showing_summary": node_showing_summary,
     "done": lambda s: ("done", s),
 }
+
 
 def run_chat_step(current_state, chat_state: dict):
     """

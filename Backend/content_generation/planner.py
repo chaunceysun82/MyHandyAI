@@ -4,15 +4,14 @@ import json
 import requests
 import time
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 from fastapi import HTTPException
-from serpapi.google_search import GoogleSearch
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Import utility functions from agents.py
-from chatbot.agents import load_prompt, clean_and_parse_json, minutes_to_human, extract_number_from_maybe_price
+# Import utility functions from utils.py
+from content_generation.utils import load_prompt, minutes_to_human
 
 tools_prompt_text = load_prompt("generation_tools_prompt.txt")
 steps_prompt_text = load_prompt("generation_steps_prompt.txt")

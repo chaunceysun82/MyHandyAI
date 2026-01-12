@@ -12,10 +12,9 @@ from pymongo.database import Database
 
 from content_generation.planner import ToolsAgent, StepsAgentJSON, EstimationAgent
 from database.mongodb import mongodb
-from project import update_project
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from routes.chatbot import find_similar_tools, update_tool_usage
+from routes.utils import find_similar_tools, update_tool_usage, extract_and_save_tools_from_project, update_project
 
 router = APIRouter(prefix="/generation", tags=["generation"])
 database: Database = mongodb.get_database()
@@ -182,9 +181,6 @@ async def generate_tools(project: str):
         # FLOW 1: Extract and save tools to tools_collection after generation
         try:
             print(f"🔄 FLOW 1: Extracting generated tools to tools_collection")
-
-            # Import the extraction function
-            from routes.chatbot import extract_and_save_tools_from_project
 
             # Extract tools from the project we just updated
             extraction_result = await extract_and_save_tools_from_project(project)

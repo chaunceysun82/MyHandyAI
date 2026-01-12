@@ -13,7 +13,7 @@ from pymongo import DESCENDING
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'chatbot'))
 
 # <-- IMPORTANT: this is your new orchestration -->
-from chatbot.langagents import run_chat_step  # make sure this exists
+from legacy_modules.chatbot.langagents import run_chat_step  # make sure this exists
 from database.mongodb import mongodb
 from pymongo.database import Database
 from pymongo.collection import Collection

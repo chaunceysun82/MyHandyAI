@@ -19,13 +19,13 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import PointStruct, VectorParams, Distance
 
 from database.mongodb import mongodb
-from .project import update_project
+from routes.utils import update_project
 
 load_dotenv()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'chatbot'))
 
-from chatbot.agents import AgenticChatbot
+from legacy_modules.chatbot.agents import AgenticChatbot
 
 router = APIRouter(prefix="/chatbot", tags=["chatbot"])
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
