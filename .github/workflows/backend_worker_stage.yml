@@ -17,7 +17,7 @@ jobs:
           rm -rf lambda_package
           mkdir -p lambda_package
           cp Backend/worker/*.py lambda_package/
-          cp Backend/database/mongodb.py lambda_packege/
+          cp Backend/database/mongodb.py lambda_package/
           cp -r Backend/prompts lambda_package/
           cp Backend/requirements.txt lambda_package/
 
