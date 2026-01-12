@@ -8,7 +8,7 @@ MyHandyAI Backend is a FastAPI-based application that provides AI-powered home r
 
 ### Key Modules
 
-- **[Information Gathering Agent](./information_gathering_agent/README.md)**: Diagnostic AI assistant that gathers comprehensive information about home repair issues through conversational dialogue
+- **[Information Gathering Agent](agents/information_gathering_agent/README.md)**: Diagnostic AI assistant that gathers comprehensive information about home repair issues through conversational dialogue
 - **Chatbot**: Conversational interface for user interactions
 - **Content Generation**: Step-by-step guidance generation for home repair tasks
 - **Step Guidance**: Interactive step-by-step instructions

@@ -3,12 +3,11 @@ from uuid import UUID
 from fastapi import APIRouter, status
 from loguru import logger
 
-from information_gathering_agent.dependencies import InformationGatheringAgentServiceDependency
+from agents.information_gathering_agent.dependencies import InformationGatheringAgentServiceDependency
 from routes.schemas.request.information_gathering_agent import ChatMessageRequest
 from routes.schemas.request.information_gathering_agent import InitializeConversationRequest
 from routes.schemas.response.information_gathering_agent import InitializeConversationResponse, \
     ChatMessageResponse, ConversationHistoryResponse, HistoryMessage
-
 
 router = APIRouter(prefix="/information-gathering-agent")
 
@@ -57,6 +56,7 @@ async def chat(
         agent_response=agent_response
     )
 
+
 @router.get("/chat/{thread_id}/history",
             response_model=ConversationHistoryResponse,
             status_code=status.HTTP_200_OK)
@@ -96,5 +96,5 @@ async def get_thread_id(
 
     if not project or "thread_id" not in project:
         return {"thread_id": None}
-    
+
     return {"thread_id": project["thread_id"]}

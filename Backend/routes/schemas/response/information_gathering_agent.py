@@ -15,9 +15,11 @@ class ChatMessageResponse(BaseModel):
     thread_id: UUID = Field(..., description="Thread ID for the conversation")
     agent_response: str = Field(..., description="Agent's response message")
 
+
 class HistoryMessage(BaseModel):
     role: str
     content: str
+
 
 class ConversationHistoryResponse(BaseModel):
     thread_id: UUID = Field(..., description="Thread ID for the conversation")

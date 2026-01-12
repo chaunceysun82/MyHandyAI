@@ -1,25 +1,30 @@
+import base64
+import os
+import sys
+import uuid
+from datetime import datetime
+from typing import Dict, Any, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
-import sys
-import os
-import base64
-import uuid
 from pymongo import DESCENDING
-from datetime import datetime
 
 # Add the chatbot directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'chatbot'))
 
 # <-- IMPORTANT: this is your new orchestration -->
-from chatbot.langagents import run_chat_step  # make sure this exists
-
-from db import conversations_collection
+from legacy_modules.chatbot.langagents import run_chat_step  # make sure this exists
+from database.mongodb import mongodb
+from pymongo.database import Database
+from pymongo.collection import Collection
 
 router = APIRouter(prefix="/lang", tags=["chatbot"])
+database: Database = mongodb.get_database()
+conversations_collection: Collection = database.get_collection("Conversations")
 
 # ---------- Config ----------
 INITIAL_STATE = "greetings"  # change if your graph starts elsewhere
+
 
 # ---------- Schemas ----------
 class ChatMessage(BaseModel):
@@ -29,29 +34,35 @@ class ChatMessage(BaseModel):
     session_id: Optional[str] = None
     uploaded_image: Optional[str] = None  # base64 data URL or raw base64
 
+
 class StartChat(BaseModel):
     user: str
     project: str
+
 
 class ResetChat(BaseModel):
     user: str
     project: str
     session: str
 
+
 class ChatResponse(BaseModel):
     response: str
     session_id: str
     current_state: Optional[str] = None
 
+
 class ChatSession(BaseModel):
     session_id: str
     intro_message: str
+
 
 class SessionInfo(BaseModel):
     session_id: str
     current_state: str
     problem_type: Optional[str] = None
     questions_remaining: Optional[int] = None
+
 
 # ---------- Helpers ----------
 def _decode_image(maybe_data_url: str) -> bytes:
@@ -60,6 +71,7 @@ def _decode_image(maybe_data_url: str) -> bytes:
     if raw.startswith("data:image"):
         raw = raw.split(",", 1)[1]
     return base64.b64decode(raw)
+
 
 def _get_latest_state(session_id: str) -> tuple[Dict[str, Any], str]:
     """
@@ -75,16 +87,17 @@ def _get_latest_state(session_id: str) -> tuple[Dict[str, Any], str]:
         return doc["chat_state"] or {}, doc["current_state"] or INITIAL_STATE
     return {}, INITIAL_STATE
 
+
 def _log_entry(
-    *,
-    session_id: str,
-    role: str,
-    message: str,
-    user: str,
-    project: str,
-    chat_state: Dict[str, Any],
-    current_state: str,
-    message_type: str = "text",
+        *,
+        session_id: str,
+        role: str,
+        message: str,
+        user: str,
+        project: str,
+        chat_state: Dict[str, Any],
+        current_state: str,
+        message_type: str = "text",
 ):
     conversations_collection.insert_one(
         {
@@ -100,6 +113,7 @@ def _log_entry(
         }
     )
 
+
 def _conversation_history(session_id: str):
     cur = conversations_collection.find(
         {"session_id": session_id},
@@ -114,8 +128,10 @@ def _conversation_history(session_id: str):
         for d in cur
     ]
 
+
 def _delete_session(session_id: str):
     conversations_collection.delete_many({"session_id": session_id})
+
 
 def _questions_remaining(chat_state: Dict[str, Any], current_state: str) -> Optional[int]:
     if current_state != "asking_questions":
@@ -123,6 +139,7 @@ def _questions_remaining(chat_state: Dict[str, Any], current_state: str) -> Opti
     qs = chat_state.get("questions") or []
     idx = chat_state.get("current_question_index", 0)
     return max(len(qs) - idx, 0)
+
 
 # ---------- Endpoints ----------
 @router.post("/chat", response_model=ChatResponse)
@@ -185,6 +202,7 @@ async def chat_with_bot(chat_message: ChatMessage):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chatbot error: {str(e)}")
 
+
 @router.post("/start", response_model=ChatSession)
 async def start_new_session(payload: StartChat):
     """
@@ -218,10 +236,12 @@ async def start_new_session(payload: StartChat):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Start error: {str(e)}")
 
+
 @router.get("/session/{session_id}/history")
 async def get_chat_history(session_id: str):
     """Returns full message history for a session."""
     return _conversation_history(session_id)
+
 
 @router.get("/session/{session_id}/info", response_model=SessionInfo)
 async def get_session_info(session_id: str):
@@ -244,6 +264,7 @@ async def get_session_info(session_id: str):
         problem_type=chat_state.get("problem_type"),
         questions_remaining=_questions_remaining(chat_state, current_state),
     )
+
 
 @router.post("/session/{session_id}/reset")
 async def reset_conversation(payload: ResetChat):
@@ -283,11 +304,13 @@ async def reset_conversation(payload: ResetChat):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Reset error: {str(e)}")
 
+
 @router.delete("/session/{session_id}")
 async def delete_session(session_id: str):
     """Deletes all messages and state for a session."""
     _delete_session(session_id)
     return {"message": f"Session {session_id} deleted successfully"}
+
 
 @router.get("/health")
 async def health_check():

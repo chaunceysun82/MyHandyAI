@@ -1,29 +1,39 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File
-from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
-import sys
-import os
 import base64
-import uuid
-from pymongo import DESCENDING
+import os
 import pickle
-from db import conversations_collection, project_collection, tools_collection
-from datetime import datetime, timedelta
-from .project import update_project
-from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, VectorParams, Distance
+import sys
+import uuid
+from datetime import datetime
+from typing import List, Dict, Any, Optional
+
 from bson import ObjectId
-from openai import OpenAI
-from qdrant_client.http.exceptions import UnexpectedResponse
 from dotenv import load_dotenv
+from fastapi import APIRouter, HTTPException
+from openai import OpenAI
+from pydantic import BaseModel
+from pymongo import DESCENDING
+from pymongo.collection import Collection
+from pymongo.database import Database
+from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.models import PointStruct, VectorParams, Distance
+
+from database.mongodb import mongodb
+from routes.utils import update_project
+
 load_dotenv()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'chatbot'))
 
-from chatbot.agents import AgenticChatbot
+from legacy_modules.chatbot.agents import AgenticChatbot
 
 router = APIRouter(prefix="/chatbot", tags=["chatbot"])
-client=OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+database: Database = mongodb.get_database()
+conversations_collection: Collection = database.get_collection("Conversations")
+project_collection: Collection = database.get_collection("Project")
+tools_collection: Collection = database.get_collection("Tools")
+
 
 # Config for image TTL
 # LAST_IMAGE_TTL_MIN = int(os.getenv("LAST_IMAGE_TTL_MINUTES", "10"))
@@ -67,6 +77,7 @@ def _clear_last_image(session_id: str):
         upsert=True
     )
 
+
 class ChatMessage(BaseModel):
     message: str
     user: str
@@ -74,14 +85,17 @@ class ChatMessage(BaseModel):
     session_id: Optional[str] = None
     uploaded_image: Optional[str] = None
 
+
 class StartChat(BaseModel):
     user: str
     project: str
+
 
 class ResetChat(BaseModel):
     user: str
     project: str
     session: str
+
 
 class ChatResponse(BaseModel):
     response: str
@@ -89,16 +103,19 @@ class ChatResponse(BaseModel):
     current_state: Optional[str] = None
     suggested_messages: Optional[List[str]] = None
 
+
 class ChatSession(BaseModel):
     session_id: str
     intro_message: str
     suggested_messages: Optional[List[str]] = None
+
 
 class SessionInfo(BaseModel):
     session_id: str
     current_state: str
     problem_type: Optional[str] = None
     questions_remaining: Optional[int] = None
+
 
 class Tool(BaseModel):
     name: str
@@ -110,6 +127,7 @@ class Tool(BaseModel):
     amazon_link: Optional[str] = None
     category: Optional[str] = None
     tags: Optional[List[str]] = None
+
 
 class ToolSearchRequest(BaseModel):
     query: str
@@ -131,6 +149,7 @@ def log_message(session_id, role, message, chatbot, user, project, message_type=
     }
     conversations_collection.insert_one(doc)
 
+
 def get_latest_chatbot(session_id):
     doc = conversations_collection.find_one(
         {"session_id": session_id},
@@ -140,11 +159,12 @@ def get_latest_chatbot(session_id):
         return pickle.loads(doc["chatbot_state"])
     else:
         return AgenticChatbot()
-    
+
 
 def get_conversation_history(session_id):
     cursor = conversations_collection.find({"session_id": session_id}).sort("timestamp", 1)
     return [{"role": doc["role"], "message": doc["message"], "timestamp": doc["timestamp"]} for doc in cursor]
+
 
 def get_suggested_messages(current_state: str, problem_type: str = None) -> List[str]:
     """
@@ -154,12 +174,12 @@ def get_suggested_messages(current_state: str, problem_type: str = None) -> List
         # Problem description state - suggest different types of problems
         return [
             "I have a leaking pipe",
-            "My electrical outlet isn't working", 
+            "My electrical outlet isn't working",
             "I need to hang a mirror on the wall",
             "My sink is clogged",
             "I want to fix a wobbly chair"
         ]
-    
+
     elif current_state == "waiting_for_photos":
         # Photo upload state - help with photo decisions
         return [
@@ -168,7 +188,7 @@ def get_suggested_messages(current_state: str, problem_type: str = None) -> List
             "Can I describe instead of photo?",
             "I'll upload a photo"
         ]
-    
+
     elif current_state == "asking_questions":
         # Clarifying questions state - current behavior but more helpful
         if problem_type:
@@ -183,7 +203,7 @@ def get_suggested_messages(current_state: str, problem_type: str = None) -> List
             elif "plumbing" in problem_type.lower() or "leak" in problem_type.lower() or "sink" in problem_type.lower():
                 return [
                     "I don't know the pipe material",
-                    "Skip this question", 
+                    "Skip this question",
                     "How can I find this information?",
                     "I need help with this"
                 ]
@@ -198,7 +218,7 @@ def get_suggested_messages(current_state: str, problem_type: str = None) -> List
                 # General repair questions
                 return [
                     "Skip this question",
-                    "How do I find this information?", 
+                    "How do I find this information?",
                     "I'm not sure about this",
                     "I don't have the right tools to check"
                 ]
@@ -210,7 +230,7 @@ def get_suggested_messages(current_state: str, problem_type: str = None) -> List
                 "I'm not sure about this",
                 "I don't know how to check this"
             ]
-    
+
     elif current_state == "showing_summary":
         # Summary confirmation state - simple yes/no responses
         return [
@@ -219,7 +239,7 @@ def get_suggested_messages(current_state: str, problem_type: str = None) -> List
             "Yes",
             "No, let me clarify"
         ]
-    
+
     elif current_state == "complete":
         # Chat completed - next steps
         return [
@@ -228,7 +248,7 @@ def get_suggested_messages(current_state: str, problem_type: str = None) -> List
             "What tools do I need?",
             "How long will this take?"
         ]
-    
+
     else:
         # Default fallback
         return [
@@ -238,9 +258,10 @@ def get_suggested_messages(current_state: str, problem_type: str = None) -> List
             "I'm not sure"
         ]
 
+
 @router.get("/session/{project}")
 def get_session(project):
-    cursor = conversations_collection.find_one({"project":project,"chat_type":"project_intro"})
+    cursor = conversations_collection.find_one({"project": project, "chat_type": "project_intro"})
     if not cursor:
         return {"session": None}
     return {"session": cursor["session_id"]}
@@ -253,11 +274,13 @@ def reset_session(session_id, user, project):
     _clear_last_image(session_id)
     return chatbot
 
+
 def delete_session_docs(session_id):
     conversations_collection.delete_many({"session_id": session_id})
 
 
 chatbot_instances = {}
+
 
 def chunk_text(text: str, max_chars: int = 1000) -> List[str]:
     """
@@ -273,7 +296,7 @@ def chunk_text(text: str, max_chars: int = 1000) -> List[str]:
     start = 0
     while start < len(text):
         end = start + max_chars
-        
+
         if end < len(text):
             last_space = text.rfind(" ", start, end)
             if last_space > start:
@@ -284,6 +307,7 @@ def chunk_text(text: str, max_chars: int = 1000) -> List[str]:
         start = end
     return chunks
 
+
 def create_embeddings_for_texts(texts, model: str = "text-embedding-3-small"):
     """
     Creates embeddings via OpenAI for a list of strings (batched).
@@ -291,10 +315,11 @@ def create_embeddings_for_texts(texts, model: str = "text-embedding-3-small"):
     """
     if not texts:
         return []
-    
+
     resp = client.embeddings.create(model=model, input=texts)
-    
+
     return [item.embedding for item in resp.data]
+
 
 def upsert_embeddings_to_qdrant(
         mongo_hex_id: str,
@@ -302,8 +327,7 @@ def upsert_embeddings_to_qdrant(
         texts: List[str],
         extra_payload: Optional[dict] = None,
         collection_name: Optional[str] = None
-    ) -> dict:
-
+) -> dict:
     qdrant_url = os.getenv("QDRANT_URL")
     qdrant_api_key = os.getenv("QDRANT_API_KEY")
     collection_name = collection_name or "projects"
@@ -318,12 +342,11 @@ def upsert_embeddings_to_qdrant(
 
     vector_size = len(embeddings[0])
 
-    
     try:
         qclient.get_collection(collection_name=collection_name)
     except UnexpectedResponse as ex:
         if ex.status_code == 404:
-            
+
             qclient.create_collection(
                 collection_name=collection_name,
                 vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
@@ -331,7 +354,6 @@ def upsert_embeddings_to_qdrant(
         else:
             raise
 
-    
     points = []
     for idx, (vec, txt) in enumerate(zip(embeddings, texts)):
         unique_str = f"{mongo_hex_id}-{idx}"
@@ -351,7 +373,9 @@ def upsert_embeddings_to_qdrant(
     qclient.upsert(collection_name=collection_name, points=points)
     return {"status": "ok", "num_points": len(points), "collection": collection_name}
 
-def create_and_store_summary_embeddings_for_project(summary: str, mongo_project_id, extra_payload: Optional[dict] = None):
+
+def create_and_store_summary_embeddings_for_project(summary: str, mongo_project_id,
+                                                    extra_payload: Optional[dict] = None):
     """
     Orchestrator: chunk summary, create embeddings, upsert to Qdrant using mongo id(s).
     mongo_project_id: ObjectId or hex string
@@ -364,11 +388,12 @@ def create_and_store_summary_embeddings_for_project(summary: str, mongo_project_
     else:
         mongo_hex = str(mongo_project_id)
 
-  
     chunks = chunk_text(summary, max_chars=len(summary))
-    embeddings = create_embeddings_for_texts(chunks, model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
+    embeddings = create_embeddings_for_texts(chunks,
+                                             model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
     qresult = upsert_embeddings_to_qdrant(mongo_hex, embeddings, chunks, extra_payload=extra_payload)
     return qresult
+
 
 def store_tool_in_database(tool_data: Dict[str, Any]) -> str:
     """
@@ -389,9 +414,10 @@ def store_tool_in_database(tool_data: Dict[str, Any]) -> str:
         "usage_count": 1,
         "last_used": datetime.utcnow()
     }
-    
+
     result = tools_collection.insert_one(tool_doc)
     return str(result.inserted_id)
+
 
 def update_tool_usage(tool_id: str):
     """
@@ -405,19 +431,21 @@ def update_tool_usage(tool_id: str):
         }
     )
 
+
 def create_and_store_tool_embeddings(tool_data: Dict[str, Any], tool_id: str):
     """
     Create embeddings for a tool and store them in Qdrant tools collection.
     """
     # Create text representation for embedding
     tool_text = f"{tool_data['name']} {tool_data['description']} {tool_data.get('category', '')} {' '.join(tool_data.get('tags', []))}"
-    
+
     # Generate embedding
-    embedding = create_embeddings_for_texts([tool_text], model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
-    
+    embedding = create_embeddings_for_texts([tool_text],
+                                            model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
+
     if not embedding:
         return {"status": "embedding_failed"}
-    
+
     # Store in Qdrant tools collection
     qresult = upsert_embeddings_to_qdrant(
         mongo_hex_id=tool_id,
@@ -433,24 +461,26 @@ def create_and_store_tool_embeddings(tool_data: Dict[str, Any], tool_id: str):
     )
     return qresult
 
+
 def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
     """
     Find similar tools in Qdrant based on semantic similarity.
     """
     qdrant_url = os.getenv("QDRANT_URL")
     qdrant_api_key = os.getenv("QDRANT_API_KEY")
-    
+
     if not qdrant_url or not qdrant_api_key:
         raise RuntimeError("QDRANT_URL and QDRANT_API_KEY must be set in env")
-    
+
     qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
-    
+
     # Generate embedding for the query
-    query_embedding = create_embeddings_for_texts([query], model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
-    
+    query_embedding = create_embeddings_for_texts([query],
+                                                  model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
+
     if not query_embedding:
         return []
-    
+
     try:
         # Search in tools collection
         search_result = qclient.search(
@@ -459,7 +489,7 @@ def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float =
             limit=limit,
             score_threshold=similarity_threshold
         )
-        
+
         similar_tools = []
         for result in search_result:
             if result.score >= similarity_threshold:
@@ -482,13 +512,12 @@ def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float =
                             "usage_count": tool_doc.get("usage_count", 0)
                         }
                         similar_tools.append(tool_info)
-        
+
         return similar_tools
-        
+
     except Exception as e:
         print(f"Error searching tools in Qdrant: {e}")
         return []
-
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -507,7 +536,7 @@ async def chat_with_bot(chat_message: ChatMessage):
         # Check if image is provided or can be reused - use vision-aware OpenAI direct call
         # current_image_b64 = None
         # use_vision = False
-        
+
         # if chat_message.uploaded_image:
         #     # New image uploaded
         #     image_data = chat_message.uploaded_image
@@ -519,11 +548,11 @@ async def chat_with_bot(chat_message: ChatMessage):
         #         # Plain base64
         #         current_image_b64 = image_data
         #         url = f"data:image/jpeg;base64,{image_data}"
-            
+
         #     # Save for future reuse
         #     _save_last_image(session_id, current_image_b64)
         #     use_vision = True
-            
+
         # else:
         #     # No new image - try to reuse last image
         #     cached_b64 = _load_last_image(session_id)
@@ -541,7 +570,7 @@ async def chat_with_bot(chat_message: ChatMessage):
 
         #     # Call OpenAI with vision
         #     system_prompt = "You are MyHandyAI, a helpful DIY assistant. Analyze images and provide helpful guidance for DIY projects, tool identification, and home improvement tasks."
-            
+
         #     resp = client.chat.completions.create(
         #         model="gpt-4o",
         #         messages=[
@@ -551,10 +580,10 @@ async def chat_with_bot(chat_message: ChatMessage):
         #         temperature=0.4,
         #         max_tokens=600
         #     )
-            
+
         #     response = resp.choices[0].message.content
         # else:
-            # No image available - use AgenticChatbot
+        # No image available - use AgenticChatbot
         uploaded_image = None
         if chat_message.uploaded_image:
             try:
@@ -594,6 +623,7 @@ async def chat_with_bot(chat_message: ChatMessage):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chatbot error: {str(e)}")
 
+
 @router.post("/start", response_model=ChatSession)
 async def start_new_session(payload: StartChat):
     """
@@ -602,13 +632,14 @@ async def start_new_session(payload: StartChat):
     session_id = uuid.uuid4().hex
     chatbot = AgenticChatbot()
     intro_message = chatbot.greet()
-    log_message(session_id, "assistant", intro_message, chatbot, payload.user, payload.project, message_type="project_intro")
-    
+    log_message(session_id, "assistant", intro_message, chatbot, payload.user, payload.project,
+                message_type="project_intro")
+
     # Get initial suggested messages for problem description state
     suggested_messages = get_suggested_messages("waiting_for_problem")
-    
+
     return ChatSession(
-        session_id=session_id, 
+        session_id=session_id,
         intro_message=intro_message,
         suggested_messages=suggested_messages
     )
@@ -661,6 +692,7 @@ async def get_suggested_messages_for_state(state: str, problem_type: Optional[st
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid state or problem type: {str(e)}")
 
+
 @router.get("/suggested-messages/preview")
 async def preview_all_suggested_messages():
     """
@@ -682,6 +714,7 @@ async def preview_all_suggested_messages():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate preview: {str(e)}")
 
+
 @router.post("/session/{session_id}/reset")
 async def reset_conversation(payload: ResetChat):
     """
@@ -690,7 +723,6 @@ async def reset_conversation(payload: ResetChat):
     chatbot = reset_session(payload.session, payload.user, payload.project)
     intro_message = chatbot.greet()
     return {"message": "Conversation reset successfully", "intro_message": intro_message}
-
 
 
 @router.delete("/session/{session_id}")
@@ -702,37 +734,34 @@ async def delete_session(session_id: str):
     return {"message": f"Session {session_id} deleted successfully"}
 
 
-
 @router.get("/health")
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "message": "Chatbot API is running"}
 
 
-
 @router.post("/session/{session_id}/save")
 async def save_information(session_id: str):
-    bot=get_latest_chatbot(session_id)
-    conv=conversations_collection.find_one({"session_id":session_id})
+    bot = get_latest_chatbot(session_id)
+    conv = conversations_collection.find_one({"session_id": session_id})
     if bot.current_state == "complete":
-        print (str(conv["project"]))
+        print(str(conv["project"]))
         answers = bot.user_answers
         if isinstance(answers, dict):
             answers = {str(k): v for k, v in answers.items()}
-        update_project(str(conv["project"]), {"user_description":bot.user_description,
-                                         "summary": bot.summary,
-                                         "image_analysis":bot.image_analysis,
-                                         "questions":bot.questions,
-                                         "answers":answers})
-        
-        
-        return {"message":"Data saved Successfully"}
+        update_project(str(conv["project"]), {"user_description": bot.user_description,
+                                              "summary": bot.summary,
+                                              "image_analysis": bot.image_analysis,
+                                              "questions": bot.questions,
+                                              "answers": answers})
+
+        return {"message": "Data saved Successfully"}
     else:
-        return {"messaage":"chat not complete"}
-    
+        return {"messaage": "chat not complete"}
+
+
 @router.post("/save/embeddings/{project_id}")
 async def qdrant_function(project_id: str):
-
     try:
         obj_id = ObjectId(project_id)
     except Exception:
@@ -741,11 +770,11 @@ async def qdrant_function(project_id: str):
     project = project_collection.find_one({"_id": obj_id})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    
+
     summary = project.get("summary")
     if not summary:
         raise HTTPException(status_code=400, detail="No summary to embed")
-    
+
     qresult = create_and_store_summary_embeddings_for_project(
         summary=summary,
         mongo_project_id=str(project["_id"]),
@@ -758,6 +787,7 @@ async def qdrant_function(project_id: str):
         "result": qresult
     }
 
+
 @router.get("/debug/projects")
 async def debug_projects():
     docs = project_collection.find().limit(3)
@@ -769,6 +799,7 @@ async def debug_projects():
         })
     return output
 
+
 # Tools Management Endpoints
 @router.post("/tools/save")
 async def save_tool_to_collections(tool_data: Tool):
@@ -779,9 +810,9 @@ async def save_tool_to_collections(tool_data: Tool):
     try:
         # Convert Pydantic model to dict
         tool_dict = tool_data.model_dump()
-        
+
         print(f"🔧 Saving tool: {tool_dict['name']}")
-        
+
         # 1. Save to MongoDB tools_collection
         tool_doc = {
             "name": tool_dict["name"],
@@ -797,23 +828,23 @@ async def save_tool_to_collections(tool_data: Tool):
             "usage_count": 1,
             "last_used": datetime.utcnow()
         }
-        
+
         result = tools_collection.insert_one(tool_doc)
         tool_id = str(result.inserted_id)
         print(f"✅ Saved to MongoDB with ID: {tool_id}")
-        
+
         # 2. Create embeddings and save to Qdrant
         try:
             embedding_result = create_and_store_tool_embeddings(tool_dict, tool_id)
             print(f"✅ Saved embeddings to Qdrant: {embedding_result}")
-            
+
             return {
                 "success": True,
                 "message": "Tool saved successfully to both MongoDB and Qdrant",
                 "tool_id": tool_id,
                 "qdrant_result": embedding_result
             }
-            
+
         except Exception as e:
             print(f"⚠️ Qdrant save failed: {e}")
             return {
@@ -822,10 +853,11 @@ async def save_tool_to_collections(tool_data: Tool):
                 "tool_id": tool_id,
                 "qdrant_error": str(e)
             }
-            
+
     except Exception as e:
         print(f"❌ MongoDB save failed: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to save tool: {str(e)}")
+
 
 @router.post("/tools/search")
 async def search_tools(search_request: ToolSearchRequest):
@@ -838,7 +870,7 @@ async def search_tools(search_request: ToolSearchRequest):
             limit=search_request.limit,
             similarity_threshold=search_request.similarity_threshold
         )
-        
+
         return {
             "query": search_request.query,
             "tools_found": len(similar_tools),
@@ -846,6 +878,7 @@ async def search_tools(search_request: ToolSearchRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Tool search failed: {str(e)}")
+
 
 @router.get("/tools/{tool_id}")
 async def get_tool_details(tool_id: str):
@@ -856,7 +889,7 @@ async def get_tool_details(tool_id: str):
         tool_doc = tools_collection.find_one({"_id": ObjectId(tool_id)})
         if not tool_doc:
             raise HTTPException(status_code=404, detail="Tool not found")
-        
+
         return {
             "tool_id": str(tool_doc["_id"]),
             "name": tool_doc["name"],
@@ -875,12 +908,13 @@ async def get_tool_details(tool_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get tool details: {str(e)}")
 
+
 @router.get("/tools")
 async def list_tools(
-    category: Optional[str] = None,
-    limit: int = 20,
-    skip: int = 0,
-    sort_by: str = "usage_count"
+        category: Optional[str] = None,
+        limit: int = 20,
+        skip: int = 0,
+        sort_by: str = "usage_count"
 ):
     """
     List tools with optional filtering and sorting.
@@ -890,14 +924,14 @@ async def list_tools(
         query = {}
         if category:
             query["category"] = category
-        
+
         # Build sort
         sort_field = sort_by if sort_by in ["usage_count", "created_at", "last_used", "name"] else "usage_count"
         sort_direction = DESCENDING if sort_field in ["usage_count", "created_at", "last_used"] else 1
-        
+
         # Execute query
         cursor = tools_collection.find(query).sort(sort_field, sort_direction).skip(skip).limit(limit)
-        
+
         tools = []
         for doc in cursor:
             tools.append({
@@ -910,10 +944,10 @@ async def list_tools(
                 "usage_count": doc.get("usage_count", 0),
                 "created_at": doc.get("created_at")
             })
-        
+
         # Get total count
         total_count = tools_collection.count_documents(query)
-        
+
         return {
             "tools": tools,
             "total_count": total_count,
@@ -923,7 +957,6 @@ async def list_tools(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list tools: {str(e)}")
-
 
 
 @router.delete("/tools/{tool_id}")
@@ -936,12 +969,13 @@ async def delete_tool(tool_id: str):
         result = tools_collection.delete_one({"_id": ObjectId(tool_id)})
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Tool not found")
-        
+
         # Delete from Qdrant (you might want to implement this)
         # For now, we'll just return success
         return {"message": "Tool deleted successfully", "tool_id": tool_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete tool: {str(e)}")
+
 
 @router.get("/tools/stats")
 async def get_tools_statistics():
@@ -950,14 +984,14 @@ async def get_tools_statistics():
     """
     try:
         total_tools = tools_collection.count_documents({})
-        
+
         # Category distribution
         category_pipeline = [
             {"$group": {"_id": "$category", "count": {"$sum": 1}}},
             {"$sort": {"count": -1}}
         ]
         category_stats = list(tools_collection.aggregate(category_pipeline))
-        
+
         # Most used tools
         most_used = list(tools_collection.find().sort("usage_count", DESCENDING).limit(5))
         most_used_formatted = []
@@ -967,7 +1001,7 @@ async def get_tools_statistics():
                 "usage_count": tool.get("usage_count", 0),
                 "category": tool.get("category")
             })
-        
+
         # Recent tools
         recent_tools = list(tools_collection.find().sort("created_at", DESCENDING).limit(5))
         recent_formatted = []
@@ -977,7 +1011,7 @@ async def get_tools_statistics():
                 "created_at": tool.get("created_at"),
                 "category": tool.get("category")
             })
-        
+
         return {
             "total_tools": total_tools,
             "category_distribution": category_stats,
@@ -986,6 +1020,7 @@ async def get_tools_statistics():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get tools statistics: {str(e)}")
+
 
 @router.get("/tools/test/connection")
 async def test_tools_connection():
@@ -998,22 +1033,22 @@ async def test_tools_connection():
         mongo_sample = list(tools_collection.find({}, {"name": 1, "category": 1}).limit(3))
         for tool in mongo_sample:
             tool["_id"] = str(tool["_id"])
-        
+
         # Test Qdrant connection
         qdrant_url = os.getenv("QDRANT_URL")
         qdrant_api_key = os.getenv("QDRANT_API_KEY")
-        
+
         qdrant_status = "not_configured"
         qdrant_info = {}
-        
+
         if qdrant_url and qdrant_api_key:
             try:
                 qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
                 collections = qclient.get_collections()
                 collection_names = [c.name for c in collections.collections]
-                
+
                 tools_collection_exists = "tools" in collection_names
-                
+
                 if tools_collection_exists:
                     info = qclient.get_collection("tools")
                     qdrant_info = {
@@ -1023,10 +1058,10 @@ async def test_tools_connection():
                     qdrant_status = "connected_with_tools"
                 else:
                     qdrant_status = "connected_no_tools"
-                    
+
             except Exception as e:
                 qdrant_status = f"error: {str(e)}"
-        
+
         return {
             "mongodb": {
                 "status": "connected",
@@ -1039,9 +1074,10 @@ async def test_tools_connection():
                 "info": qdrant_info
             }
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Connection test failed: {str(e)}")
+
 
 @router.post("/tools/extract-from-project/{project_id}")
 async def extract_and_save_tools_from_project(project_id: str):
@@ -1054,22 +1090,22 @@ async def extract_and_save_tools_from_project(project_id: str):
         project = project_collection.find_one({"_id": ObjectId(project_id)})
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
-        
+
         if "tool_generation" not in project:
             raise HTTPException(status_code=400, detail="Project has no tool_generation data")
-        
+
         tool_generation = project["tool_generation"]
-        
+
         # Extract tools from tool_generation.tools
         if "tools" not in tool_generation:
             raise HTTPException(status_code=400, detail="No tools found in tool_generation")
-        
+
         tools_list = tool_generation["tools"]
         print(f"🔧 Found {len(tools_list)} tools in project {project_id}")
-        
+
         saved_tools = []
         failed_tools = []
-        
+
         # 2. Save each tool to tools_collection and Qdrant
         for tool in tools_list:
             try:
@@ -1078,34 +1114,34 @@ async def extract_and_save_tools_from_project(project_id: str):
                     print(f"⚠️ Skipping tool with missing required fields: {tool.get('name', 'unknown')}")
                     failed_tools.append({"tool": tool, "error": "missing_required_fields"})
                     continue
-                
+
                 # Check if tool already exists in tools_collection (avoid duplicates)
                 existing_tool = tools_collection.find_one({"name": tool["name"]})
                 if existing_tool:
                     print(f"✅ Tool '{tool['name']}' already exists, skipping")
                     saved_tools.append({"tool_id": str(existing_tool["_id"]), "status": "already_exists"})
                     continue
-                
+
                 # Save new tool
                 tool_id = store_tool_in_database(tool)
                 embedding_result = create_and_store_tool_embeddings(tool, tool_id)
-                
+
                 saved_tools.append({
                     "tool_id": tool_id,
                     "name": tool["name"],
                     "status": "saved",
                     "qdrant_result": embedding_result
                 })
-                
+
                 print(f"✅ Saved tool: {tool['name']} (ID: {tool_id})")
-                
+
             except Exception as e:
                 print(f"❌ Failed to save tool {tool.get('name', 'unknown')}: {e}")
                 failed_tools.append({"tool": tool.get('name', 'unknown'), "error": str(e)})
-        
+
         # 3. Update project to mark tools as processed
         update_project(project_id, {"tools_extracted_to_collection": True, "tools_extraction_date": datetime.utcnow()})
-        
+
         return {
             "message": f"Processed {len(tools_list)} tools from project",
             "project_id": project_id,
@@ -1114,11 +1150,12 @@ async def extract_and_save_tools_from_project(project_id: str):
             "tools": saved_tools,
             "failures": failed_tools
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to extract tools from project: {str(e)}")
+
 
 @router.post("/tools/compare-and-enhance")
 async def compare_and_enhance_tools(tools_data: List[Dict[str, Any]]):
@@ -1129,9 +1166,9 @@ async def compare_and_enhance_tools(tools_data: List[Dict[str, Any]]):
     try:
         enhanced_tools = []
         reuse_stats = {"reused": 0, "new": 0, "errors": 0}
-        
+
         print(f"🔍 Comparing {len(tools_data)} newly generated tools with existing tools")
-        
+
         for tool in tools_data:
             try:
                 tool_name = tool.get("name", "")
@@ -1140,23 +1177,22 @@ async def compare_and_enhance_tools(tools_data: List[Dict[str, Any]]):
                     enhanced_tools.append(tool)
                     reuse_stats["errors"] += 1
                     continue
-                
+
                 print(f"🔍 Analyzing tool: {tool_name}")
-                
-                
+
                 similar_tools = find_similar_tools(
                     query=tool_name,
                     limit=3,
-                    similarity_threshold=0.75  
+                    similarity_threshold=0.75
                 )
-                
+
                 if similar_tools:
                     # Get the most similar tool
                     best_match = similar_tools[0]
                     similarity_score = best_match["similarity_score"]
-                    
+
                     print(f"   Found similar tool: {best_match['name']} (Score: {similarity_score:.3f})")
-                    
+
                     # If similarity is high enough, reuse image and amazon links
                     if similarity_score >= 0.8:
                         # High similarity - reuse everything
@@ -1165,50 +1201,50 @@ async def compare_and_enhance_tools(tools_data: List[Dict[str, Any]]):
                         tool["reused_from"] = best_match["tool_id"]
                         tool["similarity_score"] = similarity_score
                         tool["reuse_type"] = "high_similarity"
-                        
+
                         # Update usage count for the existing tool
                         update_tool_usage(best_match["tool_id"])
-                        
+
                         reuse_stats["reused"] += 1
                         print(f"   ✅ HIGH SIMILARITY - Reused image/links from existing tool")
-                        
+
                     elif similarity_score >= 0.65:
                         # Medium similarity - reuse image only (amazon link might be different)
                         tool["image_link"] = best_match["image_link"]
                         tool["reference_tool"] = best_match["tool_id"]
                         tool["similarity_score"] = similarity_score
                         tool["reuse_type"] = "medium_similarity"
-                        
+
                         reuse_stats["reused"] += 1
                         print(f"   📷 MEDIUM SIMILARITY - Reused image only")
-                        
+
                     else:
                         # Low similarity - no reuse
                         tool["similarity_score"] = similarity_score
                         tool["reuse_type"] = "no_reuse"
                         reuse_stats["new"] += 1
                         print(f"   🆕 LOW SIMILARITY - Treating as new tool")
-                        
+
                 else:
                     # No similar tools found
                     tool["reuse_type"] = "no_similar_found"
                     reuse_stats["new"] += 1
                     print(f"   🆕 NO SIMILAR TOOLS - Treating as new tool")
-                
+
                 enhanced_tools.append(tool)
-                
+
             except Exception as e:
                 print(f"❌ Error processing tool {tool.get('name', 'unknown')}: {e}")
                 tool["error"] = str(e)
                 enhanced_tools.append(tool)
                 reuse_stats["errors"] += 1
-        
+
         return {
             "message": "Tools comparison and enhancement completed",
             "total_tools": len(tools_data),
             "reuse_statistics": reuse_stats,
             "enhanced_tools": enhanced_tools
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to compare and enhance tools: {str(e)}")

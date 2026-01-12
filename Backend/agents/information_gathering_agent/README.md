@@ -50,7 +50,7 @@ issues through conversational dialogue with users.
 
 ## Configuration
 
-This module requires the following environment variables (see main [README.md](../README.md) for full environment
+This module requires the following environment variables (see main [README.md](../../README.md) for full environment
 setup):
 
 - `OPENAI_API_KEY`: OpenAI API key for the language model
