@@ -16,7 +16,7 @@ from pymongo import DESCENDING
 load_dotenv()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'chatbot'))
-from chatbot.step_guidance_chatbot import StepGuidanceChatbot
+from agents.project_assistant_agent.step_guidance_chatbot import StepGuidanceChatbot
 from database.mongodb import mongodb
 from pymongo.database import Database
 from pymongo.collection import Collection

@@ -64,7 +64,6 @@ app.include_router(feedback.router)
 app.include_router(step_guidance.router)
 app.include_router(tool_detection.router, prefix="/chatbot/tools")
 app.include_router(information_gathering_agent.router, prefix="/api/v1", tags=["Information Gathering Agent"])
-app.mount("/static", StaticFiles(directory="./static", html=True), name="static")
 
 # handler for AWS
 handler = Mangum(app)
