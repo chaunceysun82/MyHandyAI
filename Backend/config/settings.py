@@ -1,6 +1,5 @@
 import os
 from functools import lru_cache
-from typing import Optional
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
@@ -43,17 +42,16 @@ class Settings(BaseSettings):
     SERPAPI_API_KEY: str
 
     # AWS settings
-    AWS_ACCESS_KEY_ID: Optional[str] = None
-    AWS_SECRET_ACCESS_KEY: Optional[str] = None
-    AWS_REGION: str = "us-east-2"
-    SQS_URL: str
-    AWS_IMAGES_SQS_URL: Optional[str] = None
-    AWS_S3_BUCKET: str = "handyimages"
-    AWS_S3_PUBLIC_BASE: str = "https://handyimages.s3.us-east-2.amazonaws.com"
+    AWS_ACCESS_KEY_ID: str
+    AWS_SECRET_ACCESS_KEY: str
+    AWS_REGION: str
+    AWS_SQS_URL: str
+    AWS_S3_BUCKET: str
+    AWS_S3_PUBLIC_BASE: str
 
     # Google/Gemini settings
     GOOGLE_API_KEY: str
-    GEMINI_IMAGE_MODEL: str = "imagen-3.0-generate-002"
+    GOOGLE_GEMINI_IMAGE_MODEL: str
 
     # YouTube settings
     YOUTUBE_API_KEY: str

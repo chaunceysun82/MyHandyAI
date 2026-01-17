@@ -15,13 +15,13 @@ from pydantic import BaseModel
 from pymongo.collection import Collection
 from pymongo.database import Database
 
+from agents.solution_generation_multi_agent.planner import ToolsAgent, EstimationAgent
+from agents.solution_generation_multi_agent.services.steps_generation_agent_service import StepsGenerationAgentService
+from agents.solution_generation_multi_agent.steps_generation_agent.steps_generation_agent import StepsGenerationAgent
 from config.settings import get_settings
 from database.mongodb import mongodb
-from helper import similar_by_project
-from agents.solution_generation_multi_agent.planner import ToolsAgent, StepsAgentJSON, EstimationAgent
-
-# Import tools_collection from helper
-from helper import tools_collection
+from .helper import similar_by_project, store_tool_in_database, create_and_store_tool_embeddings, find_similar_tools, \
+    update_tool_usage
 
 settings = get_settings()
 
@@ -43,13 +43,34 @@ sqs = boto3.client("sqs", **sqs_kwargs)
 database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
 steps_collection: Collection = database.get_collection("ProjectSteps")
+tools_collection: Collection = database.get_collection("Tools")
 
 
 def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x1024", summary: str = "") -> None:
     """Send one SQS message per step (no batch API)."""
-    images_sqs_url = settings.AWS_IMAGES_SQS_URL
+
+    # LOCAL TESTING: Process images synchronously instead of sending to SQS
+    # Uncomment the block below for local testing
+    # for i, step in enumerate(steps, start=1):
+    #     sum_text = "Overall summary: " + summary + "\n"
+    #     step_text = "CURRENT STEP: " + ", ".join(s for s in step.get("instructions", []) if s and s.strip())
+    #     body = {
+    #         "task": "image_step",
+    #         "project": project_id,
+    #         "step_id": str(i),
+    #         "step_text": step_text,
+    #         "summary_text": sum_text,
+    #         "size": size
+    #     }
+    #     project_collection.update_one({"_id": ObjectId(project_id)},
+    #                                   {"$set": {f"step_generation.steps.{int(i) - 1}.image.status": "in-progress"}})
+    #     handle_image_step(body)
+    # return
+
+    # PRODUCTION: Use SQS
+    images_sqs_url = settings.AWS_SQS_URL
     if not images_sqs_url:
-        print("⚠️ AWS_IMAGES_SQS_URL not set; skipping enqueue")
+        print("⚠️ AWS_SQS_URL not set; skipping enqueue")
         return
     for i, step in enumerate(steps, start=1):
         sum_text = "Overall summary: " + summary + "\n"
@@ -128,9 +149,19 @@ def lambda_handler(event, context):
 
             print("🔍 Searching for similar projects")
             similar_result = similar_by_project(str(cursor["_id"]))
-            if similar_result:
+            print(f"similar_result: {similar_result}")
+
+            # Check if similar_result has the expected structure
+            if similar_result and "project_id" in similar_result and "best_score" in similar_result:
                 print(
                     f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
+            elif similar_result and "matches" in similar_result:
+                # This is the "collection doesn't exist" case
+                print("🔍 No Qdrant collection found, proceeding with generation from scratch")
+                similar_result = None  # Treat as no matches
+            else:
+                print("🔍 No similar project found, proceeding with generation from scratch")
+                similar_result = None
 
             if similar_result and similar_result["best_score"] >= 0.95:
                 # If we found a highly similar project, we can use it as a reference
@@ -190,8 +221,6 @@ def lambda_handler(event, context):
                 print(f"🔄 FLOW 2: Comparing {len(tools_result['tools'])} generated tools with existing tools")
 
                 try:
-                    # Import comparison functions
-                    from helper import find_similar_tools, update_tool_usage
 
                     enhanced_tools = []
                     reuse_stats = {"reused": 0, "new": 0, "errors": 0}
@@ -258,9 +287,6 @@ def lambda_handler(event, context):
             try:
                 print(f"🔄 FLOW 1: Extracting generated tools to tools_collection")
 
-                # Import extraction functions
-                from helper import store_tool_in_database, create_and_store_tool_embeddings
-
                 saved_tools = []
                 failed_tools = []
 
@@ -296,28 +322,32 @@ def lambda_handler(event, context):
 
             cursor = project_collection.find_one({"_id": ObjectId(project)})
 
+            update_project(str(cursor["_id"]), {"step_generation": {"status": "in progress"}})
+
+            # Initialize steps generation service
+            steps_agent = StepsGenerationAgent()
+            steps_service = StepsGenerationAgentService(steps_agent)
+
+            # Prepare matched data if similarity found
+            matched_summary = None
+            matched_steps = None
             if similar_result and 0.7 <= similar_result["best_score"] < 0.95:
                 print(
                     f"🔍 Steps Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
                 print(f"⚠️ Similarity below threshold for reuse; proceeding with full generation")
                 similar_project = project_collection.find_one({"_id": ObjectId(similar_result["project_id"])})
                 if similar_project:
-                    steps_agent = StepsAgentJSON(new_summary=cursor["summary"],
-                                                 matched_summary=similar_project["summary"],
-                                                 matched_steps=similar_project["step_generation"]["steps"])
-                else:
-                    steps_agent = StepsAgentJSON()
-            else:
-                steps_agent = StepsAgentJSON()
+                    matched_summary = similar_project["summary"]
+                    matched_steps = similar_project["step_generation"].get("steps")
 
-            update_project(str(cursor["_id"]), {"step_generation": {"status": "in progress"}})
-
-            steps_agent = StepsAgentJSON()
-            steps_result = steps_agent.generate(
+            # Generate steps using service
+            steps_result = steps_service.generate_steps(
                 tools=cursor["tool_generation"],
                 summary=cursor["summary"],
                 user_answers=cursor.get("user_answers") or cursor.get("answers"),
-                questions=cursor["questions"]
+                questions=cursor["questions"],
+                matched_summary=matched_summary,
+                matched_steps=matched_steps
             )
 
             if steps_result is None:
@@ -327,18 +357,12 @@ def lambda_handler(event, context):
             youtube_url = get_youtube_link(cursor["summary"])
             steps_result["youtube"] = youtube_url
 
+            update_project(str(cursor["_id"]), {"step_generation": steps_result})
+
             enqueue_image_tasks(project, steps_result["steps"], size="1536x1024", summary=cursor["summary"])
-            # i = 1
-            # for step in steps_result["steps"]:
-            #     # if it's always a list of strings:
-            #     step_text = ", ".join(s for s in step["instructions"] if s and s.strip())
-            #     step["image"] = generate_step_image(str(i), {"step_text": step_text, "project_id": project})
-            #     i += 1
 
             step_meta = {k: v for k, v in steps_result.items() if k != "steps"}
             step_meta["status"] = "complete"
-
-            update_project(str(cursor["_id"]), {"step_generation": steps_result})
 
             for step in steps_result.get("steps", []):
                 step_doc = {
@@ -363,22 +387,6 @@ def lambda_handler(event, context):
                     "updatedAt": datetime.utcnow(),
                 }
                 steps_collection.insert_one(step_doc)
-
-            # for idx, step in enumerate(steps_result.get("steps", []), start=1):
-            #     step_doc = {
-            #         "projectId": ObjectId(str(cursor["_id"])),
-            #         "stepNumber": step.get("order", idx),
-            #         "title": step.get("title", f"Step {idx}"),
-            #         "description": " ".join(step.get("instructions", [])),
-            #         "tools": [],
-            #         "materials": [],
-            #         "images": [],
-            #         "videoTutorialLink": None,
-            #         "referenceLinks": [],
-            #         "completed": False,
-            #         "createdAt": datetime.utcnow(),
-            #     }
-            #     steps_collection.insert_one(step_doc)
 
             print("Steps Generated")
 
@@ -405,10 +413,12 @@ def lambda_handler(event, context):
             update_project(str(cursor["_id"]), {"generation_status": "complete"})
 
             print("✅ project generation complete")
-
+            return None
 
         except Exception as e:
             traceback.print_exc()
+            return None
+    return None
 
 
 def update_project(project_id: str, update_data: dict):
@@ -665,7 +675,7 @@ def _generate_png(prompt: str, size: str, seed: int | None = None) -> bytes:
     aspect = _map_size_to_aspect(size)
 
     resp = client.models.generate_images(
-        model=settings.GEMINI_IMAGE_MODEL,
+        model=settings.GOOGLE_GEMINI_IMAGE_MODEL,
         prompt=prompt,
         config={
             "numberOfImages": 1,

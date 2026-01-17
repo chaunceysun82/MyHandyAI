@@ -1,7 +1,7 @@
 import json
+import os
 # Import tools reuse functions from chatbot
 import sys
-import os
 
 import boto3
 from bson import ObjectId
@@ -77,11 +77,19 @@ async def generate(project):
 
         update_project(str(cursor["_id"]), {"generation_status": "in-progress"})
 
+        # LOCAL TESTING: Comment out SQS and call lambda_handler directly
+        # Uncomment the block below for local testing
+        # from worker.worker_lambda import lambda_handler
+        # mock_event = {"Records": [{"body": json.dumps(message)}]}
+        # mock_context = None
+        # lambda_handler(mock_event, mock_context)
+        # return {"message": "Generation completed (local test)"}
+
+        # PRODUCTION: Use SQS
         sqs.send_message(
-            QueueUrl=settings.SQS_URL,
+            QueueUrl=settings.AWS_SQS_URL,
             MessageBody=json.dumps(message)
         )
-
         return {"message": "Request In progress"}
     except Exception as e:
         print(f"Error triggering generation: {e}")
