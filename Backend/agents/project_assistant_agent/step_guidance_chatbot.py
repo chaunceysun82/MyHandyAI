@@ -36,7 +36,6 @@ class StepGuidanceImageAnalyzer:
     """Analyzes images in the context of step guidance and troubleshooting"""
 
     def __init__(self):
-        settings = get_settings()
         self.api_key = settings.OPENAI_API_KEY
         self.api_url = "https://api.openai.com/v1/chat/completions"
         self.headers = {
