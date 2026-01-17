@@ -487,8 +487,9 @@ export default function ChatWindow({
         console.log("💬 Updated suggested messages:", res.data.suggested_messages);
       }
 
-      if (res.data.current_state === "complete") {
-        // Wait longer for the user to read the final message, then show loading
+      // Check conversation status - if COMPLETED, trigger generation pipeline after delay
+      if (res.data.conversation_status === "COMPLETED") {
+        // Wait 5 seconds for the user to read the final message, then trigger generation
         setTimeout(() => setStatus(true), 5000);
       }
     } catch (err) {
