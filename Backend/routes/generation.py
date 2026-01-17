@@ -10,12 +10,12 @@ from fastapi import APIRouter, HTTPException
 from pymongo.collection import Collection
 from pymongo.database import Database
 
-from project import update_project
+from routes.project import update_project
 from database.mongodb import mongodb
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-router = APIRouter(prefix="/generation", tags=["generation"])
+router = APIRouter(prefix="/generation")
 database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
 steps_collection: Collection = database.get_collection("ProjectSteps")

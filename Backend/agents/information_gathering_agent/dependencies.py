@@ -3,8 +3,9 @@ from typing import Annotated
 from fastapi import Depends
 
 from agents.information_gathering_agent.agent.information_gathering_agent import InformationGatheringAgent
+from agents.information_gathering_agent.services.information_gathering_agent_service import \
+    InformationGatheringAgentService
 from database.mongodb import mongodb, MongoDB
-from agents.information_gathering_agent.services.information_gathering_agent_service import InformationGatheringAgentService
 
 
 # =============================================================================

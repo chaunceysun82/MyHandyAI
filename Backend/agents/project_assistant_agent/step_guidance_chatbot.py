@@ -1,18 +1,20 @@
 # chatbot/step_guidance_chatbot.py
 from __future__ import annotations
 
-import os
-import re
+import base64
 import json
 import math
-import base64
-import requests
+import os
+import re
 from typing import Dict, Any, List, Optional
 
-DEFAULT_MODEL = os.getenv("STEP_GUIDANCE_MODEL", "gpt-5-nano") 
+import requests
+
+DEFAULT_MODEL = os.getenv("STEP_GUIDANCE_MODEL", "gpt-5-nano")
 CLASSIFIER_MODEL = os.getenv("STEP_GUIDANCE_CLASSIFIER_MODEL", "gpt-5-nano")
 MAX_TURNS_IN_CONTEXT = int(os.getenv("STEP_GUIDANCE_MAX_TURNS", "10"))
 MIN_RELEVANCE_TO_ANSWER = float(os.getenv("STEP_GUIDANCE_MIN_REL", "0.35"))  # 0..1
+
 
 def clean_and_parse_json(raw_str: str):
     """
@@ -21,8 +23,8 @@ def clean_and_parse_json(raw_str: str):
     if raw_str is None:
         raise ValueError("No input string")
     s = raw_str.strip()
-    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)           # strip fences
-    m = re.search(r"\{.*\}\s*$", s, flags=re.S)               # grab last JSON object
+    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)  # strip fences
+    m = re.search(r"\{.*\}\s*$", s, flags=re.S)  # grab last JSON object
     if m: s = m.group(0)
     try:
         return json.loads(s)
@@ -32,7 +34,7 @@ def clean_and_parse_json(raw_str: str):
 
 class StepGuidanceImageAnalyzer:
     """Analyzes images in the context of step guidance and troubleshooting"""
-    
+
     def __init__(self):
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.api_url = "https://api.openai.com/v1/chat/completions"
@@ -40,14 +42,14 @@ class StepGuidanceImageAnalyzer:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-    
+
     def analyze_step_image(
-        self,
-        image_data: bytes,
-        current_step: int,
-        step_context: str,
-        problem_summary: str,
-        user_message: str="",
+            self,
+            image_data: bytes,
+            current_step: int,
+            step_context: str,
+            problem_summary: str,
+            user_message: str = "",
     ) -> Dict[str, Any]:
         """
         Analyze image in context of current step for guidance or troubleshooting
@@ -59,9 +61,9 @@ class StepGuidanceImageAnalyzer:
         - next_actions: Suggested next steps
         - safety_notes: Any safety considerations
         """
-        
+
         b64 = base64.b64encode(image_data).decode("utf-8")
-        
+
         system_prompt = f"""You are a helpful DIY step guidance assistant analyzing an image to provide contextual help.
 
 Current Context:
@@ -93,7 +95,8 @@ Return JSON with:
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": f"Step {current_step}: {user_message} analyze the image and provide guidance."},
+                    {"type": "text",
+                     "text": f"Step {current_step}: {user_message} analyze the image and provide guidance."},
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
                 ]
             }
@@ -106,7 +109,7 @@ Return JSON with:
             )
             if r.status_code == 200:
                 result = clean_and_parse_json(r.json()["choices"][0]["message"]["content"])
-                
+
                 # Ensure all expected fields exist and are properly typed
                 result.setdefault("analysis", "I can see your image related to the current step")
                 result.setdefault("guidance", "")
@@ -114,7 +117,7 @@ Return JSON with:
                 result.setdefault("next_actions", [])
                 result.setdefault("safety_notes", [])
                 result.setdefault("progress_assessment", "good")
-                
+
                 # Ensure lists are actually lists
                 for list_field in ["issues_detected", "next_actions", "safety_notes"]:
                     if not isinstance(result[list_field], list):
@@ -122,12 +125,12 @@ Return JSON with:
                             result[list_field] = [result[list_field]] if result[list_field] else []
                         else:
                             result[list_field] = []
-                
+
                 return result
         except Exception as e:
             print(f"Error analyzing step image: {e}")
             pass
-        
+
         return {
             "analysis": "I can see your image related to the current step",
             "guidance": "Based on your image, let me help you with this step.",
@@ -136,6 +139,7 @@ Return JSON with:
             "safety_notes": [],
             "progress_assessment": "good"
         }
+
 
 class StepGuidanceChatbot:
     """
@@ -157,11 +161,11 @@ class StepGuidanceChatbot:
     # ---------- Public API ----------
 
     def start_new_task(
-        self,
-        total_steps: int,
-        steps_data: Dict[int, Dict[str, Any]],
-        tools_data: Optional[Dict[str, Any]] = None,
-        problem_summary: str = "",
+            self,
+            total_steps: int,
+            steps_data: Dict[int, Dict[str, Any]],
+            tools_data: Optional[Dict[str, Any]] = None,
+            problem_summary: str = "",
     ) -> str:
         self.total_steps = max(1, int(total_steps or 1))
         self.steps_data = steps_data or {1: {"title": "Step 1", "instructions": []}}
@@ -215,51 +219,51 @@ class StepGuidanceChatbot:
         else:
             # 4) Standard text-only response
             reply = self._build_standard_response(user_message)
-        
+
         if not reply:
             reply = (
-                "I couldn't reach the model just now. Here's a quick overview of the current step:\n\n"
-                + self._render_step(self.current_step)
+                    "I couldn't reach the model just now. Here's a quick overview of the current step:\n\n"
+                    + self._render_step(self.current_step)
             )
-        
+
         self._remember("assistant", reply)
         return reply
 
     def _build_image_enhanced_response(self, user_message: str, image_analysis: Dict[str, Any]) -> str:
         """Build response that incorporates image analysis with step guidance"""
-        
+
         analysis = image_analysis.get("analysis", "")
         guidance = image_analysis.get("guidance", "")
         issues = image_analysis.get("issues_detected", [])
         next_actions = image_analysis.get("next_actions", [])
         safety_notes = image_analysis.get("safety_notes", [])
         progress = image_analysis.get("progress_assessment", "good")
-        
+
         response_parts = []
-        
+
         # Start with image analysis
         if analysis:
             response_parts.append(f"📸 **Looking at your image:** {analysis}")
-        
+
         # Add guidance
         if guidance:
             response_parts.append(f"**Guidance:** {guidance}")
-        
+
         # Add issues if detected
         if issues:
             issues_text = "\n".join(f"• {issue}" for issue in issues)
             response_parts.append(f"⚠️ **Issues noticed:**\n{issues_text}")
-        
+
         # Add safety notes if any
         if safety_notes:
             safety_text = "\n".join(f"• {note}" for note in safety_notes)
             response_parts.append(f"🔒 **Safety reminders:**\n{safety_text}")
-        
+
         # Add next actions
         if next_actions:
             actions_text = "\n".join(f"• {action}" for action in next_actions)
             response_parts.append(f"👉 **Next steps:**\n{actions_text}")
-        
+
         # Add progress assessment
         if progress == "problematic":
             response_parts.append("🔴 **Status:** This needs attention before proceeding.")
@@ -267,20 +271,20 @@ class StepGuidanceChatbot:
             response_parts.append("🟡 **Status:** You're on track, but double-check a few things.")
         else:
             response_parts.append("✅ **Status:** Looking good!")
-        
+
         # Ask if user has more questions
         response_parts.append("Any other questions about this step?")
-        
+
         return "\n\n".join(response_parts)
-    
+
     def _build_standard_response(self, user_message: str) -> str:
         """Build standard text-only response using the LLM"""
-        
+
         # Build messages for the main model (original logic)
         system = self._build_system_prompt()
         guide_context = self._build_guide_context_block(self.current_step)
         step_context = self._build_step_context_block(self.current_step)
-        
+
         messages = [
             {"role": "system", "content": system},
             {"role": "system", "content": guide_context},
@@ -289,7 +293,7 @@ class StepGuidanceChatbot:
         for turn in self.history[-MAX_TURNS_IN_CONTEXT:]:
             messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": user_message})
-        
+
         return self._call_llm(messages, model=DEFAULT_MODEL)
 
     # ---------- Prompt Builders ----------
@@ -313,13 +317,13 @@ class StepGuidanceChatbot:
         try:
             tools = (self.tools_data or {}).get("tools") or []
             for t in tools:
-                tools_brief += "\n- "+t.get("name","")
-                if step==0:
-                    tools_brief +="\ndescription: "+ t.get("description","")
-                    tools_brief +="\nprice: "+ t.get("price","")
-                    tools_brief +="\nrisk_factors: "+ t.get("risk_factors","")
-                    tools_brief +="\nsafety_measures: "+ t.get("safety_measures","")
-                    
+                tools_brief += "\n- " + t.get("name", "")
+                if step == 0:
+                    tools_brief += "\ndescription: " + t.get("description", "")
+                    tools_brief += "\nprice: " + t.get("price", "")
+                    tools_brief += "\nrisk_factors: " + t.get("risk_factors", "")
+                    tools_brief += "\nsafety_measures: " + t.get("safety_measures", "")
+
         except Exception:
             pass
 
@@ -333,20 +337,20 @@ class StepGuidanceChatbot:
         return "GUIDE OVERVIEW\n" + "\n".join(parts)
 
     def _build_step_context_block(self, step_idx: int) -> str:
-        if step_idx <0:
+        if step_idx < 0:
             steps_brief = ""
             try:
                 for step_num, step in self.steps_data.items():
                     steps_brief += (step or {}).get("title") or ""
             except Exception:
                 pass
-        
-        if step_idx == 0:  
-            pass  
-        
-        if (step_idx>0):
-            step_idx=step_idx-1
-            
+
+        if step_idx == 0:
+            pass
+
+        if (step_idx > 0):
+            step_idx = step_idx - 1
+
         step = self.steps_data.get(step_idx, {})
         title = step.get("title", f"Step {step_idx}")
         instr = step.get("instructions") or []
@@ -465,11 +469,13 @@ class StepGuidanceChatbot:
             "Given the user's question and the project context, answer with exactly one label:\n"
             "relevant, not_relevant, or uncertain."
         )
-        ctx = self._build_guide_context_block(self.current_step) + "\n" + self._build_step_context_block(self.current_step)
+        ctx = self._build_guide_context_block(self.current_step) + "\n" + self._build_step_context_block(
+            self.current_step)
         messages = [
             {"role": "system", "content": system},
             {"role": "system", "content": ctx},
-            {"role": "user", "content": f"Is this question relevant to the current step?\nQ: {user_message}\nAnswer with one word."},
+            {"role": "user",
+             "content": f"Is this question relevant to the current step?\nQ: {user_message}\nAnswer with one word."},
         ]
         out = self._call_llm(messages, model=CLASSIFIER_MODEL)
         label = (out or "").strip().lower()
@@ -497,12 +503,12 @@ class StepGuidanceChatbot:
         """
         Responses API preferred; fallback to Chat Completions. No client stored on self.
         """
-        
-        print ("reach call_llm")
+
+        print("reach call_llm")
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             return ""
-        print ("api_key: ", api_key)
+        print("api_key: ", api_key)
         # Try Responses API
         try:
             from openai import OpenAI
@@ -510,8 +516,8 @@ class StepGuidanceChatbot:
             resp = client.responses.create(
                 model=model,
                 input=messages,
-                reasoning={ "effort": "low" },
-                text={ "verbosity": "low" }
+                reasoning={"effort": "low"},
+                text={"verbosity": "low"}
             )
             try:
                 print("🔎 Raw response:", json.dumps(resp.model_dump(), indent=2))
@@ -531,8 +537,8 @@ class StepGuidanceChatbot:
             chat = client.chat.completions.create(
                 model=model,
                 messages=messages,
-                reasoning={ "effort": "low" },
-                text={ "verbosity": "low" }
+                reasoning={"effort": "low"},
+                text={"verbosity": "low"}
             )
             return (chat.choices[0].message.content or "").strip()
         except Exception:

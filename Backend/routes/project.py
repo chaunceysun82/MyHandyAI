@@ -9,10 +9,6 @@ from pymongo.database import Database
 
 from database.mongodb import mongodb
 
-# from qdrant_client import QdrantClient
-# from qdrant_client.http.models import Filter, FieldCondition, MatchValue
-# from qdrant_client.http import models
-
 router = APIRouter()
 database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
@@ -23,34 +19,6 @@ steps_collection: Collection = database.get_collection("ProjectSteps")
 class Project(BaseModel):
     projectTitle: str
     userId: str
-
-
-# def fetch_all_points_client(url, api_key, collection_name, limit=500):
-#     client = QdrantClient(url=url, api_key=api_key)
-#     all_points = []
-#     offset = None
-
-#     while True:
-#         response = client.scroll(
-#             collection_name=collection_name,
-#             limit=limit,
-#             offset=offset,
-#             with_payload=True,
-#             with_vectors=False, 
-#         )
-
-#         if isinstance(response, tuple) and len(response) == 2:
-#             pts, next_offset = response
-#         else:
-#             pts = response
-#             next_offset = None
-
-#         all_points.extend(pts)
-#         if not next_offset:
-#             break
-#         offset = next_offset
-
-#     return all_points
 
 @router.post("/projects")
 def create_project(project: Project):
@@ -124,47 +92,11 @@ def delete_project(project_id: str):
     conversations_collection.delete_many({"projectId": project_obj_id})
     conversations_collection.delete_many({"project": str(project_obj_id)})
 
-    # client_points = fetch_all_points_client(
-    #     os.getenv("QDRANT_URL"), 
-    #     os.getenv("QDRANT_API_KEY"), 
-    #     "projects"
-    # )
 
-    # # Find points with the matching project ID
-    # points_to_delete = []
-    # for point in client_points:
-    #     if point.payload and 'project' in point.payload and point.payload['project'] == project_id:
-    #         points_to_delete.append(point.id)
-
-    # # Delete the points if found
-    # if points_to_delete:
-    #     client = QdrantClient(url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"))
-    #     response = client.delete(
-    #         collection_name="projects",
-    #         points_selector=models.PointIdsList(points=points_to_delete),
-    #         wait=True
-    #     )
     return {
         "message": "Project, associated conversations, and Qdrant embeddings deleted successfully",
         "project_id": project_id
     }
-    # else:
-    #     print(f"Warning: failed to delete Qdrant points for project {project_id}")
-    #     return {
-    #         "message": "Project and conversations deleted from MongoDB. Failed to delete Qdrant embeddings (see server logs).",
-    #         "project_id": project_id
-    #     }
-
-
-# @router.put("/complete-step/{project_id}/{step_number}")
-# def complete_step(project_id: str, step_number: int):
-#     result = steps_collection.update_one(
-#         {"projectId": ObjectId(project_id), "stepNumber": step_number},
-#         {"$set": {"completed": True}}
-#     )
-#     if result.matched_count == 0:
-#         raise HTTPException(status_code=404, detail="Step not found")
-#     return {"message": "Step updated", "modified": bool(result.modified_count)}
 
 @router.put("/complete-step/{project_id}/{step}")
 def complete_step(project_id: str, step: int):
