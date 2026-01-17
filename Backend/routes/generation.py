@@ -2,7 +2,6 @@ import json
 import os
 # Import tools reuse functions from chatbot
 import sys
-from datetime import datetime
 
 import boto3
 from bson import ObjectId
@@ -10,12 +9,16 @@ from fastapi import APIRouter, HTTPException
 from pymongo.collection import Collection
 from pymongo.database import Database
 
-from routes.project import update_project
 from database.mongodb import mongodb
+from routes.project import update_project
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 router = APIRouter(prefix="/generation")
+AWS_REGION = "us-east-2"
+sqs = boto3.client("sqs",
+                   aws_access_key_id=None,
+                   aws_secret_access_key=None, region_name=AWS_REGION)
 database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
 steps_collection: Collection = database.get_collection("ProjectSteps")
@@ -54,7 +57,6 @@ async def get_generated_estimation(project_id: str):
     return {"project_id": project_id, "estimation_data": doc["estimation_generation"]}
 
 
-
 @router.post("/all/{project}")
 async def generate(project):
     try:
@@ -62,8 +64,6 @@ async def generate(project):
         if not cursor:
             print("Project not found")
             return {"message": "Project not found"}
-
-        sqs = boto3.client("sqs")
         message = {
             "project": project
         }
@@ -76,7 +76,8 @@ async def generate(project):
         )
 
         return {"message": "Request In progress"}
-    except:
+    except Exception as e:
+        print(f"Error triggering generation: {e}")
         return {"message": "Request could not be processed"}
 
 
@@ -118,4 +119,3 @@ async def status(project):
                 "estimation": estimation}
 
     return {"message": "Something went wrong"}
-
