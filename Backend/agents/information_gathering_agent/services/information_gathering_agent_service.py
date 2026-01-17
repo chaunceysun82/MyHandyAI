@@ -7,7 +7,7 @@ from loguru import logger
 from pymongo.collection import Collection
 
 from agents.information_gathering_agent.agent.information_gathering_agent import InformationGatheringAgent
-from database.enums.information_gathering_agent import InformationGatheringConversationStatus
+from database.enums.project import InformationGatheringConversationStatus
 from database.mongodb import MongoDB
 
 

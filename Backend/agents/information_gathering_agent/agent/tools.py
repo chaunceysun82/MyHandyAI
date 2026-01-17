@@ -6,7 +6,7 @@ from pymongo.collection import Collection
 from pymongo.database import Database
 
 from agents.information_gathering_agent.agent.utils import extract_qa_pairs_from_messages
-from database.enums.information_gathering_agent import InformationGatheringConversationStatus
+from database.enums.project import InformationGatheringConversationStatus
 from database.mongodb import mongodb
 
 database: Database = mongodb.get_database()
