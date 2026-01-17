@@ -6,6 +6,7 @@ from pymongo.collection import Collection
 from pymongo.database import Database
 
 from agents.information_gathering_agent.agent.utils import extract_qa_pairs_from_messages
+from database.enums.information_gathering_agent import InformationGatheringConversationStatus
 from database.mongodb import mongodb
 
 database: Database = mongodb.get_database()
@@ -43,18 +44,19 @@ def store_home_issue(
 
     if project_id:
         try:
-            # Store initial data in project
+            # Store initial data in project and update status to IN_PROGRESS
             update_data = {
                 "category": category,
                 "issue": issue,
                 "user_description": user_description,
-                "information_gathering_plan": information_gathering_plan
+                "information_gathering_plan": information_gathering_plan,
+                "information_gathering_conversation_status": InformationGatheringConversationStatus.IN_PROGRESS.value
             }
             project_collection.update_one(
                 {"_id": ObjectId(project_id)},
                 {"$set": update_data}
             )
-            logger.info(f"Stored home issue data in project {project_id}")
+            logger.info(f"Stored home issue data in project {project_id} and set status to IN_PROGRESS")
         except Exception as e:
             logger.error(f"Error storing home issue data: {e}")
 
@@ -111,7 +113,8 @@ def store_summary(
             "questions": questions if questions else [],
             "answers": answers if answers else {},  # Primary field (old system format)
             "user_answers": answers if answers else {},  # Alternative field name (generation code fallback)
-            "image_analysis": image_analysis or ""  # Default empty string if no image analysis
+            "image_analysis": image_analysis or "",  # Default empty string if no image analysis
+            "information_gathering_conversation_status": InformationGatheringConversationStatus.COMPLETED.value
         }
 
         # Update project with all collected data
@@ -123,7 +126,7 @@ def store_summary(
         if result.matched_count == 0:
             logger.warning(f"Project {project_id} not found, could not save summary")
         else:
-            logger.info(f"Successfully saved summary and Q&A data to project {project_id}")
+            logger.info(f"Successfully saved summary and Q&A data to project {project_id} and set status to COMPLETED")
 
     except Exception as e:
         logger.error(f"Error storing summary data: {e}")

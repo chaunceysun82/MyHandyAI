@@ -20,17 +20,13 @@ async def initialize_conversation(
     """Initialize a new conversation with the information gathering agent."""
     logger.info(f"initialize_conversation called for project_id: {request.project_id}")
 
-    thread_id, initial_message = orchestrator.initialize_conversation(project_id=request.project_id)
-
-    orchestrator.project_collection.update_one(
-        {"project_id": request.project_id},
-        {"$set": {"thread_id": str(thread_id)}},
-        upsert=True
-    )
+    thread_id, initial_message, conversation_status = orchestrator.initialize_conversation(
+        project_id=request.project_id)
 
     return InitializeConversationResponse(
         thread_id=thread_id,
-        initial_message=initial_message
+        initial_message=initial_message,
+        conversation_status=conversation_status
     )
 
 
@@ -43,7 +39,7 @@ async def chat(
     """Send a chat message to the information gathering agent."""
     logger.info(f"chat called with thread_id: {thread_id}, project_id: {request.project_id}")
 
-    agent_response = orchestrator.process_message(
+    agent_response, conversation_status = orchestrator.process_message(
         thread_id=thread_id,
         project_id=request.project_id,
         text=request.text,
@@ -53,7 +49,8 @@ async def chat(
 
     return ChatMessageResponse(
         thread_id=thread_id,
-        agent_response=agent_response
+        agent_response=agent_response,
+        conversation_status=conversation_status
     )
 
 
