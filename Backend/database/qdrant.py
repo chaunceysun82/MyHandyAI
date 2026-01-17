@@ -2,7 +2,6 @@
 Qdrant vector database operations.
 Centralized Qdrant client and operations for embeddings and vector search.
 """
-import os
 import uuid
 from typing import List, Any, Optional
 
@@ -10,6 +9,10 @@ from openai import OpenAI
 from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import PointStruct, VectorParams, Distance
+
+from config.settings import get_settings
+
+settings = get_settings()
 
 # Initialize OpenAI client for embeddings
 _client: Optional[OpenAI] = None
@@ -20,7 +23,7 @@ def _get_openai_client() -> OpenAI:
     """Get or create OpenAI client for embeddings."""
     global _client
     if _client is None:
-        _client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        _client = OpenAI(api_key=settings.OPENAI_API_KEY)
     return _client
 
 
@@ -28,8 +31,8 @@ def get_qdrant_client() -> QdrantClient:
     """Get or create Qdrant client instance."""
     global _qdrant_client
     if _qdrant_client is None:
-        qdrant_url = os.getenv("QDRANT_URL")
-        qdrant_api_key = os.getenv("QDRANT_API_KEY")
+        qdrant_url = settings.QDRANT_URL
+        qdrant_api_key = settings.QDRANT_API_KEY
 
         if not qdrant_url or not qdrant_api_key:
             raise RuntimeError("QDRANT_URL and QDRANT_API_KEY must be set in env")

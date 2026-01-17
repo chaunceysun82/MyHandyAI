@@ -2,15 +2,17 @@
 Utility functions for tool management and Qdrant operations.
 Extracted from routes/chatbot.py to avoid dependencies on deprecated code.
 """
-import os
 from datetime import datetime
 from typing import List, Dict, Any
 
 from bson import ObjectId
 from fastapi import HTTPException
 
+from config.settings import get_settings
 from database.mongodb import mongodb
 from database.qdrant import create_embeddings_for_texts, upsert_embeddings_to_qdrant, search_similar_vectors
+
+settings = get_settings()
 
 # Initialize database connections
 database = mongodb.get_database()
@@ -88,7 +90,7 @@ def create_and_store_tool_embeddings(tool_data: Dict[str, Any], tool_id: str):
 
     # Generate embedding
     embedding = create_embeddings_for_texts([tool_text],
-                                            model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
+                                            model=settings.OPENAI_EMBEDDING_MODEL)
 
     if not embedding:
         return {"status": "embedding_failed"}
@@ -130,7 +132,7 @@ def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float =
     """
     # Generate embedding for the query
     query_embedding = create_embeddings_for_texts([query],
-                                                  model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
+                                                  model=settings.OPENAI_EMBEDDING_MODEL)
 
     if not query_embedding:
         return []

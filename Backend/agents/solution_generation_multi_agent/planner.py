@@ -1,5 +1,4 @@
 import json
-import os
 import re
 import time
 from typing import List, Dict, Any, Optional
@@ -11,6 +10,10 @@ from pydantic import BaseModel, Field, ValidationError
 from serpapi.google_search import GoogleSearch
 
 load_dotenv()
+
+from config.settings import get_settings
+
+settings = get_settings()
 
 # Import prompts from prompt templates
 from agents.solution_generation_multi_agent.prompt_templates.v1.tools_generation_agent import GENERATION_TOOLS_PROMPT
@@ -104,8 +107,8 @@ Project summary:
             matched_tools: Optional[Any] = None,
             matched_steps: Optional[Any] = None,
     ) -> None:
-        self.serpapi_api_key = serpapi_api_key or os.getenv("SERPAPI_API_KEY")
-        self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+        self.serpapi_api_key = serpapi_api_key or settings.SERPAPI_API_KEY
+        self.openai_api_key = openai_api_key or settings.OPENAI_API_KEY
         if not self.openai_api_key:
             raise RuntimeError("OPENAI API key required")
 
@@ -351,7 +354,7 @@ Project summary:
 class StepsAgentJSON:
     def __init__(self, new_summary: Optional[str] = None, matched_summary: Optional[str] = None,
                  matched_tools: Optional[Any] = None, matched_steps: Optional[Any] = None):
-        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_key = settings.OPENAI_API_KEY
         self.api_url = "https://api.openai.com/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -762,7 +765,7 @@ class EstimationAgent:
     """Agent for generating cost and time estimations"""
 
     def __init__(self):
-        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_key = settings.OPENAI_API_KEY
         self.api_url = "https://api.openai.com/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
