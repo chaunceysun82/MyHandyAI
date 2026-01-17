@@ -11,7 +11,7 @@ from pymongo.database import Database
 
 from database.mongodb import mongodb
 
-router = APIRouter(tags=["feedback"])
+router = APIRouter()
 
 database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")

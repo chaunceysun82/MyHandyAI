@@ -21,7 +21,7 @@ from database.mongodb import mongodb
 from pymongo.database import Database
 from pymongo.collection import Collection
 
-router = APIRouter(prefix="/step-guidance", tags=["step-guidance"])
+router = APIRouter(prefix="/step-guidance")
 database: Database = mongodb.get_database()
 conversations_step_collection: Collection = database.get_collection("StepConversations")
 project_collection: Collection = database.get_collection("Project")

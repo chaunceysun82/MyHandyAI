@@ -18,7 +18,7 @@ from pymongo.database import Database
 
 from database.mongodb import mongodb
 from helper import similar_by_project
-from planner import ToolsAgent, StepsAgentJSON, EstimationAgent
+from agents.solution_generation_multi_agent.planner import ToolsAgent, StepsAgentJSON, EstimationAgent
 
 SQS_URL = os.getenv("IMAGES_SQS_URL")
 api_key = os.getenv("GOOGLE_API_KEY")

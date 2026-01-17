@@ -1,33 +1,25 @@
+import json
 import os
 import re
-import json
-import requests
 import time
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field, ValidationError
-from fastapi import HTTPException
-from serpapi.google_search import GoogleSearch
+
+import requests
 from dotenv import load_dotenv
+from fastapi import HTTPException
+from pydantic import BaseModel, Field, ValidationError
+from serpapi.google_search import GoogleSearch
 
 load_dotenv()
 
+# Import prompts from prompt templates
+from agents.solution_generation_multi_agent.prompt_templates.v1.tools_generation_agent import GENERATION_TOOLS_PROMPT
+from agents.solution_generation_multi_agent.prompt_templates.v1.steps_generation_agent import GENERATION_STEPS_PROMPT
+from agents.solution_generation_multi_agent.prompt_templates.v1.estimation_generation_agent import \
+    GENERATION_ASSESS_COMPLEXITY_PROMPT
+
+
 # utility functions
-def load_prompt(filename):
-    """Load prompt from file, removing comment lines starting with #"""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(script_dir, "./prompts", filename)
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-        
-        return "".join(line for line in lines if not line.strip().startswith("#"))
-    except FileNotFoundError:
-        print(f"❌ Could not find prompt file: {path}")
-        return f"Error: Could not load {filename}"
-    except Exception as e:
-        print(f"❌ Error loading prompt file {filename}: {e}")
-        return f"Error: Could not load {filename}"
-    
 def minutes_to_human(minutes: int) -> str:
     """Convert integer minutes to 'X hr Y min' or 'Y min'."""
     if minutes is None:
@@ -45,17 +37,18 @@ def minutes_to_human(minutes: int) -> str:
         return f"{hrs} hr"
     return f"{mins} min"
 
-tools_prompt_text = load_prompt("generation_tools_prompt.txt")
-steps_prompt_text = load_prompt("generation_steps_prompt.txt")
-fallback_tools_text = load_prompt("generation_fallback_tools_prompt.txt")
-assess_complexity_text = load_prompt("generation_assess_complexity_prompt.txt")
+
+# Prompt constants imported from prompt_templates
+tools_prompt_text = GENERATION_TOOLS_PROMPT
+steps_prompt_text = GENERATION_STEPS_PROMPT
+assess_complexity_text = GENERATION_ASSESS_COMPLEXITY_PROMPT
 
 
 class Step(BaseModel):
     step_no: int = Field(..., alias="Step No.")
     step_title: str = Field(..., alias="Step Title")
-    time: int = Field(..., alias="Time")          
-    time_text: str = Field(..., alias="TimeText") 
+    time: int = Field(..., alias="Time")
+    time_text: str = Field(..., alias="TimeText")
     instructions: List[str] = Field(..., alias="Instructions")
     tools_needed: List[str] = Field(default=[], alias="Tools Needed")
     safety_warnings: List[str] = Field(default=[], alias="Safety Warnings")
@@ -64,17 +57,19 @@ class Step(BaseModel):
 
 class StepsPlan(BaseModel):
     total_steps: int
-    estimated_time: int = 0   
+    estimated_time: int = 0
     steps: List[Step]
 
 
 class LLMTool(BaseModel):
-    name: str=Field(description="Name of the recommended tool or material")
-    description: str=Field(description="A small 1-2 lines description for why and how to use the tool for the conditions provided. Also provide the required dimension if needed like radius, height, length, head type, etc")
-    price: float=Field(description="Estimated price of the tool or material in Dollar")
-    risk_factors: str=Field(description="Possible risk factors of using the tool or material")
-    safety_measures: str=Field(description="Safety Measures needed to follow to use the tool or material")
-    image_link: Optional[str]=None
+    name: str = Field(description="Name of the recommended tool or material")
+    description: str = Field(
+        description="A small 1-2 lines description for why and how to use the tool for the conditions provided. Also provide the required dimension if needed like radius, height, length, head type, etc")
+    price: float = Field(description="Estimated price of the tool or material in Dollar")
+    risk_factors: str = Field(description="Possible risk factors of using the tool or material")
+    safety_measures: str = Field(description="Safety Measures needed to follow to use the tool or material")
+    image_link: Optional[str] = None
+
 
 class ToolsLLM(BaseModel):
     tools: List[LLMTool] = Field(description="List of Recommended Tools and materials. LLM chooses the length")
@@ -97,17 +92,17 @@ Project summary:
 """
 
     def __init__(
-        self,
-        serpapi_api_key: Optional[str] = None,
-        openai_api_key: Optional[str] = None,
-        openai_model: str = "gpt-5-mini",
-        amazon_affiliate_tag: str = "myhandyai-20",
-        openai_base_url: str = "https://api.openai.com/v1",
-        timeout: int = 90,
-        new_summary: Optional[str] = None,
-        matched_summary: Optional[str] = None,
-        matched_tools: Optional[Any] = None,
-        matched_steps: Optional[Any] = None,
+            self,
+            serpapi_api_key: Optional[str] = None,
+            openai_api_key: Optional[str] = None,
+            openai_model: str = "gpt-5-mini",
+            amazon_affiliate_tag: str = "myhandyai-20",
+            openai_base_url: str = "https://api.openai.com/v1",
+            timeout: int = 90,
+            new_summary: Optional[str] = None,
+            matched_summary: Optional[str] = None,
+            matched_tools: Optional[Any] = None,
+            matched_steps: Optional[Any] = None,
     ) -> None:
         self.serpapi_api_key = serpapi_api_key or os.getenv("SERPAPI_API_KEY")
         self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
@@ -122,7 +117,7 @@ Project summary:
         self.matched_summary = matched_summary
         self.matched_tools = matched_tools
         self.matched_steps = matched_steps
-        
+
         self._schema = {
             "type": "object",
             "additionalProperties": False,
@@ -187,7 +182,7 @@ Project summary:
         s = re.sub(r"[^A-Za-z0-9\s+\-]", "", s)
         s = s.strip().replace(" ", "+")
         return s
-    
+
     def _post_openai(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         url = f"{self.base_url}/responses"
         headers = {
@@ -314,7 +309,7 @@ Project summary:
                     "strict": True,
                     "schema": self._schema,
                 },
-                
+
             }
         }
 
@@ -322,11 +317,11 @@ Project summary:
         print(resp)
         raw_text = self._extract_output_text(resp)
         print(raw_text)
-        
+
         try:
             parsed_obj = ToolsLLM(**json.loads(raw_text))
             print(parsed_obj)
-            
+
         except Exception as e:
             # Surface what the model returned to help debugging
             raise ValidationError([e], ToolsLLM)  # or raise RuntimeError(f"Schema parse error: {e}\nRAW: {raw_text}")
@@ -350,11 +345,12 @@ Project summary:
         if include_json:
             out["json"] = json.dumps(tools_list, indent=4)
 
-        return {"tools":out["tools"]}
+        return {"tools": out["tools"]}
 
 
 class StepsAgentJSON:
-    def __init__(self, new_summary: Optional[str] = None, matched_summary: Optional[str] = None, matched_tools: Optional[Any] = None, matched_steps: Optional[Any] = None):
+    def __init__(self, new_summary: Optional[str] = None, matched_summary: Optional[str] = None,
+                 matched_tools: Optional[Any] = None, matched_steps: Optional[Any] = None):
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.api_url = "https://api.openai.com/v1/chat/completions"
         self.headers = {
@@ -365,7 +361,6 @@ class StepsAgentJSON:
         self.matched_summary = matched_summary
         self.matched_tools = matched_tools
         self.matched_steps = matched_steps
-
 
     def _parse_list_items(self, text: str) -> List[str]:
         """
@@ -461,7 +456,8 @@ class StepsAgentJSON:
                 b = value_to_minutes(b, unit)
             return int(round((a + b) / 2.0))
 
-        composite_match = re.search(r"(?:(\d+(?:\.\d+)?)\s*(hours?|hrs?|h))?.*?(?:(\d+(?:\.\d+)?)\s*(minutes?|mins?|m))?", s)
+        composite_match = re.search(
+            r"(?:(\d+(?:\.\d+)?)\s*(hours?|hrs?|h))?.*?(?:(\d+(?:\.\d+)?)\s*(minutes?|mins?|m))?", s)
         if composite_match and (composite_match.group(1) or composite_match.group(3)):
             hours = float(composite_match.group(1)) if composite_match.group(1) else 0.0
             minutes = float(composite_match.group(3)) if composite_match.group(3) else 0.0
@@ -492,7 +488,7 @@ class StepsAgentJSON:
         """Parse step-by-step plan text into structured data with robust error handling"""
         if not text or not text.strip():
             raise ValueError("Empty or invalid text provided for parsing")
-        
+
         # Parse header information
         total_steps = None
         estimated_time_minutes = 0
@@ -531,37 +527,37 @@ class StepsAgentJSON:
                 if no <= 0:
                     print(f"Warning: Invalid step number {no}, skipping")
                     continue
-                
+
                 # Parse and validate title
                 title = m.group("title").strip()
                 if not title:
                     print(f"Warning: Empty title for step {no}, skipping")
                     continue
-                
+
                 # Parse and validate time
                 time_text = m.group("time").strip()
                 time_mins = self._parse_time_to_minutes(time_text)
                 if time_mins <= 0:
                     print(f"Warning: Invalid time for step {no}: {time_text}")
                     time_mins = 10  # Default to 10 minutes
-                
+
                 # Parse the new fields and convert them to lists
                 instructions_text = m.group("instructions").strip()
                 tools_text = m.group("tools").strip()
                 safety_text = m.group("safety").strip()
                 tips_text = m.group("tips").strip()
-                
+
                 # Convert text to lists using the helper method
                 instructions = self._parse_list_items(instructions_text)
                 tools_needed = self._parse_list_items(tools_text)
                 safety_warnings = self._parse_list_items(safety_text)
                 tips = self._parse_list_items(tips_text)
-                
+
                 # Validate that instructions are not empty
                 if not instructions:
                     print(f"Warning: No instructions found for step {no}, using title as instruction")
                     instructions = [title]
-                
+
                 steps.append(Step(**{
                     "Step No.": no,
                     "Step Title": title,
@@ -572,7 +568,7 @@ class StepsAgentJSON:
                     "Safety Warnings": safety_warnings,
                     "Tips": tips
                 }))
-                
+
             except Exception as e:
                 print(f"Warning: Error parsing step {m.group('no') if m.group('no') else 'unknown'}: {str(e)}")
                 continue
@@ -580,19 +576,19 @@ class StepsAgentJSON:
         # Validate that we found at least one step
         if not steps:
             raise ValueError("No valid steps could be parsed from the text")
-        
+
         # Set defaults if not found in header
         if total_steps is None:
             total_steps = len(steps)
-        
+
         if estimated_time_minutes == 0:
             estimated_time_minutes = sum(s.time for s in steps)
-        
+
         # Validate final data
         if total_steps != len(steps):
             print(f"Warning: Header shows {total_steps} steps but parsed {len(steps)} steps")
             total_steps = len(steps)
-        
+
         if estimated_time_minutes <= 0:
             print(f"Warning: Invalid total time {estimated_time_minutes}, using sum of step times")
             estimated_time_minutes = sum(s.time for s in steps)
@@ -610,7 +606,8 @@ class StepsAgentJSON:
         else:
             return "Complex"
 
-    def generate(self, tools, summary: str, user_answers: Dict[int, str] = None, questions: List[str] = None) -> Dict[str, Any]:
+    def generate(self, tools, summary: str, user_answers: Dict[int, str] = None, questions: List[str] = None) -> Dict[
+        str, Any]:
         """
         Generate step-by-step plan in JSON format.
         Returns a dictionary with steps array and time estimation.
@@ -622,17 +619,17 @@ class StepsAgentJSON:
 
         if tools:
             for tool in tools["tools"]:
-                tools_context += tool["name"]+"\n"
-                tools_context += tool["description"]+"\n"
-                tools_context += tool["risk_factors"]+"\n"
-                tools_context += tool["safety_measures"]+"\n"
-            tools_context +="\n"
+                tools_context += tool["name"] + "\n"
+                tools_context += tool["description"] + "\n"
+                tools_context += tool["risk_factors"] + "\n"
+                tools_context += tool["safety_measures"] + "\n"
+            tools_context += "\n"
 
         if user_answers and questions:
             # Add user answers to the context
             answers_context = "\n\nUser's Answers to Questions:\n"
             skipped_questions = []
-            
+
             for k, answer in (user_answers or {}).items():
                 try:
                     idx = int(k)
@@ -642,14 +639,14 @@ class StepsAgentJSON:
                     question = questions[idx]
                     if answer.lower() == "skipped":
                         skipped_questions.append((idx, question))
-                        answers_context += f"Q{idx+1}: {question} - SKIPPED (will consider all possibilities)\n"
+                        answers_context += f"Q{idx + 1}: {question} - SKIPPED (will consider all possibilities)\n"
                     else:
-                        answers_context += f"Q{idx+1}: {question} - {answer}\n"
-            
+                        answers_context += f"Q{idx + 1}: {question} - {answer}\n"
+
             # Add instructions for handling skipped questions
             if skipped_questions:
                 answers_context += "\n\nFor skipped questions, consider all reasonable possibilities and provide steps that cover different scenarios.\n"
-            
+
             enhanced_context += answers_context
             enhanced_context += tools_context
 
@@ -674,7 +671,7 @@ class StepsAgentJSON:
         if self.matched_summary:
             adaptation_instructions += f"\n\nMatched Summary:\n{self.matched_summary}\n"
 
-        # Use the prompt from text file
+        # Use the prompt from prompt templates
         base_prompt = steps_prompt_text + adaptation_instructions
 
         messages = [
@@ -690,13 +687,13 @@ class StepsAgentJSON:
                 "max_completion_tokens": 3000,
                 "reasoning_effort": "low"
             }
-            
+
             r = requests.post(self.api_url, headers=self.headers, json=payload)
             if r.status_code == 200:
                 print(r.json())
                 content = r.json()["choices"][0]["message"]["content"].strip()
                 print(f"✅ LLM Response received, length: {len(content)} characters")
-                
+
                 try:
                     print(content)
                     steps_plan = self._parse_steps_text(content)
@@ -712,7 +709,7 @@ class StepsAgentJSON:
                 print(f"❌ API Error {r.status_code}")
                 print(f"Response: {r.text}")
                 raise HTTPException(status_code=r.status_code, detail=f"LLM API error: {r.status_code}")
-                
+
         except requests.exceptions.Timeout:
             print("❌ Request timeout")
             raise HTTPException(status_code=500, detail="LLM request timed out")
@@ -737,9 +734,9 @@ class StepsAgentJSON:
                 "tools_needed": step.tools_needed,
                 "safety_warnings": step.safety_warnings,
                 "tips": step.tips,
-                "completed":False
+                "completed": False
             })
-        
+
         # Generate project summary card
         project_summary = {
             "step_count": f"Step {1}/{steps_plan.total_steps}",
@@ -747,7 +744,7 @@ class StepsAgentJSON:
             "status": "Ongoing",
             "complexity": self._assess_complexity(steps_plan.estimated_time, steps_plan.total_steps)
         }
-        
+
         return {
             "steps": steps_json,
             "total_est_time_min": steps_plan.estimated_time,
@@ -763,7 +760,7 @@ class StepsAgentJSON:
 
 class EstimationAgent:
     """Agent for generating cost and time estimations"""
-    
+
     def __init__(self):
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.api_url = "https://api.openai.com/v1/chat/completions"
@@ -772,19 +769,20 @@ class EstimationAgent:
             "Content-Type": "application/json",
         }
 
-    def generate_estimation(self, tools_data: Dict[str, Any], steps_data: Dict[str, Any], summary: str) -> Dict[str, Any]:
+    def generate_estimation(self, tools_data: Dict[str, Any], steps_data: Dict[str, Any], summary: str) -> Dict[
+        str, Any]:
         """
         Generate comprehensive estimation including cost and time breakdown.
         Returns JSON with cost estimates, time estimates, and step-by-step breakdown.
         """
-        
+
         if "tools" in tools_data:
             total_cost = sum(tool["price"] for tool in tools_data["tools"])
         else:
             total_cost = 0
-            
+
         total_time = steps_data.get("total_est_time_min", 0)
-        
+
         # Generate step-by-step time breakdown
         step_breakdown = []
         for step in steps_data.get("steps", []):
@@ -794,7 +792,7 @@ class EstimationAgent:
                 "estimated_time_min": step.get("est_time_min", 0),
                 "time_text": step.get("time_text", "")
             })
-        
+
         estimation_data = {
             "total_estimated_cost": {
                 "amount": total_cost,
@@ -810,20 +808,21 @@ class EstimationAgent:
                 "complexity_level": self._assess_complexity(total_time, len(step_breakdown), steps_data, summary)
             }
         }
-        
+
         return estimation_data
 
     def _assess_complexity(self, total_time: int, total_steps: int, steps_data: Dict[str, Any], summary: str) -> str:
         """Assess the complexity level based on time and steps"""
 
-        steps=steps_data.get("steps", [])
-        if not steps:     
+        steps = steps_data.get("steps", [])
+        if not steps:
             return "Unknown"
-        
-        text_steps = "\n".join([f"{s.get('order',0)}. {s.get('title','')}" for s in steps])
+
+        text_steps = "\n".join([f"{s.get('order', 0)}. {s.get('title', '')}" for s in steps])
         messages = [
             {"role": "system", "content": assess_complexity_text},
-            {"role": "user", "content": f"Given a summary of {summary} and the following steps {text_steps}, classify the project complexity level, dont over exagerate complexity. Respond with only one of the following words: Easy, Moderate, Challenging, Complex."}
+            {"role": "user",
+             "content": f"Given a summary of {summary} and the following steps {text_steps}, classify the project complexity level, dont over exagerate complexity. Respond with only one of the following words: Easy, Moderate, Challenging, Complex."}
         ]
         try:
             # Using the same API structure as agents.py
@@ -834,7 +833,7 @@ class EstimationAgent:
                 "reasoning_effort": "low",
                 "verbosity": "low"
             }
-            
+
             r = requests.post(
                 self.api_url,
                 headers={**self.headers},
@@ -843,32 +842,32 @@ class EstimationAgent:
             r.raise_for_status()
             data = r.json()
             content = data["choices"][0]["message"]["content"]
-            print (content)
+            print(content)
 
             return content.strip()
-                
+
         except requests.exceptions.Timeout:
             print("❌ Request timeout")
             raise HTTPException(status_code=500, detail="LLM request timed out")
         except requests.exceptions.RequestException as re:
             print(f"❌ Request error: {str(re)}")
             raise HTTPException(status_code=500, detail=f"LLM request failed: {str(re)}")
-        
+
         except Exception as e:
             print(f"❌ Unexpected error: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-        
 
 
 class ContentPlanner:
     """Main class that coordinates all content generation agents"""
-    
+
     def __init__(self):
         self.tools_agent = ToolsAgent()
         self.steps_agent = StepsAgentJSON()
         self.estimation_agent = EstimationAgent()
-    
-    def generate_complete_plan(self, summary: str, user_answers: Dict[int, str] = None, questions: List[str] = None) -> Dict[str, Any]:
+
+    def generate_complete_plan(self, summary: str, user_answers: Dict[int, str] = None, questions: List[str] = None) -> \
+            Dict[str, Any]:
         """
         Generate complete DIY plan including tools, steps, and estimations.
         Returns comprehensive JSON with all planning information.
@@ -876,13 +875,13 @@ class ContentPlanner:
         try:
             # Generate tools and materials
             tools_data = self.tools_agent.recommend_tools(summary, include_json=True)
-            
+
             # Generate step-by-step plan
             steps_data = self.steps_agent.generate(summary, user_answers, questions)
-            
+
             # Generate estimations
             estimation_data = self.estimation_agent.generate_estimation(tools_data, steps_data)
-            
+
             # Combine all data into comprehensive plan
             complete_plan = {
                 "project_summary": summary,
@@ -895,14 +894,11 @@ class ContentPlanner:
                     "model_used": "gpt-5"
                 }
             }
-            
+
             return complete_plan
-            
+
         except Exception as e:
             return {
                 "error": f"Failed to generate plan: {str(e)}",
                 "project_summary": summary
             }
-
-
-
