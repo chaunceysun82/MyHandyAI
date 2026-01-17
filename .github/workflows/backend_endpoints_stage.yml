@@ -18,7 +18,6 @@ jobs:
           mkdir -p lambda_package
           cp Backend/*.py lambda_package/
           cp -r Backend/routes lambda_package/
-          cp -r Backend/prompts lambda_package/
           cp -r Backend/agents lambda_package/
           cp -r Backend/database lambda_package/
           cp -r Backend/config lambda_package/
