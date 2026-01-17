@@ -1,4 +1,3 @@
-import os
 from datetime import datetime
 from typing import List, Dict, Any
 
@@ -8,9 +7,12 @@ from pymongo.collection import Collection
 from pymongo.database import Database
 from qdrant_client.http.exceptions import UnexpectedResponse
 
+from config.settings import get_settings
 from database.mongodb import mongodb
 from database.qdrant import create_embeddings_for_texts, upsert_embeddings_to_qdrant, search_similar_vectors, \
     get_qdrant_client
+
+settings = get_settings()
 
 database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
@@ -50,7 +52,7 @@ def create_and_store_tool_embeddings(tool_data: Dict[str, Any], tool_id: str):
 
     # Generate embedding
     embedding = create_embeddings_for_texts([tool_text],
-                                            model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
+                                            model=settings.OPENAI_EMBEDDING_MODEL)
 
     if not embedding:
         return {"status": "embedding_failed"}
@@ -81,7 +83,7 @@ def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float =
     """
     # Generate embedding for the query
     query_embedding = create_embeddings_for_texts([query],
-                                                  model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
+                                                  model=settings.OPENAI_EMBEDDING_MODEL)
 
     if not query_embedding:
         return []
@@ -166,7 +168,7 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
     if not summary or not str(summary).strip():
         raise HTTPException(status_code=400, detail="Project has no summary or user_description to embed")
 
-    model_name = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    model_name = settings.OPENAI_EMBEDDING_MODEL
     try:
         embeddings = create_embeddings_for_texts([summary], model=model_name)
     except Exception as e:

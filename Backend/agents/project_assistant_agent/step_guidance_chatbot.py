@@ -4,24 +4,24 @@ from __future__ import annotations
 import base64
 import json
 import math
-import os
 import re
 from typing import Dict, Any, List, Optional
 
 import requests
 
-DEFAULT_MODEL = os.getenv("STEP_GUIDANCE_MODEL", "gpt-5-nano")
-CLASSIFIER_MODEL = os.getenv("STEP_GUIDANCE_CLASSIFIER_MODEL", "gpt-5-nano")
-MAX_TURNS_IN_CONTEXT = int(os.getenv("STEP_GUIDANCE_MAX_TURNS", "10"))
-MIN_RELEVANCE_TO_ANSWER = float(os.getenv("STEP_GUIDANCE_MIN_REL", "0.35"))  # 0..1
+from config.settings import get_settings
+
+settings = get_settings()
+DEFAULT_MODEL = settings.STEP_GUIDANCE_MODEL
+CLASSIFIER_MODEL = settings.STEP_GUIDANCE_CLASSIFIER_MODEL
+MAX_TURNS_IN_CONTEXT = settings.STEP_GUIDANCE_MAX_TURNS
+MIN_RELEVANCE_TO_ANSWER = settings.STEP_GUIDANCE_MIN_REL
 
 
 def clean_and_parse_json(raw_str: str):
     """
     Cleans code fences (```json ... ```) from a string and parses it as JSON.
     """
-    if raw_str is None:
-        raise ValueError("No input string")
     s = raw_str.strip()
     s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)  # strip fences
     m = re.search(r"\{.*\}\s*$", s, flags=re.S)  # grab last JSON object
@@ -36,7 +36,8 @@ class StepGuidanceImageAnalyzer:
     """Analyzes images in the context of step guidance and troubleshooting"""
 
     def __init__(self):
-        self.api_key = os.getenv("OPENAI_API_KEY")
+        settings = get_settings()
+        self.api_key = settings.OPENAI_API_KEY
         self.api_url = "https://api.openai.com/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -505,7 +506,7 @@ class StepGuidanceChatbot:
         """
 
         print("reach call_llm")
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = settings.OPENAI_API_KEY
         if not api_key:
             return ""
         print("api_key: ", api_key)

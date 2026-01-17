@@ -1,5 +1,4 @@
 # feedback.py
-import os
 from datetime import datetime
 from typing import Optional, List
 
@@ -9,7 +8,10 @@ from pydantic import BaseModel, Field
 from pymongo.collection import Collection
 from pymongo.database import Database
 
+from config.settings import get_settings
 from database.mongodb import mongodb
+
+settings = get_settings()
 
 router = APIRouter()
 
@@ -61,7 +63,7 @@ def completion_message(project_id: str):
         else (finished or datetime.utcnow())
     ).strftime("%b %d, %Y")
 
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = settings.OPENAI_API_KEY
     if api_key:
         try:
 

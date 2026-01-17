@@ -1,6 +1,5 @@
 import io
 import json
-import os
 import re
 import time
 import traceback
@@ -16,18 +15,31 @@ from pydantic import BaseModel
 from pymongo.collection import Collection
 from pymongo.database import Database
 
+from config.settings import get_settings
 from database.mongodb import mongodb
 from helper import similar_by_project
 from agents.solution_generation_multi_agent.planner import ToolsAgent, StepsAgentJSON, EstimationAgent
 
-SQS_URL = os.getenv("IMAGES_SQS_URL")
-api_key = os.getenv("GOOGLE_API_KEY")
-OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-S3_BUCKET = "handyimages"
-AWS_REGION = "us-east-2"
-s3 = boto3.client("s3", region_name=AWS_REGION)
-sqs = boto3.client("sqs", region_name=AWS_REGION)
-PUBLIC_BASE = "https://handyimages.s3.us-east-2.amazonaws.com"
+# Import tools_collection from helper
+from helper import tools_collection
+
+settings = get_settings()
+
+# Initialize boto3 clients with AWS credentials if provided
+s3_kwargs = {"region_name": settings.AWS_REGION}
+sqs_kwargs = {"region_name": settings.AWS_REGION}
+if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
+    s3_kwargs.update({
+        "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
+        "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY
+    })
+    sqs_kwargs.update({
+        "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
+        "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY
+    })
+
+s3 = boto3.client("s3", **s3_kwargs)
+sqs = boto3.client("sqs", **sqs_kwargs)
 database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
 steps_collection: Collection = database.get_collection("ProjectSteps")
@@ -35,8 +47,9 @@ steps_collection: Collection = database.get_collection("ProjectSteps")
 
 def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x1024", summary: str = "") -> None:
     """Send one SQS message per step (no batch API)."""
-    if not SQS_URL:
-        print("⚠️ IMAGES_SQS_URL not set; skipping enqueue")
+    images_sqs_url = settings.AWS_IMAGES_SQS_URL
+    if not images_sqs_url:
+        print("⚠️ AWS_IMAGES_SQS_URL not set; skipping enqueue")
         return
     for i, step in enumerate(steps, start=1):
         sum_text = "Overall summary: " + summary + "\n"
@@ -52,7 +65,7 @@ def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x10
         project_collection.update_one({"_id": ObjectId(project_id)},
                                       {"$set": {f"step_generation.steps.{int(i) - 1}.image.status": "in-progress"}})
 
-        sqs.send_message(QueueUrl=SQS_URL, MessageBody=json.dumps(body))
+        sqs.send_message(QueueUrl=images_sqs_url, MessageBody=json.dumps(body))
 
 
 def handle_image_step(msg: dict) -> None:
@@ -425,8 +438,8 @@ def clean_and_parse_json(raw_str: str):
 
 
 def get_youtube_link(summary):
-    YOUTUBE_KEY = os.getenv("YOUTUBE_API_KEY")
-    OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+    youtube_key = settings.YOUTUBE_API_KEY
+    openai_key = settings.OPENAI_API_KEY
 
     payload = {
         "model": "gpt-5-mini",  # or the model you prefer
@@ -446,7 +459,7 @@ def get_youtube_link(summary):
     }
     r = requests.post(
         "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OPENAI_KEY}"},
+        headers={"Authorization": f"Bearer {openai_key}"},
         json=payload, timeout=30
     )
     r.raise_for_status()
@@ -456,7 +469,7 @@ def get_youtube_link(summary):
 
     url = "https://www.googleapis.com/youtube/v3/search"
     params = {
-        "key": YOUTUBE_KEY,
+        "key": youtube_key,
         "part": "snippet",
         "q": content,
         "type": "video",
@@ -499,7 +512,7 @@ def get_youtube_link(summary):
     }
     r = requests.post(
         "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OPENAI_KEY}"},
+        headers={"Authorization": f"Bearer {openai_key}"},
         json=payload, timeout=30
     )
     r.raise_for_status()
@@ -611,7 +624,7 @@ def _build_prompt(step_text: str, summary_text: Optional[str] = None, guidance="
     }
     r = requests.post(
         "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OPENAI_KEY}"},
+        headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
         json=payload, timeout=30
     )
     data = r.json()
@@ -648,11 +661,11 @@ def _generate_png(prompt: str, size: str, seed: int | None = None) -> bytes:
     Generate PNG bytes via Gemini API (Imagen 4).
     Uses dict 'config' to avoid SDK type validation issues.
     """
-    client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+    client = genai.Client(api_key=settings.GOOGLE_API_KEY)
     aspect = _map_size_to_aspect(size)
 
     resp = client.models.generate_images(
-        model=os.getenv("GEMINI_IMAGE_MODEL", "imagen-3.0-generate-002"),
+        model=settings.GEMINI_IMAGE_MODEL,
         prompt=prompt,
         config={
             "numberOfImages": 1,
@@ -680,8 +693,9 @@ def _s3_key(step_id: str, project_id: Optional[str]) -> str:
 
 def _public_url_or_presigned(key: str) -> str:
     # If you use CloudFront or a public bucket, construct a public URL
-    if PUBLIC_BASE:
-        return f"{PUBLIC_BASE.rstrip('/')}/{key}"
+    public_base = settings.AWS_S3_PUBLIC_BASE
+    if public_base:
+        return f"{public_base.rstrip('/')}/{key}"
 
 
 def _map_size_to_aspect(size_str: str) -> str:
@@ -716,7 +730,7 @@ def generate_step_image(step_id: str, payload: ImageRequest | dict):
     key = _s3_key(step_id, payload.project_id)
     try:
         s3.put_object(
-            Bucket=S3_BUCKET,
+            Bucket=settings.AWS_S3_BUCKET,
             Key=key,
             Body=png_bytes,
             ContentType="image/png",

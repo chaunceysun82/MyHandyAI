@@ -1,7 +1,7 @@
 import json
-import os
 # Import tools reuse functions from chatbot
 import sys
+import os
 
 import boto3
 from bson import ObjectId
@@ -9,14 +9,23 @@ from fastapi import APIRouter, HTTPException
 from pymongo.collection import Collection
 from pymongo.database import Database
 
+from config.settings import get_settings
 from database.mongodb import mongodb
 from routes.project import update_project
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 router = APIRouter(prefix="/generation")
-AWS_REGION = "us-east-2"
-sqs = boto3.client("sqs", region_name=AWS_REGION)
+settings = get_settings()
+
+# Initialize boto3 clients with AWS credentials if provided
+sqs_kwargs = {"region_name": settings.AWS_REGION}
+if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
+    sqs_kwargs.update({
+        "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
+        "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY
+    })
+sqs = boto3.client("sqs", **sqs_kwargs)
 database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
 steps_collection: Collection = database.get_collection("ProjectSteps")
@@ -69,7 +78,7 @@ async def generate(project):
         update_project(str(cursor["_id"]), {"generation_status": "in-progress"})
 
         sqs.send_message(
-            QueueUrl=os.getenv("SQS_URL"),
+            QueueUrl=settings.SQS_URL,
             MessageBody=json.dumps(message)
         )
 
