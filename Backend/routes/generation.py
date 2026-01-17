@@ -16,9 +16,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 router = APIRouter(prefix="/generation")
 AWS_REGION = "us-east-2"
-sqs = boto3.client("sqs",
-                   aws_access_key_id=None,
-                   aws_secret_access_key=None, region_name=AWS_REGION)
+sqs = boto3.client("sqs", region_name=AWS_REGION)
 database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
 steps_collection: Collection = database.get_collection("ProjectSteps")
