@@ -3,21 +3,14 @@ Utility functions for tool management and Qdrant operations.
 Extracted from routes/chatbot.py to avoid dependencies on deprecated code.
 """
 import os
-import uuid
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 from bson import ObjectId
 from fastapi import HTTPException
-from openai import OpenAI
-from qdrant_client import QdrantClient
-from qdrant_client.http.exceptions import UnexpectedResponse
-from qdrant_client.models import PointStruct, VectorParams, Distance
 
 from database.mongodb import mongodb
-
-# Initialize OpenAI client for embeddings
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+from database.qdrant import create_embeddings_for_texts, upsert_embeddings_to_qdrant, search_similar_vectors
 
 # Initialize database connections
 database = mongodb.get_database()
@@ -47,72 +40,6 @@ def chunk_text(text: str, max_chars: int = 1000) -> List[str]:
             chunks.append(chunk)
         start = end
     return chunks
-
-
-def create_embeddings_for_texts(texts, model: str = "text-embedding-3-small"):
-    """
-    Creates embeddings via OpenAI for a list of strings (batched).
-    Returns list of embedding vectors in same order as texts.
-    """
-    if not texts:
-        return []
-
-    resp = client.embeddings.create(model=model, input=texts)
-    return [item.embedding for item in resp.data]
-
-
-def upsert_embeddings_to_qdrant(
-        mongo_hex_id: str,
-        embeddings: List[List[float]],
-        texts: List[str],
-        extra_payload: Optional[dict] = None,
-        collection_name: Optional[str] = None
-) -> dict:
-    """
-    Upsert embeddings to Qdrant vector database.
-    """
-    qdrant_url = os.getenv("QDRANT_URL")
-    qdrant_api_key = os.getenv("QDRANT_API_KEY")
-    collection_name = collection_name or "projects"
-
-    if not qdrant_url or not qdrant_api_key:
-        raise RuntimeError("QDRANT_URL and QDRANT_API_KEY must be set in env")
-
-    qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
-
-    if not embeddings:
-        return {"status": "no_embeddings"}
-
-    vector_size = len(embeddings[0])
-
-    try:
-        qclient.get_collection(collection_name=collection_name)
-    except UnexpectedResponse as ex:
-        if ex.status_code == 404:
-            qclient.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
-            )
-        else:
-            raise
-
-    points = []
-    for idx, (vec, txt) in enumerate(zip(embeddings, texts)):
-        unique_str = f"{mongo_hex_id}-{idx}"
-        point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, unique_str))
-
-        payload = {
-            "mongo_id": mongo_hex_id,
-            "chunk_index": idx,
-            "text_preview": txt,
-        }
-        if extra_payload:
-            payload.update(extra_payload)
-
-        points.append(PointStruct(id=point_id, vector=vec, payload=payload))
-
-    qclient.upsert(collection_name=collection_name, points=points)
-    return {"status": "ok", "num_points": len(points), "collection": collection_name}
 
 
 def store_tool_in_database(tool_data: Dict[str, Any]) -> str:
@@ -199,15 +126,8 @@ def update_project(project_id: str, update_data: dict):
 def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
     """
     Find similar tools in Qdrant based on semantic similarity.
+    Uses centralized Qdrant operations from database/qdrant.py
     """
-    qdrant_url = os.getenv("QDRANT_URL")
-    qdrant_api_key = os.getenv("QDRANT_API_KEY")
-
-    if not qdrant_url or not qdrant_api_key:
-        raise RuntimeError("QDRANT_URL and QDRANT_API_KEY must be set in env")
-
-    qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
-
     # Generate embedding for the query
     query_embedding = create_embeddings_for_texts([query],
                                                   model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
@@ -216,17 +136,19 @@ def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float =
         return []
 
     try:
-        # Search in tools collection
-        search_result = qclient.search(
-            collection_name="tools",
+        # Search in tools collection using centralized function
+        search_result = search_similar_vectors(
             query_vector=query_embedding[0],
+            collection_name="tools",
             limit=limit,
             score_threshold=similarity_threshold
         )
 
         similar_tools = []
         for result in search_result:
-            if result.score >= similarity_threshold:
+            # Note: search_similar_vectors already filters by score_threshold, but we check again for safety
+            score = getattr(result, "score", 0.0)
+            if score >= similarity_threshold:
                 # Get tool details from MongoDB
                 tool_id = result.payload.get("tool_id")
                 if tool_id:
@@ -242,7 +164,7 @@ def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float =
                             "image_link": tool_doc.get("image_link"),
                             "amazon_link": tool_doc.get("amazon_link"),
                             "category": tool_doc.get("category"),
-                            "similarity_score": result.score,
+                            "similarity_score": score,
                             "usage_count": tool_doc.get("usage_count", 0)
                         }
                         similar_tools.append(tool_info)
@@ -259,7 +181,7 @@ async def extract_and_save_tools_from_project(project_id: str):
     Extract tools from project.tool_generation and save them to tools_collection + Qdrant.
     This is triggered after tool generation is done.
     """
-    
+
     # 1. Get the project and check if it has tool_generation data
     project = project_collection.find_one({"_id": ObjectId(project_id)})
     if not project:
