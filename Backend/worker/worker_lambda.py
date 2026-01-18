@@ -20,26 +20,12 @@ from agents.solution_generation_multi_agent.services.steps_generation_agent_serv
 from agents.solution_generation_multi_agent.steps_generation_agent.steps_generation_agent import StepsGenerationAgent
 from config.settings import get_settings
 from database.mongodb import mongodb
-from .helper import similar_by_project, store_tool_in_database, create_and_store_tool_embeddings, find_similar_tools, \
+from helper import similar_by_project, store_tool_in_database, create_and_store_tool_embeddings, find_similar_tools, \
     update_tool_usage
 
 settings = get_settings()
-
-# Initialize boto3 clients with AWS credentials if provided
-s3_kwargs = {"region_name": settings.AWS_REGION}
-sqs_kwargs = {"region_name": settings.AWS_REGION}
-if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
-    s3_kwargs.update({
-        "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
-        "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY
-    })
-    sqs_kwargs.update({
-        "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
-        "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY
-    })
-
-s3 = boto3.client("s3", **s3_kwargs)
-sqs = boto3.client("sqs", **sqs_kwargs)
+s3 = boto3.client("s3", region_name=settings.AWS_REGION)
+sqs = boto3.client("sqs", region_name=settings.AWS_REGION)
 database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
 steps_collection: Collection = database.get_collection("ProjectSteps")
