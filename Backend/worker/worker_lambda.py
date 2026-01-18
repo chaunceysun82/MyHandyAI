@@ -1,21 +1,18 @@
-import io
+import json
 import json
 import re
-import time
 import traceback
 from datetime import datetime
-from typing import Optional
 
 import boto3
 import requests
-from PIL import Image
 from bson.objectid import ObjectId
-from google import genai
-from pydantic import BaseModel
 from pymongo.collection import Collection
 from pymongo.database import Database
 
+from agents.solution_generation_multi_agent.image_generation_agent.image_generation_agent import ImageGenerationAgent
 from agents.solution_generation_multi_agent.planner import ToolsAgent, EstimationAgent
+from agents.solution_generation_multi_agent.services.image_generation_agent_service import ImageGenerationAgentService
 from agents.solution_generation_multi_agent.services.steps_generation_agent_service import StepsGenerationAgentService
 from agents.solution_generation_multi_agent.steps_generation_agent.steps_generation_agent import StepsGenerationAgent
 from config.settings import get_settings
@@ -80,12 +77,25 @@ def handle_image_step(msg: dict) -> None:
     project_id = msg["project"]
     step_id = msg["step_id"]
     step_text = msg["step_text"]
+    summary_text = msg.get("summary_text")
     size = msg.get("size", "1536x1024")
 
-    # Call your existing generator (OpenAI/Gemini under the hood)
-    res = generate_step_image(step_id, {"step_text": step_text, "project_id": project_id, "size": size})
+    image_generation_agent = ImageGenerationAgent()
+    image_generation_service = ImageGenerationAgentService(
+        image_generation_agent=image_generation_agent,
+        s3_client=s3
+    )
+    # Use Image Generation Service
+    result = image_generation_service.generate_step_image(
+        step_id=step_id,
+        step_text=step_text,
+        summary_text=summary_text,
+        size=size,
+        project_id=project_id
+    )
 
-    res['status'] = "complete"
+    # Convert Pydantic model to dict for MongoDB
+    res = result.model_dump()
 
     project_collection.update_one({"_id": ObjectId(project_id)},
                                   {"$set": {f"step_generation.steps.{int(step_id) - 1}.image": res}})
@@ -522,233 +532,3 @@ def get_youtube_link(summary):
         # fallback to top candidate
         best = videos[0]
     return f"https://www.youtube.com/embed/{best['videoId']}"
-
-
-class SceneSpec(BaseModel):
-    action: Optional[str] = None
-    tool: Optional[str] = None
-    target: Optional[str] = None
-    measures: Optional[str] = None
-    angle: Optional[str] = None
-    view: Optional[str] = None
-    distance: Optional[str] = None
-    style: Optional[str] = None
-    hands_visible: Optional[str] = None
-    safety: Optional[str] = None
-    background: Optional[str] = None
-
-
-class ImageRequest(BaseModel):
-    step_text: str
-    summary_text: Optional[str] = None
-    scene: Optional[SceneSpec] = None
-    size: str = "1024x1024"
-    n: int = 1
-    project_id: str
-
-
-def _build_prompt(step_text: str, summary_text: Optional[str] = None, guidance="neutral") -> str:
-    # payload = {
-    #     "model": "gpt-5-nano",
-    #     "messages": [
-    #         {"role": "system", "content": (
-    #             "You are an image generation agent specializing in DIY/repair steps."
-    #             "Your task is to create a detailed prompt for an image generation model. based on the user input provided."
-    #             f"Context summary of the overall project: {summary_text}"
-    #             "Focus on depicting the CURRENT STEP for the image. Overall summary is just for context."
-    #         )},
-    #         {"role": "user", "content": json.dumps({
-    #             "description": step_text
-    #         })}
-    #     ],
-    #     "max_completion_tokens": 2000,
-    #     "reasoning_effort": "low",
-    #     "verbosity": "low",
-    # }
-    payload = {
-        "model": "gpt-5-nano",
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are an expert image-prompt engineer who crafts single, high-precision prompts"
-                    " optimized for Imagen 4.O to create step-by-step DIY / repair images.\n\n"
-                    "TASK: Using the provided project_summary only for context, produce a single concise"
-                    " *image-generation prompt string* that clearly depicts the CURRENT STEP described"
-                    " in the user description. The assistant's reply must be ONLY a single JSON object"
-                    " containing the key 'imagen_prompt' whose value is the full textual prompt (no"
-                    " extra explanation or metadata outside that JSON).\n\n"
-                    "REQUIREMENTS FOR THE GENERATED PROMPT (must be encoded into the prompt):\n"
-                    "- Focal point & action: exactly what to show (e.g., 'tight eye-level or medium shot of the working phase with tools and materials"
-                    " using a Philips #2 screwdriver to loosen the silver M3 screw at the lower-left corner of the metal bracket').\n"
-                    "- Tools & materials: list visible tools and materials and approximate positions.\n"
-                    "- Vantage & composition: camera angle (close-up / eye-level / medium shot / top-down), framing"
-                    " (rule of thirds, centered), and how much of the scene to include.\n"
-                    "- Photographic directives: lens (e.g., 50mm macro), aperture (e.g., f/2.8 for shallow DOF),"
-                    " perspective, depth of field, resolution/high detail, natural soft directional lighting,\n"
-                    "- Texture & state: clear textures (metal scratches, painted wood grain), exact state"
-                    " (e.g., 'screw half-out', 'wire exposed 2 mm'), before/after indication if relevant.\n"
-                    "- Safety & human elements: include gloved hands if safety needed; avoid showing faces;"
-                    " hands only, cropped above the wrist.\n"
-                    "- Annotations & overlays: if helpful, include small, non-intrusive annotation positions"
-                    " (e.g., 'place a small white label near the screw reading \"1\"'), and specify whether the"
-                    " labels should be part of the image or added later. Prefer no large text in the image.\n"
-                    "- Style & mood: photorealistic, high-contrast, true color, minimal clutter in background."
-                    "\n\n"
-                    "NEGATIVE CONSTRAINTS: explicitly avoid watermarks, logos, UI chrome, extraneous people/faces,"
-                    " cartoon styling, or ambiguous camera directions. Keep the language unambiguous and actionable."
-                    "\n\n"
-                    "OUTPUT RULE: produce only: {\"imagen_prompt\": \"<single prompt string>\"} as the assistant response."
-                )
-            },
-            {
-                "role": "user",
-                "content": json.dumps({
-                    "project_summary": summary_text,
-                    "description": step_text,
-                    "visible_tools": [],
-                    "required_materials": [],
-                    "safety": "gloves recommended",
-                    "preferred_camera_angle": "eye-level",
-                    "preferred_aspect_ratio": "4:3"
-                })
-            }
-        ],
-        "max_completion_tokens": 2000,
-        "reasoning_effort": "low",
-        "verbosity": "low"
-    }
-    r = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
-        json=payload, timeout=30
-    )
-    data = r.json()
-    print(r.json())
-    content = data["choices"][0]["message"]["content"]
-    lines = [
-        "Create an instructional image that faithfully depicts the context provided.",
-        "No text overlays, no logos, no watermarks.",
-        "DONT GENERATE ANY WORD OR WRITTEN INSTRUCTION,DONT WRITE ANYTHING",
-        f"Context: \n{content}"
-    ]
-    # ... keep your optional lines ...
-    if guidance == "neutral":
-        lines.append("If any attributes are unspecified, choose the most informative composition.")
-    else:
-        lines.append("Prioritize clarity of tool-to-surface contact; choose view and distance to avoid occlusion.")
-
-    lines.append("DONT GENERATE ANY WORD OR WRITTEN INSTRUCTION,DONT WRITE ANYTHING")
-    return "\n".join(lines)
-
-
-# def _generate_png(prompt: str, size: str, seed: Optional[int] = None) -> bytes:
-#     client = OpenAI(api_key=OPENAI_KEY)
-#     kwargs: Dict[str, Any] = {"model": "gpt-image-1", "prompt": prompt, "size": size, "n": 1}
-#     # If your account supports seed; if not, you can remove this key
-#     if seed is not None:
-#         kwargs["seed"] = seed
-#     resp = client.images.generate(**kwargs)
-#     b64png = resp.data[0].b64_json
-#     return base64.b64decode(b64png)
-
-def _generate_png(prompt: str, size: str, seed: int | None = None) -> bytes:
-    """
-    Generate PNG bytes via Gemini API (Imagen 4).
-    Uses dict 'config' to avoid SDK type validation issues.
-    """
-    client = genai.Client(api_key=settings.GOOGLE_API_KEY)
-    aspect = _map_size_to_aspect(size)
-
-    resp = client.models.generate_images(
-        model=settings.GOOGLE_GEMINI_IMAGE_MODEL,
-        prompt=prompt,
-        config={
-            "numberOfImages": 1,
-            "aspectRatio": aspect,  # "1:1","3:4","4:3","9:16","16:9"
-            "outputMimeType": "image/png",  # ask for PNG bytes
-            # "sampleImageSize": "2K",     # optional; omit if your SDK rejects it
-        },
-    )
-    return resp.generated_images[0].image.image_bytes
-
-
-def _png_to_bytes_ensure_rgba(png_bytes: bytes) -> bytes:
-    # Defensive: normalize to PNG/RGBA
-    im = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
-    out = io.BytesIO()
-    im.save(out, format="PNG", optimize=True)
-    return out.getvalue()
-
-
-def _s3_key(step_id: str, project_id: Optional[str]) -> str:
-    ts = int(time.time())
-    base = f"project_{project_id or 'na'}/steps/{step_id}"
-    return f"{base}/image_{ts}.png"
-
-
-def _public_url_or_presigned(key: str) -> str:
-    # If you use CloudFront or a public bucket, construct a public URL
-    public_base = settings.AWS_S3_PUBLIC_BASE
-    if public_base:
-        return f"{public_base.rstrip('/')}/{key}"
-
-
-def _map_size_to_aspect(size_str: str) -> str:
-    # map "WxH" to Imagen aspectRatio; keep it simple and robust
-    try:
-        w, h = [int(x) for x in size_str.lower().split("x")]
-        ar = w / h
-        if 1.66 <= ar <= 1.90:  # ~16:9
-            return "16:9"
-        if 1.25 <= ar < 1.66:  # ~4:3
-            return "4:3"
-        if 0.90 <= ar < 1.25:  # ~1:1
-            return "1:1"
-        if 0.75 <= ar < 0.90:  # ~3:4
-            return "3:4"
-        return "9:16"
-    except Exception:
-        return "16:9"
-
-
-def generate_step_image(step_id: str, payload: ImageRequest | dict):
-    try:
-        if isinstance(payload, dict):
-            payload = ImageRequest(**payload)
-        prompt = _build_prompt(payload.step_text, payload.summary_text)
-        raw_png = _generate_png(prompt=prompt, size=payload.size)
-        png_bytes = _png_to_bytes_ensure_rgba(raw_png)
-    except Exception as e:
-        print(f"Image generation failed: {e}")
-        raise
-
-    key = _s3_key(step_id, payload.project_id)
-    try:
-        s3.put_object(
-            Bucket=settings.AWS_S3_BUCKET,
-            Key=key,
-            Body=png_bytes,
-            ContentType="image/png",
-            Metadata={
-                "step_id": step_id,
-                "project_id": payload.project_id or "",
-                "size": payload.size,
-                "model": "imagen-3.0-generate-002"
-            },
-        )
-    except Exception as e:
-        print(f"S3 upload failed: {e}")
-        raise
-
-    url = _public_url_or_presigned(key)
-    return {
-        "message": "ok",
-        "step_id": step_id,
-        "project_id": payload.project_id,
-        "s3_key": key,
-        "url": url,
-        "size": payload.size,
-        "model": "imagen-3.0-generate-002",
-        "prompt_preview": prompt[:180],
-    }

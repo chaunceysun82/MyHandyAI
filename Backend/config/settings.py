@@ -51,7 +51,7 @@ class Settings(BaseSettings):
 
     # Google/Gemini settings
     GOOGLE_API_KEY: str
-    GOOGLE_GEMINI_IMAGE_MODEL: str
+    GOOGLE_IMAGE_MODEL: str
 
     # YouTube settings
     YOUTUBE_API_KEY: str
