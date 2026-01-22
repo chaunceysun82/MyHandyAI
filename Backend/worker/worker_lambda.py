@@ -144,7 +144,7 @@ def lambda_handler(event, context):
                 return {"message": "Project not found"}
 
             print("🔍 Searching for similar projects")
-            similar_result = similar_by_project(str(cursor["_id"]))
+            similar_result = None #similar_by_project(str(cursor["_id"]))
             print(f"similar_result: {similar_result}")
 
             # Check if similar_result has the expected structure
