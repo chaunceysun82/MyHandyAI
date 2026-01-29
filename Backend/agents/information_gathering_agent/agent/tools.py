@@ -5,6 +5,7 @@ from pydantic import Field
 from pymongo.collection import Collection
 from pymongo.database import Database
 
+from agents.information_gathering_agent.agent.embeddings_generation import embed_and_store_project_summary
 from agents.information_gathering_agent.agent.utils import extract_qa_pairs_from_messages
 from database.enums.project import InformationGatheringConversationStatus
 from database.mongodb import mongodb
@@ -12,6 +13,7 @@ from database.mongodb import mongodb
 database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
 
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 
 @tool(
     description="Call this tool AFTER identifying the problem category but BEFORE beginning focused information gathering. This establishes the diagnostic framework and stores your information gathering strategy."
@@ -125,11 +127,32 @@ def store_summary(
 
         if result.matched_count == 0:
             logger.warning(f"Project {project_id} not found, could not save summary")
+            project_doc = {**update_data, "_id": ObjectId(project_id)}
         else:
             logger.info(f"Successfully saved summary and Q&A data to project {project_id} and set status to COMPLETED")
+            project_doc = project_collection.find_one({"_id": ObjectId(project_id)})
+
+        do_embeddings = True
+        embedding_result = None
+        if do_embeddings:
+            try:
+                embedding_model = DEFAULT_EMBEDDING_MODEL
+                if project_doc is None:
+                    project_doc = {**update_data, "_id": ObjectId(project_id)}
+                embedding_result = embed_and_store_project_summary(project_doc, model=embedding_model)
+                print(embedding_result)
+                logger.info(f"Embeddings stored: {embedding_result}")
+            except Exception as e:
+                logger.error(f"Error creating/storing embeddings: {e}")
 
     except Exception as e:
         logger.error(f"Error storing summary data: {e}")
         # Don't fail the tool call, just log the error
 
+   if do_embeddings:
+        if embedding_result and embedding_result.get("status") == "ok":
+            return "✓ Summary stored. Embeddings created and saved to Qdrant. Ready for handoff to Solution Generation Agent."
+        else:
+            return "✓ Summary stored. Embeddings were attempted but failed — check logs. Ready for handoff to Solution Generation Agent."
     return "✓ Summary stored. Ready for handoff to Solution Generation Agent."
+
