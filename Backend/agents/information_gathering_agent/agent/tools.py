@@ -149,7 +149,7 @@ def store_summary(
         logger.error(f"Error storing summary data: {e}")
         # Don't fail the tool call, just log the error
 
-   if do_embeddings:
+    if do_embeddings:
         if embedding_result and embedding_result.get("status") == "ok":
             return "✓ Summary stored. Embeddings created and saved to Qdrant. Ready for handoff to Solution Generation Agent."
         else:
