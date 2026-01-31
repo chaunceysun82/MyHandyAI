@@ -228,7 +228,6 @@ export default function StepFooter({
 					onClose={() => setOpenModal(false)}
 					URL={URL}
 					stepNumber={stepNumber}
-					userName={userName}
 				/>
 			)}
 

@@ -83,15 +83,7 @@ async def get_thread_id(
         orchestrator: InformationGatheringAgentServiceDependency
 ) -> dict:
     """
-    Return existing thread_id for a given project_id, if any.
+    Return existing thread_id and conversation_status for a given project_id, if any.
     """
     logger.info(f"get_thread_id called with project_id: {project_id}")
-
-    project = orchestrator.project_collection.find_one(
-        {"project_id": project_id}
-    )
-
-    if not project or "thread_id" not in project:
-        return {"thread_id": None}
-
-    return {"thread_id": project["thread_id"]}
+    return orchestrator.get_thread_id(project_id)

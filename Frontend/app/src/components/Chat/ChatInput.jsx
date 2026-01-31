@@ -2,12 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
 import QuickReplyButtons from "./QuickReplyButtons";
 
-export default function ChatInput({ onSend, onDetected, apiBase, showQuickReplies = true, suggestedMessages = [] }) {
+export default function ChatInput({ onSend, showQuickReplies = true, suggestedMessages = [], disabled = false }) {
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const fileInputRef = useRef(null);
   const [previews, setPreviews] = useState([]);
-  const [detecting, setDetecting] = useState(false);
   const [detectError, setDetectError] = useState("");
   const [processingImages, setProcessingImages] = useState(false);
 
@@ -98,6 +97,7 @@ export default function ChatInput({ onSend, onDetected, apiBase, showQuickReplie
   };
 
   const handleQuickReply = (reply) => {
+    if (disabled) return;
     onSend?.(reply, []);
   };
 
@@ -199,9 +199,6 @@ export default function ChatInput({ onSend, onDetected, apiBase, showQuickReplie
       {/* Quick Reply Buttons */}
       {showQuickReplies && <QuickReplyButtons onQuickReply={handleQuickReply} suggestedMessages={suggestedMessages} />}
       {/* Small detection status */}
-      {detecting && (
-        <div className="text-xs text-gray-500 px-1">Analyzing image…</div>
-      )}
       {processingImages && (
         <div className="text-xs text-blue-500 px-1">Processing images…</div>
       )}
@@ -241,6 +238,7 @@ export default function ChatInput({ onSend, onDetected, apiBase, showQuickReplie
           onClick={handleFileSelect}
           aria-label="Add photo or file"
           type="button"
+          disabled={disabled}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -280,10 +278,11 @@ export default function ChatInput({ onSend, onDetected, apiBase, showQuickReplie
           <button
             className={`p-2 text-gray-600 transition-all rounded-xl duration-300 ${
               listening ? "bg-gray-400 animate-pulse" : "hover:bg-gray-200 dark:hover:bg-gray-600"
-            }`}
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
             aria-label="Voice input"
             onClick={handleMicrophone}
             type="button"
+            disabled={disabled}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="black" aria-hidden="true">
               <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 14 0h-2zM11 19v3h2v-3h-2z" />
