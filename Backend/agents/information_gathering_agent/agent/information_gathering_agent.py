@@ -11,7 +11,7 @@ from langgraph.checkpoint.mongodb import MongoDBSaver
 from loguru import logger
 
 from agents.information_gathering_agent.agent.prompt_templates.v4.information_gathering_agent import \
-    INFORMATION_GATHERING_AGENT_SYSTEM_PROMPT
+    build_system_prompt
 from agents.information_gathering_agent.agent.tools import store_home_issue, store_summary
 from config.settings import get_settings
 
@@ -35,7 +35,7 @@ class InformationGatheringAgent:
                                            writes_collection_name=self.settings.MYHANDYAI_AGENTS_CHECKPOINT_WRITES_COLLECTION_NAME) as checkpointer:
             yield checkpointer
 
-    def process_text_response(self, message: str, thread_id: UUID, project_id: str) -> str:
+    def process_text_response(self, message: str, thread_id: UUID, project_id: str, context: str = "") -> str:
         """
         Process a text message from the user.
         
@@ -43,6 +43,7 @@ class InformationGatheringAgent:
             message: User's text message
             thread_id: Conversation thread ID for persistence
             project_id: Project ID to associate with this conversation
+            context: User context string to inject into system prompt
             
         Returns:
             Agent's response text
@@ -52,11 +53,14 @@ class InformationGatheringAgent:
 
         try:
             with self.get_checkpointer() as checkpointer:
+                # Build system prompt with user context
+                system_prompt = build_system_prompt(context)
+
                 # Create agent with checkpointer
                 agent = create_agent(
                     model=self.llm,
                     tools=[store_home_issue, store_summary],
-                    system_prompt=INFORMATION_GATHERING_AGENT_SYSTEM_PROMPT,
+                    system_prompt=system_prompt,
                     checkpointer=checkpointer,
                 )
 
@@ -160,10 +164,13 @@ class InformationGatheringAgent:
         Extracts text content from messages, handling both string and multimodal content.
         """
         with self.get_checkpointer() as checkpointer:
+            # Use empty context for history retrieval (context doesn't affect history)
+            system_prompt = build_system_prompt("")
+
             agent = create_agent(
                 model=self.llm,
                 tools=[store_home_issue, store_summary],
-                system_prompt=INFORMATION_GATHERING_AGENT_SYSTEM_PROMPT,
+                system_prompt=system_prompt,
                 checkpointer=checkpointer,
             )
 

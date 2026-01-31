@@ -1,10 +1,11 @@
-import uuid
-from loguru import logger
 import os
-import time
 import re
+import time
+import uuid
 from typing import List, Dict, Any
+
 import requests
+from loguru import logger
 
 OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
@@ -13,6 +14,7 @@ QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
 QDRANT_COLLECTION = "project_summaries"
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+
 
 def chunk_text(text: str, max_chars: int = 800, overlap: int = 100) -> List[str]:
     if not text:
@@ -48,8 +50,8 @@ def chunk_text(text: str, max_chars: int = 800, overlap: int = 100) -> List[str]
 
     return chunks
 
-def get_embeddings(texts: List[str], model: str = DEFAULT_EMBEDDING_MODEL) -> List[List[float]]:
 
+def get_embeddings(texts: List[str], model: str = DEFAULT_EMBEDDING_MODEL) -> List[List[float]]:
     if not texts:
         return []
 
@@ -122,7 +124,6 @@ def qdrant_collection_exists(collection_name: str) -> bool:
 
 
 def qdrant_create_collection(collection_name: str, vector_size: int, distance: str = "Cosine") -> Dict[str, Any]:
-
     base, headers = _qdrant_base_and_headers()
     url = f"{base}/collections/{collection_name}"
     payload = {
@@ -133,7 +134,7 @@ def qdrant_create_collection(collection_name: str, vector_size: int, distance: s
     return r.json()
 
 
-def ensure_qdrant_collection(collection_name: str, vector_size: int, distance: str = "Cosine",) -> None:
+def ensure_qdrant_collection(collection_name: str, vector_size: int, distance: str = "Cosine", ) -> None:
     try:
         if not qdrant_collection_exists(collection_name):
             logger.info(
@@ -165,7 +166,8 @@ def upsert_qdrant_points(collection_name: str, points: List[dict]) -> Dict[str, 
         raise RuntimeError(f"Qdrant upsert failed: {e} - resp: {text}") from e
 
 
-def embed_and_store_project_summary(project_doc: Dict[str, Any], model: str = DEFAULT_EMBEDDING_MODEL, chunk_chars: int = 500000, overlap: int = 100,) -> Dict[str, Any]:
+def embed_and_store_project_summary(project_doc: Dict[str, Any], model: str = DEFAULT_EMBEDDING_MODEL,
+                                    chunk_chars: int = 500000, overlap: int = 100, ) -> Dict[str, Any]:
     logger.info("ENTERED embed_and_store_project_summary")
 
     if not project_doc:
