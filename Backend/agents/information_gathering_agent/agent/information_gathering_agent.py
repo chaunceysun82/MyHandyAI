@@ -92,7 +92,7 @@ class InformationGatheringAgent:
             return "I apologize, but I'm having trouble processing your request right now. Please try again."
 
     def process_image_response(self, text: Optional[str], image_base64: str, mime_type: str, thread_id: UUID,
-                               project_id: str) -> str:
+                               project_id: str, context: str = "") -> str:
         """
         Process a message with an image from the user.
         
@@ -102,6 +102,7 @@ class InformationGatheringAgent:
             mime_type: MIME type of the image (e.g., 'image/jpeg')
             thread_id: Conversation thread ID for persistence
             project_id: Project ID to associate with this conversation
+            context: User context string to inject into system prompt
             
         Returns:
             Agent's response text
@@ -111,11 +112,14 @@ class InformationGatheringAgent:
 
         try:
             with self.get_checkpointer() as checkpointer:
+                # Build system prompt with user context
+                system_prompt = build_system_prompt(context)
+                
                 # Create agent with checkpointer
                 agent = create_agent(
                     model=self.llm,
                     tools=[store_home_issue, store_summary],
-                    system_prompt=INFORMATION_GATHERING_AGENT_SYSTEM_PROMPT,
+                    system_prompt=system_prompt,
                     checkpointer=checkpointer,
                 )
 
