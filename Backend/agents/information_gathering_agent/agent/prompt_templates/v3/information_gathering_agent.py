@@ -1,5 +1,5 @@
 """
-Information Gathering Agent System Message Template V2
+Information Gathering Agent System Message Template V3
 
 This module contains the system message for the Information Gathering Agent,
 which is the "Diagnostician" that triages user problems and gathers necessary facts.

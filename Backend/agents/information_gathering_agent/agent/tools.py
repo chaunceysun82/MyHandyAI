@@ -15,6 +15,7 @@ project_collection: Collection = database.get_collection("Project")
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 
+
 @tool(
     description="Call this tool AFTER identifying the problem category but BEFORE beginning focused information gathering. This establishes the diagnostic framework and stores your information gathering strategy."
 )
@@ -155,4 +156,3 @@ def store_summary(
         else:
             return "✓ Summary stored. Embeddings were attempted but failed — check logs. Ready for handoff to Solution Generation Agent."
     return "✓ Summary stored. Ready for handoff to Solution Generation Agent."
-
