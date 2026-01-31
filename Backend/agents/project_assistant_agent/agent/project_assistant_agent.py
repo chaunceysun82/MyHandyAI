@@ -1,6 +1,5 @@
-from ast import Dict
 from contextlib import contextmanager
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID
 
 from langchain.agents import create_agent
@@ -10,17 +9,16 @@ from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.mongodb import MongoDBSaver
 from loguru import logger
 
-from agents.information_gathering_agent.agent.prompt_templates.v4.information_gathering_agent import \
-    INFORMATION_GATHERING_AGENT_SYSTEM_PROMPT
-from agents.information_gathering_agent.agent.tools import store_home_issue, store_summary
+from agents.project_assistant_agent.agent.prompt_templates.v1.project_assistant_agent import \
+    build_system_prompt
 from config.settings import get_settings
 
 
-class InformationGatheringAgent:
+class ProjectAssistantAgent:
     def __init__(self):
         self.settings = get_settings()
         self.llm = ChatOpenAI(
-            model=self.settings.INFORMATION_GATHERING_AGENT_MODEL,
+            model=self.settings.PROJECT_ASSISTANT_AGENT_MODEL,
             max_retries=5,
             reasoning_effort="low",
             api_key=self.settings.OPENAI_API_KEY
@@ -29,20 +27,29 @@ class InformationGatheringAgent:
     @contextmanager
     def get_checkpointer(self):
         """Context manager for MongoDB checkpointer."""
-        with MongoDBSaver.from_conn_string(conn_string=self.settings.MONGODB_URI,
-                                           db_name=self.settings.MYHANDYAI_AGENTS_CHECKPOINT_DATABASE,
-                                           checkpoint_collection_name=self.settings.MYHANDYAI_AGENTS_CHECKPOINT_COLLECTION_NAME,
-                                           writes_collection_name=self.settings.MYHANDYAI_AGENTS_CHECKPOINT_WRITES_COLLECTION_NAME) as checkpointer:
+        with MongoDBSaver.from_conn_string(
+                conn_string=self.settings.MONGODB_URI,
+                db_name=self.settings.MYHANDYAI_AGENTS_CHECKPOINT_DATABASE,
+                checkpoint_collection_name=self.settings.MYHANDYAI_AGENTS_CHECKPOINT_COLLECTION_NAME,
+                writes_collection_name=self.settings.MYHANDYAI_AGENTS_CHECKPOINT_WRITES_COLLECTION_NAME
+        ) as checkpointer:
             yield checkpointer
 
-    def process_text_response(self, message: str, thread_id: UUID, project_id: str) -> str:
+    def process_text_response(
+            self,
+            message: str,
+            thread_id: UUID,
+            project_id: str,
+            context: str
+    ) -> str:
         """
         Process a text message from the user.
         
         Args:
             message: User's text message
             thread_id: Conversation thread ID for persistence
-            project_id: Project ID to associate with this conversation
+            project_id: Project ID associated with this conversation
+            context: Formatted project and step context string
             
         Returns:
             Agent's response text
@@ -52,11 +59,14 @@ class InformationGatheringAgent:
 
         try:
             with self.get_checkpointer() as checkpointer:
-                # Create agent with checkpointer
+                # Build system prompt with context injected
+                system_prompt = build_system_prompt(context)
+
+                # Create agent with checkpointer (no tools needed)
                 agent = create_agent(
                     model=self.llm,
-                    tools=[store_home_issue, store_summary],
-                    system_prompt=INFORMATION_GATHERING_AGENT_SYSTEM_PROMPT,
+                    tools=[],  # No tools for project assistant
+                    system_prompt=system_prompt,
                     checkpointer=checkpointer,
                 )
 
@@ -76,7 +86,7 @@ class InformationGatheringAgent:
                 if result and "messages" in result:
                     last_message = result["messages"][-1]
                     logger.info(f"Agent responded successfully for thread_id: {thread_id}")
-                    logger.debug(f"Information Gathering Agent response: {last_message.content}")
+                    logger.debug(f"Project Assistant Agent response: {last_message.content}")
 
                     return last_message.content
                 else:
@@ -87,8 +97,15 @@ class InformationGatheringAgent:
             logger.error(f"Error in process_text_response: {e}")
             return "I apologize, but I'm having trouble processing your request right now. Please try again."
 
-    def process_image_response(self, text: Optional[str], image_base64: str, mime_type: str, thread_id: UUID,
-                               project_id: str) -> str:
+    def process_image_response(
+            self,
+            text: Optional[str],
+            image_base64: str,
+            mime_type: str,
+            thread_id: UUID,
+            project_id: str,
+            context: str
+    ) -> str:
         """
         Process a message with an image from the user.
         
@@ -97,7 +114,8 @@ class InformationGatheringAgent:
             image_base64: Base64-encoded image data
             mime_type: MIME type of the image (e.g., 'image/jpeg')
             thread_id: Conversation thread ID for persistence
-            project_id: Project ID to associate with this conversation
+            project_id: Project ID associated with this conversation
+            context: Formatted project and step context string
             
         Returns:
             Agent's response text
@@ -107,11 +125,14 @@ class InformationGatheringAgent:
 
         try:
             with self.get_checkpointer() as checkpointer:
-                # Create agent with checkpointer
+                # Build system prompt with context injected
+                system_prompt = build_system_prompt(context)
+
+                # Create agent with checkpointer (no tools needed)
                 agent = create_agent(
                     model=self.llm,
-                    tools=[store_home_issue, store_summary],
-                    system_prompt=INFORMATION_GATHERING_AGENT_SYSTEM_PROMPT,
+                    tools=[],  # No tools for project assistant
+                    system_prompt=system_prompt,
                     checkpointer=checkpointer,
                 )
 
@@ -143,7 +164,7 @@ class InformationGatheringAgent:
                 if result and "messages" in result:
                     last_message = result["messages"][-1]
                     logger.info(f"Agent responded successfully to image for thread_id: {thread_id}")
-                    logger.debug(f"Information Gathering Agent response: {last_message.content}")
+                    logger.debug(f"Project Assistant Agent response: {last_message.content}")
 
                     return last_message.content
                 else:
@@ -160,10 +181,14 @@ class InformationGatheringAgent:
         Extracts text content from messages, handling both string and multimodal content.
         """
         with self.get_checkpointer() as checkpointer:
+            # Use minimal context for history retrieval
+            minimal_context = "## Project Information\n(No specific context loaded for history retrieval)"
+            system_prompt = build_system_prompt(minimal_context)
+
             agent = create_agent(
                 model=self.llm,
-                tools=[store_home_issue, store_summary],
-                system_prompt=INFORMATION_GATHERING_AGENT_SYSTEM_PROMPT,
+                tools=[],
+                system_prompt=system_prompt,
                 checkpointer=checkpointer,
             )
 

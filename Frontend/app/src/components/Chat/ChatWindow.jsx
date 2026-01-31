@@ -45,19 +45,6 @@ export default function ChatWindow({
   // Which API to talk to
   const api = "api/v1/information-gathering-agent";
 
-  // Step-guidance bootstrap flag
-  const [bool, setBool] = useState(null);
-  useEffect(() => {
-    const check = async () => {
-      try {
-        const res = await axios.get(`${URL}/step-guidance/started/${projectId}`);
-        if (res.data) setBool(res.data);
-      } catch (err) {
-        console.error("Error checking step guidance status:", err);
-      }
-    };
-    check();
-  }, [URL, projectId]);
 
   const [drag, setDrag] = useState({ active: false, startY: 0, dy: 0 });
   const THRESHOLD = 120;
@@ -232,6 +219,63 @@ export default function ChatWindow({
   useEffect(() => {
     async function loadOrStartSession() {
       const sessionRes= await axios.get(`${URL}/${api}/thread/${projectId}`);
+      const conversationStatus = sessionRes.data?.conversation_status;
+      
+      // Don't initialize if conversation is already COMPLETED
+      if (conversationStatus === "COMPLETED") {
+        console.log("⚠️ Conversation already COMPLETED, skipping initialize");
+        if (sessionRes.data?.thread_id) {
+          setSessionId(sessionRes.data.thread_id);
+          // Load history instead
+          try {
+            setLoading(true);
+            const historyRes = await axios.get(
+              `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`
+            );
+            const formattedMessages = historyRes.data.messages.map(
+              ({ role, content }) => {
+                if (!content || typeof content !== 'string') {
+                  return {
+                    sender: role === "user" ? "user" : "bot",
+                    content: content || "",
+                  };
+                }
+                
+                const base64ImageRegex = /data:image\/[^;]+;base64,[^\s]+/g;
+                const imageMatches = content.match(base64ImageRegex);
+                
+                if (imageMatches && imageMatches.length > 0) {
+                  const images = imageMatches;
+                  let textContent = content;
+                  imageMatches.forEach(img => {
+                    textContent = textContent.replace(img, '').trim();
+                  });
+                  
+                  return {
+                    sender: role === "user" ? "user" : "bot",
+                    content: textContent,
+                    images: images,
+                    isImageOnly: !textContent || textContent.length === 0,
+                  };
+                }
+                
+                return {
+                  sender: role === "user" ? "user" : "bot",
+                  content: content,
+                };
+              }
+            );
+            setMessages(formattedMessages);
+            setLoading(false);
+          } catch (err) {
+            console.error("Error loading completed conversation history:", err);
+            setMessages([{ sender: "bot", content: "Conversation completed. Please check your project overview." }]);
+            setLoading(false);
+          }
+        }
+        return;
+      }
+      
       if (!sessionRes.data?.thread_id) {
         try {
           setLoading(true);

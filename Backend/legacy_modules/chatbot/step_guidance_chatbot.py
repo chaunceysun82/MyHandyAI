@@ -12,7 +12,7 @@ import requests
 from config.settings import get_settings
 
 settings = get_settings()
-DEFAULT_MODEL = settings.STEP_GUIDANCE_MODEL
+DEFAULT_MODEL = settings.PROJECT_ASSISTANT_AGENT_MODEL
 CLASSIFIER_MODEL = settings.STEP_GUIDANCE_CLASSIFIER_MODEL
 MAX_TURNS_IN_CONTEXT = settings.STEP_GUIDANCE_MAX_TURNS
 MIN_RELEVANCE_TO_ANSWER = settings.STEP_GUIDANCE_MIN_REL

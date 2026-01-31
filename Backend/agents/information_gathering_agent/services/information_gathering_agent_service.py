@@ -133,3 +133,32 @@ class InformationGatheringAgentService:
 
     def get_history(self, thread_id: UUID) -> List[Dict]:
         return self.information_gathering_agent.get_history(thread_id)
+
+    def get_thread_id(self, project_id: str) -> Dict:
+        """
+        Get thread_id and conversation_status for a project.
+        
+        Args:
+            project_id: Project ID
+            
+        Returns:
+            Dictionary with thread_id and conversation_status
+        """
+        project = self.project_collection.find_one({"_id": ObjectId(project_id)})
+        
+        if not project:
+            return {
+                "thread_id": None,
+                "conversation_status": InformationGatheringConversationStatus.PENDING.value
+            }
+        
+        thread_id = project.get("thread_id")
+        conversation_status = project.get(
+            "information_gathering_conversation_status",
+            InformationGatheringConversationStatus.PENDING.value
+        )
+        
+        return {
+            "thread_id": thread_id,
+            "conversation_status": conversation_status
+        }

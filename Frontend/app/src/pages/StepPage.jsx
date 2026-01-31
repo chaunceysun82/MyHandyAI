@@ -322,7 +322,7 @@ export default function StepPage() {
 				<StepFooter
 					projectId={projectId}
 					projectName={state?.projectName || "Project"}
-					stepNumber={parseInt(stepIndex) + 1}
+					stepNumber={parseInt(stepIndex)}
 					stepTitle={step?.title || ""}
 					totalSteps={step?.total || 0}
 					projectVideoUrl={projectVideoUrl}
