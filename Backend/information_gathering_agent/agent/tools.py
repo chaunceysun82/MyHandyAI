@@ -4,17 +4,16 @@ from loguru import logger
 from pydantic import Field
 from pymongo.collection import Collection
 from pymongo.database import Database
-import os
 
-from information_gathering_agent.agent.embeddings_generation import embed_and_store_project_summary
-from information_gathering_agent.agent.utils import extract_qa_pairs_from_messages
-from information_gathering_agent.database.mongodb import mongodb
+from agents.information_gathering_agent.agent.embeddings_generation import embed_and_store_project_summary, find_similar_projects_single_chunk
+from agents.information_gathering_agent.agent.utils import extract_qa_pairs_from_messages
+from database.enums.project import InformationGatheringConversationStatus
+from database.mongodb import mongodb
 
 database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
 
-DEFAULT_EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
-
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 
 @tool(
     description="Call this tool AFTER identifying the problem category but BEFORE beginning focused information gathering. This establishes the diagnostic framework and stores your information gathering strategy."
@@ -47,18 +46,19 @@ def store_home_issue(
 
     if project_id:
         try:
-            # Store initial data in project
+            # Store initial data in project and update status to IN_PROGRESS
             update_data = {
                 "category": category,
                 "issue": issue,
                 "user_description": user_description,
-                "information_gathering_plan": information_gathering_plan
+                "information_gathering_plan": information_gathering_plan,
+                "information_gathering_conversation_status": InformationGatheringConversationStatus.IN_PROGRESS.value
             }
             project_collection.update_one(
                 {"_id": ObjectId(project_id)},
                 {"$set": update_data}
             )
-            logger.info(f"Stored home issue data in project {project_id}")
+            logger.info(f"Stored home issue data in project {project_id} and set status to IN_PROGRESS")
         except Exception as e:
             logger.error(f"Error storing home issue data: {e}")
 
@@ -94,10 +94,12 @@ def store_summary(
 
     try:
         # Get messages from state to extract Q&A pairs
+        # In LangGraph, state is typically a dict with 'messages' key
         state = runtime.state if hasattr(runtime, 'state') else {}
         if isinstance(state, dict):
             messages = state.get("messages", [])
         else:
+            # If state is not a dict, try to get messages directly
             messages = getattr(state, "messages", []) if hasattr(state, "messages") else []
 
         # Extract Q&A pairs from conversation history
@@ -105,15 +107,19 @@ def store_summary(
 
         logger.info(f"Extracted {len(questions)} questions and {len(answers)} answers from conversation")
 
+        # Prepare update data matching old system format
+        # Store both 'answers' and 'user_answers' for compatibility (generation code checks both)
         update_data = {
             "summary": summary,
             "hypotheses": hypotheses,
             "questions": questions if questions else [],
-            "answers": answers if answers else {},
-            "user_answers": answers if answers else {},
-            "image_analysis": image_analysis or ""
+            "answers": answers if answers else {},  # Primary field (old system format)
+            "user_answers": answers if answers else {},  # Alternative field name (generation code fallback)
+            "image_analysis": image_analysis or "",  # Default empty string if no image analysis
+            "information_gathering_conversation_status": InformationGatheringConversationStatus.COMPLETED.value
         }
 
+        # Update project with all collected data
         result = project_collection.update_one(
             {"_id": ObjectId(project_id)},
             {"$set": update_data}
@@ -123,16 +129,25 @@ def store_summary(
             logger.warning(f"Project {project_id} not found, could not save summary")
             project_doc = {**update_data, "_id": ObjectId(project_id)}
         else:
-            logger.info(f"Successfully saved summary and Q&A data to project {project_id}")
+            logger.info(f"Successfully saved summary and Q&A data to project {project_id} and set status to COMPLETED")
             project_doc = project_collection.find_one({"_id": ObjectId(project_id)})
 
-        do_embeddings = runtime.config.get("configurable", {}).get("do_embeddings", False)
+        do_embeddings = True
         embedding_result = None
         if do_embeddings:
             try:
-                embedding_model = runtime.config.get("configurable", {}).get("embedding_model", DEFAULT_EMBEDDING_MODEL)
+                embedding_model = DEFAULT_EMBEDDING_MODEL
                 if project_doc is None:
                     project_doc = {**update_data, "_id": ObjectId(project_id)}
+
+                summary_text= project_doc.get("summary", "")
+                if summary_text.strip() == "":
+                    logger.warning("No summary text available for embedding generation.")
+                else:
+                    result=find_similar_projects_single_chunk(summary_text)
+                    for p in result["projects"][:1]:
+                        logger.info(f"Similar project found - ID: {p['project_id']}, Score: {p['score']}")
+                        logger.info(p["text"] or "")
                 embedding_result = embed_and_store_project_summary(project_doc, model=embedding_model)
                 print(embedding_result)
                 logger.info(f"Embeddings stored: {embedding_result}")
