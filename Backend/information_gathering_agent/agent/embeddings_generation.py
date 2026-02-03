@@ -309,10 +309,10 @@ def find_similar_projects_single_chunk(
 
     return {"query": query, "raw_hits": raw_hits, "projects": projects}
 
-def delete_project_from_qdrant(project: Dict[str, Any] | str, collection_name: str=QDRANT_COLLECTION, wait: bool = True) -> Dict[str, Any]:
-    if not project:
-        raise ValueError("project (project_doc or project_id) is required")
-
+def delete_project_by_point_id(project: Dict[str, Any] | str,
+                               collection_name: str = QDRANT_COLLECTION,
+                               wait: bool = True) -> Dict[str, Any]:
+   
     if isinstance(project, dict):
         project_id = project.get("_id")
         if project_id is None:
@@ -324,89 +324,40 @@ def delete_project_from_qdrant(project: Dict[str, Any] | str, collection_name: s
     if not project_id:
         raise ValueError("could not determine project_id")
 
-    logger.info(f"Deleting project from Qdrant: project_id={project_id}")
 
+    point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{project_id}_0"))
     base, headers = _qdrant_base_and_headers()
     delete_url = f"{base}/collections/{collection_name}/points/delete"
-
-    filter_body = {
-        "filter": {
-            "must": [
-                {"key": "project_id", "match": {"value": project_id}}
-            ]
-        },
-        "wait": wait,
-    }
+    body = {"points": [point_id], "wait": wait}
 
     try:
-        resp = requests.post(delete_url, headers=headers, json=filter_body, timeout=30)
-        resp.raise_for_status()
+        r = requests.post(delete_url, headers=headers, json=body, timeout=20)
+        r.raise_for_status()
         try:
-            return resp.json()
+            resp = r.json()
         except ValueError:
-            return {"status": "ok", "message": "deleted (no json returned)", "http_status": resp.status_code}
-    except requests.HTTPError as e:
-        text = getattr(e.response, "text", "")
-        logger.warning(f"Direct Qdrant delete-by-filter failed ({e}) - resp: {text}. Falling back to scroll+delete.")
-    except requests.RequestException as e:
-        logger.error(f"Qdrant delete request failed: {e}")
-        raise
+            resp = {"status": "ok", "deleted_ids": [point_id], "http_status": r.status_code}
 
-    scroll_url = f"{base}/collections/{collection_name}/points/scroll"
-    scroll_body = {
-        "filter": {
-            "must": [
-                {"key": "project_id", "match": {"value": project_id}}
-            ]
-        },
-        "limit": 100
-    }
+        
+        deleted_count = resp.get("deleted") or resp.get("deleted_count") or (len(resp.get("deleted_ids", [])) if resp.get("deleted_ids") else None)
+        if deleted_count is None:
+            
+            deleted_count = 1
 
-    try:
-        point_ids: List[str] = []
-        while True:
-            r = requests.post(scroll_url, headers=headers, json=scroll_body, timeout=30)
-            r.raise_for_status()
-            j = r.json()
-
-            points = j.get("points") or j.get("result") or j.get("data") or j.get("hits") or []
-            if isinstance(points, dict) and "points" in points:
-                points = points["points"]
-
-            for p in points:
-                pid = None
-                if isinstance(p, dict):
-                    pid = p.get("id") or (p.get("point") or {}).get("id")
-                if pid is not None:
-                    point_ids.append(str(pid))
-
-            if j.get("next") and isinstance(j["next"], dict):
-                scroll_body["next"] = j["next"]
-                continue
-            if j.get("has_more") is True and "offset" in scroll_body:
-                scroll_body["offset"] = scroll_body.get("offset", 0) + scroll_body.get("limit", 100)
-                continue
-            break
-
-        if not point_ids:
-            return {"status": "not_found", "project_id": project_id, "deleted": 0}
-
-        del_body = {"points": point_ids, "wait": wait}
-        r2 = requests.post(delete_url, headers=headers, json=del_body, timeout=30)
-        r2.raise_for_status()
-        try:
-            resp_json = r2.json()
-        except ValueError:
-            resp_json = {"status": "ok", "deleted_count": len(point_ids)}
-        resp_json.setdefault("deleted_ids", point_ids)
-        return resp_json
+        logger.info(f"Deleted point id {point_id} for project_id={project_id}. deleted_count={deleted_count}")
+        
+        resp.setdefault("deleted_ids", [point_id])
+        return {"status": "ok", "project_id": project_id, "deleted_count": deleted_count, "resp": resp}
 
     except requests.HTTPError as e:
         text = getattr(e.response, "text", "")
-        logger.error(f"Qdrant scroll/delete HTTP error: {e} - resp: {text}")
-        raise RuntimeError(f"Qdrant scroll/delete failed: {e} - resp: {text}") from e
-    except requests.RequestException as e:
-        logger.error(f"Qdrant scroll/delete request failed: {e}")
+        status = e.response.status_code if e.response is not None else None
+        
+        if status == 404 or (status == 200 and '"not_found"' in text):
+            logger.info(f"Point id {point_id} not found for project_id={project_id}. Nothing to delete.")
+            return {"status": "not_found", "project_id": project_id, "deleted_count": 0, "http_status": status, "resp_text": text}
+        logger.error(f"Qdrant delete-by-ids HTTP error: {e} - resp: {text}")
         raise
-
-
+    except requests.RequestException as e:
+        logger.error(f"Qdrant delete-by-ids request failed: {e}")
+        raise
