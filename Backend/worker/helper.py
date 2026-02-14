@@ -145,7 +145,7 @@ def update_tool_usage(tool_id: str):
 # Qdrant operations are now centralized in database/qdrant.py
 
 
-def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "project_summaries"):
+def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "projects"):
     """
     RAG decision logic (strictly implements the 3 cases you specified):
       1) best similarity >= 0.90 -> copy tools & steps from matched project into new project
@@ -164,11 +164,13 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+ 
     summary = project.get("summary")
     if not summary or not str(summary).strip():
         raise HTTPException(status_code=400, detail="Project has no summary or user_description to embed")
 
-    model_name = settings.OPENAI_EMBEDDING_MODEL
+    
+    model_name = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     try:
         embeddings = create_embeddings_for_texts([summary], model=model_name)
     except Exception as e:
@@ -180,12 +182,13 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
     query_vec = embeddings[0]
 
     print(f"🔍 Querying Qdrant for similar projects to {project_id} in collection {collection_name}")
-    # Use centralized Qdrant client
-    try:
-        qclient = get_qdrant_client()
-    except RuntimeError as e:
-        print(f"❌ QDRANT config missing: {e}")
+    # qdrant client
+    qdrant_url = os.getenv("QDRANT_URL")
+    qdrant_api_key = os.getenv("QDRANT_API_KEY")
+    if not qdrant_url or not qdrant_api_key:
+        print(f"❌ QDRANT config missing in environment")
         raise HTTPException(status_code=500, detail="QDRANT config missing in environment")
+    qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
 
     print(f"🔍 Ensuring Qdrant collection {collection_name} exists")
     # ensure collection exists
@@ -211,11 +214,11 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
     best_score = -1.0
 
     print(f"🔍 Found {len(hits)} hits in Qdrant for project {project_id}")
-
+   
     for hit in hits:
         payload = hit.payload or {}
-        mongo_id_str = payload.get("project_id")
-        text_preview = payload.get("text")
+        mongo_id_str = payload.get("mongo_id")
+        text_preview = payload.get("text_preview")
         chunk_index = payload.get("chunk_index")
         score = getattr(hit, "score", None)
 
@@ -229,7 +232,7 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
             s = -1.0
 
         print(f"🔍 Hit: mongo_id={mongo_id_str} score={s} text_preview={text_preview}")
-
+        
         matched_obj = None
         matched_project_id = None
         if mongo_id_str:
@@ -240,6 +243,7 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
             except Exception:
                 matched_obj = None
 
+        
         if s > best_score:
             best_score = s
             best_hit = {"hit": hit, "payload": payload, "score": s, "mongo_id": mongo_id_str}
@@ -268,6 +272,7 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
     if not best_hit:
         return None
 
+   
     matched_mongo_id = best_hit.get("mongo_id")
     matched_doc = None
     if matched_mongo_id:
