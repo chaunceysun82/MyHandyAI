@@ -119,144 +119,175 @@ def reset_all_steps(project_id):
 
 
 def lambda_handler(event, context):
+    # Process each incoming message (SQS records etc.)
     for record in event.get("Records", []):
         try:
-            payload = json.loads(record["body"])
+            payload = json.loads(record.get("body", "{}"))
             task = payload.get("task", "full")
 
             if task == "image_step":
                 # Image-only job (runs in parallel for each step)
-                handle_image_step(payload)
+                try:
+                    handle_image_step(payload)
+                except Exception as e:
+                    print(f"❌ handle_image_step failed: {e}")
                 continue
 
-            project = payload.get("project")
-
-            if not project:
-                print("⚠️ Incomplete message")
+            project_id_str = payload.get("project")
+            if not project_id_str:
+                print("⚠️ Incomplete message: missing project id")
                 continue
 
-            print(f"📦 Received job for {project}")
+            print(f"📦 Received job for project {project_id_str}")
 
-            # Validate project exists
-            cursor = project_collection.find_one({"_id": ObjectId(project)})
+            # Validate project exists in Mongo
+            cursor = project_collection.find_one({"_id": ObjectId(project_id_str)})
             if not cursor:
-                print("Project not found")
-                return {"message": "Project not found"}
+                print("⚠️ Project not found in Mongo -> skipping")
+                continue
 
-            print("🔍 Searching for similar projects")
-            similar_result = None #similar_by_project(str(cursor["_id"]))
-            print(f"similar_result: {similar_result}")
+            # Avoid duplicate generation
+            gen_status = cursor.get("generation_status")
+            if gen_status == "complete":
+                print(f"⚠️ Project {project_id_str} already generated (status=complete) -> skipping")
+                continue
 
-            # Check if similar_result has the expected structure
-            if similar_result and "project_id" in similar_result and "best_score" in similar_result:
-                print(
-                    f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
-            elif similar_result and "matches" in similar_result:
-                # This is the "collection doesn't exist" case
-                print("🔍 No Qdrant collection found, proceeding with generation from scratch")
-                similar_result = None  # Treat as no matches
-            else:
-                print("🔍 No similar project found, proceeding with generation from scratch")
+            # Build or get summary
+            summary = cursor.get("summary")
+            if not summary or not isinstance(summary, str) or not summary.strip():
+                # Attempt to build from structured fields
+                print("⚠️ Project has no valid summary → skipping RAG and generation")
+                update_project(str(cursor["_id"]), {"generation_status": "failed", "error": "Missing summary"})
+                continue
+
+            # If we have a usable summary, try similarity; otherwise skip RAG
+            similar_result = None
+            if summary and summary.strip():
+                print("🔍 Searching for similar projects")
+                try:
+                    similar_result = similar_by_project(str(cursor["_id"]))
+                    print(f"🔍 similar_result: {similar_result}")
+                except Exception as e:
+                    print(f"⚠️ similar_by_project failed: {e}")
+                    similar_result = None
+
+            # Normalize similar_result shape: if it's the 'collection missing' form, treat as no match
+            if similar_result and isinstance(similar_result, dict) and "matches" in similar_result:
+                print("🔍 Qdrant collection missing (or no data) -> treating as no match")
                 similar_result = None
 
-            if similar_result and similar_result["best_score"] >= 0.95:
-                # If we found a highly similar project, we can use it as a reference
-                print(f"🔗 Using similar project {similar_result['project_id']} as reference"
-                      f" (score: {similar_result['best_score']})")
+            # If a match was returned, ensure the matched project still exists in Mongo and has generated data if we plan to copy
+            matched_project = None
+            if similar_result and "project_id" in similar_result and similar_result.get("best_score") is not None:
+                matched_id = similar_result["project_id"]
+                try:
+                    matched_project = project_collection.find_one({"_id": ObjectId(matched_id)})
+                except Exception:
+                    matched_project = None
 
-                matched_project = project_collection.find_one({"_id": ObjectId(similar_result["project_id"])})
+                if not matched_project:
+                    print(f"⚠️ Orphan vector: matched project {matched_id} not present in Mongo -> skipping reuse")
+                    similar_result = None
+                    matched_project = None
 
-                tools_result = matched_project.get("tool_generation", {})
+            # COPY PATH: very high similarity -> copy tools/steps/estimation
+            if similar_result and similar_result["best_score"] >= 0.95 and matched_project:
+                # ensure matched project actually has generated content to copy
+                tools_result = matched_project.get("tool_generation")
+                steps_result = matched_project.get("step_generation")
+                estimation_result = matched_project.get("estimation_generation")
 
-                steps_result = matched_project.get("step_generation", {})
-
-                estimation_result = matched_project.get("estimation_generation", {})
-
-                update_project(str(cursor["_id"]), {
-                    "tool_generation": tools_result,
-                    "step_generation": steps_result,
-                    "estimation_generation": estimation_result
-                })
-
-                reset_all_steps(str(cursor["_id"]))
-
-                print("✅ Copied tools, steps, and estimation from matched project")
-
-                update_project(str(cursor["_id"]), {"generation_status": "complete"})
-
-                print("✅ project generation complete via RAG")
-
-                continue
-
-            if similar_result and 0.7 <= similar_result["best_score"] < 0.95:
-                print(
-                    f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
-                print(f"⚠️ Similarity below threshold for reuse; proceeding with full generation")
-
-                similar_project = project_collection.find_one({"_id": ObjectId(similar_result["project_id"])})
-                if similar_project:
-                    tools_agent = ToolsAgent(new_summary=cursor["summary"], matched_summary=similar_project["summary"],
-                                             matched_tools=similar_project["tool_generation"]["tools"])
+                if not tools_result or not steps_result:
+                    print("⚠️ Matched project missing generated tools/steps -> falling back to generation")
+                    similar_result = None
+                    matched_project = None
                 else:
-                    tools_agent = ToolsAgent()
-            else:
-                tools_agent = ToolsAgent()
+                    print(f"🔗 Using similar project {matched_project['_id']} as reference (score: {similar_result['best_score']})")
 
-            tools_result = tools_agent.recommend_tools(
-                summary=cursor["summary"],
-                include_json=True
-            )
+                    update_project(str(cursor["_id"]), {
+                        "tool_generation": tools_result,
+                        "step_generation": steps_result,
+                        "estimation_generation": estimation_result
+                    })
 
-            # Generate tools using the independent agent
-            if tools_result is None:
-                print("LLM Generation tools failed")
-                return {"message": "LLM Generation tools failed"}
+                    reset_all_steps(str(cursor["_id"]))
 
-            # FLOW 2: Compare and enhance tools with existing ones
-            if "tools" in tools_result and tools_result["tools"]:
-                print(f"🔄 FLOW 2: Comparing {len(tools_result['tools'])} generated tools with existing tools")
+                    update_project(str(cursor["_id"]), {"generation_status": "complete"})
+                    print("✅ project generation complete via RAG (copy)")
+                    # done with this record
+                    continue
+
+            # MODIFY PATH: medium similarity -> use matched project as context for agents
+            tools_agent = None
+            if similar_result and 0.7 <= similar_result["best_score"] < 0.95 and matched_project:
+                print(f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
+                # If matched project has generation data, pass matched tools/summary as context; otherwise proceed with plain agent
+                matched_tools = matched_project.get("tool_generation", {}).get("tools") if matched_project else None
+                matched_summary = matched_project.get("summary") if matched_project else None
 
                 try:
+                    tools_agent = ToolsAgent(
+                        new_summary=summary,
+                        matched_summary=matched_summary,
+                        matched_tools=matched_tools
+                    )
+                except Exception:
+                    print("⚠️ ToolsAgent init with matched context failed, falling back to default ToolsAgent")
+                    tools_agent = ToolsAgent()
+            else:
+                # no suitable match -> default agent
+                tools_agent = ToolsAgent()
 
+            # Generate tools (LLM)
+            try:
+                tools_result = tools_agent.recommend_tools(
+                    summary=summary,
+                    include_json=True
+                )
+            except Exception as e:
+                print(f"❌ tools_agent.recommend_tools failed: {e}")
+                tools_result = None
+
+            if tools_result is None:
+                print("❌ LLM Generation tools failed -> skipping this record")
+                # mark failure optionally
+                update_project(str(cursor["_id"]), {"generation_status": "failed"})
+                continue
+
+            # FLOW 2: Compare and enhance tools with existing tools collection (reuse images/amazon links)
+            if tools_result and "tools" in tools_result and tools_result["tools"]:
+                try:
                     enhanced_tools = []
                     reuse_stats = {"reused": 0, "new": 0, "errors": 0}
 
                     for tool in tools_result["tools"]:
                         try:
-                            # Search for similar existing tools
+                            # Use tool name as query for similarity
                             similar_tools = find_similar_tools(
                                 query=tool.get("name", ""),
                                 limit=3,
                                 similarity_threshold=0.75
                             )
 
-                            if similar_tools and similar_tools[0]["similarity_score"] >= 0.8:
-                                # High similarity - reuse image and amazon link
+                            if similar_tools and similar_tools[0].get("similarity_score", 0) >= 0.8:
                                 best_match = similar_tools[0]
-                                tool["image_link"] = best_match["image_link"]
-                                tool["amazon_link"] = best_match["amazon_link"]
-                                tool["reused_from"] = best_match["tool_id"]
-                                tool["similarity_score"] = best_match["similarity_score"]
-
-                                # Update usage count
+                                tool["image_link"] = best_match.get("image_link")
+                                tool["amazon_link"] = best_match.get("amazon_link")
+                                tool["reused_from"] = best_match.get("tool_id")
+                                tool["similarity_score"] = best_match.get("similarity_score")
                                 update_tool_usage(best_match["tool_id"])
-
                                 reuse_stats["reused"] += 1
-                                print(f"   ✅ Reused image/links for: {tool['name']}")
-
+                                print(f"   ✅ Reused image/links for: {tool.get('name')}")
                             else:
-                                # No good match - keep as new tool
                                 reuse_stats["new"] += 1
-                                print(f"   🆕 New tool: {tool['name']}")
+                                print(f"   🆕 New tool: {tool.get('name')}")
                                 try:
-                                    img = tools_agent._get_image_url(tool["name"])
+                                    img = tools_agent._get_image_url(tool.get("name", ""))
                                     tool["image_link"] = img
                                 except Exception:
                                     tool["image_link"] = None
-
-                                safe = tools_agent._sanitize_for_amazon(tool["name"])
-                                tool[
-                                    "amazon_link"] = f"https://www.amazon.com/s?k={safe}&tag={tools_agent.amazon_affiliate_tag}"
+                                safe = tools_agent._sanitize_for_amazon(tool.get("name", ""))
+                                tool["amazon_link"] = f"https://www.amazon.com/s?k={safe}&tag={tools_agent.amazon_affiliate_tag}"
 
                             enhanced_tools.append(tool)
 
@@ -265,155 +296,159 @@ def lambda_handler(event, context):
                             enhanced_tools.append(tool)
                             reuse_stats["errors"] += 1
 
-                    # Update tools_result with enhanced tools
                     tools_result["tools"] = enhanced_tools
                     tools_result["reuse_metadata"] = reuse_stats
-
                     print(f"✅ FLOW 2 completed: {reuse_stats['reused']} reused, {reuse_stats['new']} new")
 
                 except Exception as e:
                     print(f"⚠️ FLOW 2 comparison error: {e}")
-                    tools_result["reuse_metadata"] = {"error": str(e)}
+                    tools_result.setdefault("reuse_metadata", {"error": str(e)})
 
             tools_result["status"] = "complete"
-
             update_project(str(cursor["_id"]), {"tool_generation": tools_result})
 
-            # FLOW 1: Extract and save tools to tools_collection
+            # FLOW 1: Extract and save new tools to tools_collection
             try:
-                print(f"🔄 FLOW 1: Extracting generated tools to tools_collection")
-
+                print("🔄 FLOW 1: Extracting generated tools to tools_collection")
                 saved_tools = []
                 failed_tools = []
-
-                if "tools" in tools_result and tools_result["tools"]:
+                if tools_result and "tools" in tools_result and tools_result["tools"]:
                     for tool in tools_result["tools"]:
                         try:
-                            # Check if tool already exists (avoid duplicates)
-                            existing_tool = tools_collection.find_one({"name": tool["name"]})
+                            existing_tool = tools_collection.find_one({"name": tool.get("name")})
                             if existing_tool:
-                                print(f"✅ Tool '{tool['name']}' already exists, skipping")
+                                print(f"✅ Tool '{tool.get('name')}' already exists, skipping")
                                 continue
 
-                            # Save new tool
                             tool_id = store_tool_in_database(tool)
-                            embedding_result = create_and_store_tool_embeddings(tool, tool_id)
+                            # create embeddings and upsert into Qdrant tools collection
+                            try:
+                                embedding_result = create_and_store_tool_embeddings(tool, tool_id)
+                            except Exception as ee:
+                                print(f"⚠️ Failed creating/storing embeddings for tool {tool.get('name')}: {ee}")
 
-                            saved_tools.append({
-                                "tool_id": tool_id,
-                                "name": tool["name"],
-                                "status": "saved"
-                            })
-
-                            print(f"✅ FLOW 1: Saved tool '{tool['name']}' to tools_collection")
-
+                            saved_tools.append({"tool_id": tool_id, "name": tool.get("name"), "status": "saved"})
+                            print(f"✅ FLOW 1: Saved tool '{tool.get('name')}'")
                         except Exception as e:
                             print(f"❌ FLOW 1: Failed to save tool {tool.get('name', 'unknown')}: {e}")
                             failed_tools.append({"tool": tool.get('name', 'unknown'), "error": str(e)})
 
-                    print(f"✅ FLOW 1: Completed - {len(saved_tools)} tools saved to collection")
-
+                print(f"✅ FLOW 1: Completed - saved {len(saved_tools)} tools")
             except Exception as e:
                 print(f"⚠️ FLOW 1: Failed to extract tools: {e}")
 
-            cursor = project_collection.find_one({"_id": ObjectId(project)})
-
+            # Refresh cursor for steps generation
+            cursor = project_collection.find_one({"_id": ObjectId(project_id_str)})
             update_project(str(cursor["_id"]), {"step_generation": {"status": "in progress"}})
 
-            # Initialize steps generation service
-            steps_agent = StepsGenerationAgent()
-            steps_service = StepsGenerationAgentService(steps_agent)
-
-            # Prepare matched data if similarity found
+            # Prepare matched data for steps if modify path
             matched_summary = None
             matched_steps = None
-            if similar_result and 0.7 <= similar_result["best_score"] < 0.95:
-                print(
-                    f"🔍 Steps Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
-                print(f"⚠️ Similarity below threshold for reuse; proceeding with full generation")
-                similar_project = project_collection.find_one({"_id": ObjectId(similar_result["project_id"])})
-                if similar_project:
-                    matched_summary = similar_project["summary"]
-                    matched_steps = similar_project["step_generation"].get("steps")
+            if similar_result and 0.7 <= similar_result["best_score"] < 0.95 and matched_project:
+                matched_summary = matched_project.get("summary")
+                matched_steps = matched_project.get("step_generation", {}).get("steps")
 
-            # Generate steps using service
-            steps_result = steps_service.generate_steps(
-                tools=cursor["tool_generation"],
-                summary=cursor["summary"],
-                user_answers=cursor.get("user_answers") or cursor.get("answers"),
-                questions=cursor["questions"],
-                matched_summary=matched_summary,
-                matched_steps=matched_steps
-            )
+            # Generate steps
+            try:
+                steps_agent = StepsGenerationAgent()
+                steps_service = StepsGenerationAgentService(steps_agent)
+                steps_result = steps_service.generate_steps(
+                    tools=cursor.get("tool_generation"),
+                    summary=cursor.get("summary"),
+                    user_answers=cursor.get("user_answers") or cursor.get("answers"),
+                    questions=cursor.get("questions", []),
+                    matched_summary=matched_summary,
+                    matched_steps=matched_steps
+                )
+            except Exception as e:
+                print(f"❌ Steps generation failed: {e}")
+                update_project(str(cursor["_id"]), {"step_generation": {"status": "failed"}})
+                continue
 
-            if steps_result is None:
-                print("LLM Generation steps failed")
-                return {"message": "LLM Generation steps failed"}
+            if not steps_result:
+                print("❌ LLM Generation steps failed -> skipping")
+                update_project(str(cursor["_id"]), {"step_generation": {"status": "failed"}})
+                continue
 
-            youtube_url = get_youtube_link(cursor["summary"])
-            steps_result["youtube"] = youtube_url
+            # Add youtube link & persist steps
+            try:
+                youtube_url = get_youtube_link(cursor.get("summary", ""))
+                steps_result["youtube"] = youtube_url
+                update_project(str(cursor["_id"]), {"step_generation": steps_result})
+                enqueue_image_tasks(project_id_str, steps_result.get("steps", []), size="1536x1024", summary=cursor.get("summary", ""))
+            except Exception as e:
+                print(f"⚠️ Failed after steps generation: {e}")
 
-            update_project(str(cursor["_id"]), {"step_generation": steps_result})
+            # save individual step docs
+            try:
+                step_meta = {k: v for k, v in steps_result.items() if k != "steps"}
+                step_meta["status"] = "complete"
 
-            enqueue_image_tasks(project, steps_result["steps"], size="1536x1024", summary=cursor["summary"])
+                for step in steps_result.get("steps", []):
+                    step_doc = {
+                        "projectId": ObjectId(project_id_str),
+                        "order": step.get("order"),
+                        "stepNumber": step.get("order"),
+                        "title": step.get("title", f"Step {step.get('order', 0)}"),
+                        "instructions": step.get("instructions", []),
+                        "description": " ".join(step.get("instructions", [])),
+                        "est_time_min": step.get("est_time_min", 0),
+                        "time_text": step.get("time_text", ""),
+                        "tools_needed": step.get("tools_needed", []),
+                        "safety_warnings": step.get("safety_warnings", []),
+                        "tips": step.get("tips", []),
+                        "image_url": step.get("image_url"),
+                        "videoTutorialLink": youtube_url,
+                        "referenceLinks": [],
+                        "status": (step.get("status") or "pending").lower(),
+                        "progress": 0,
+                        "completed": False,
+                        "createdAt": datetime.utcnow(),
+                        "updatedAt": datetime.utcnow(),
+                    }
+                    steps_collection.insert_one(step_doc)
 
-            step_meta = {k: v for k, v in steps_result.items() if k != "steps"}
-            step_meta["status"] = "complete"
+                print("✅ Steps Generated and saved")
+            except Exception as e:
+                print(f"⚠️ Saving steps to DB failed: {e}")
 
-            for step in steps_result.get("steps", []):
-                step_doc = {
-                    "projectId": ObjectId(project),
-                    "order": step.get("order"),
-                    "stepNumber": step.get("order"),  # keep for backward compatibility
-                    "title": step.get("title", f"Step {step.get('order', 0)}"),
-                    "instructions": step.get("instructions", []),
-                    "description": " ".join(step.get("instructions", [])),
-                    "est_time_min": step.get("est_time_min", 0),
-                    "time_text": step.get("time_text", ""),
-                    "tools_needed": step.get("tools_needed", []),
-                    "safety_warnings": step.get("safety_warnings", []),
-                    "tips": step.get("tips", []),
-                    "image_url": step.get("image_url"),
-                    "videoTutorialLink": youtube_url,
-                    "referenceLinks": [],
-                    "status": (step.get("status") or "pending").lower(),
-                    "progress": 0,
-                    "completed": False,
-                    "createdAt": datetime.utcnow(),
-                    "updatedAt": datetime.utcnow(),
-                }
-                steps_collection.insert_one(step_doc)
-
-            print("Steps Generated")
-
-            cursor = project_collection.find_one({"_id": ObjectId(project)})
-
+            # Refresh cursor and generate estimation
+            cursor = project_collection.find_one({"_id": ObjectId(project_id_str)})
             update_project(str(cursor["_id"]), {"estimation_generation": {"status": "in progress"}})
 
-            estimation_agent = EstimationAgent()
+            try:
+                estimation_agent = EstimationAgent()
+                estimation_result = estimation_agent.generate_estimation(
+                    tools_data=cursor.get("tool_generation"),
+                    steps_data=cursor.get("step_generation"),
+                    summary=cursor.get("summary")
+                )
+            except Exception as e:
+                print(f"❌ Estimation generation failed: {e}")
+                update_project(str(cursor["_id"]), {"estimation_generation": {"status": "failed"}})
+                continue
 
-            estimation_result = estimation_agent.generate_estimation(
-                tools_data=cursor["tool_generation"],
-                steps_data=cursor["step_generation"],
-                summary=cursor["summary"]
-            )
-
-            if estimation_result is None:
-                print("LLM Generation steps failed")
-                return {"message": "LLM Generation steps failed"}
+            if not estimation_result:
+                print("❌ Estimation generation returned None -> skipping")
+                update_project(str(cursor["_id"]), {"estimation_generation": {"status": "failed"}})
+                continue
 
             estimation_result["status"] = "complete"
-
             update_project(str(cursor["_id"]), {"estimation_generation": estimation_result})
 
+            # mark project complete
             update_project(str(cursor["_id"]), {"generation_status": "complete"})
+            print(f"✅ project generation complete for {project_id_str}")
 
-            print("✅ project generation complete")
-            return None
+            # continue to next record
+            continue
 
         except Exception as e:
             traceback.print_exc()
-            return None
+            # Continue processing remaining records instead of returning early
+            continue
+
+    # finished processing all records
     return None
 
 
