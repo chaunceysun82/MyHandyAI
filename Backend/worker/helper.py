@@ -145,7 +145,7 @@ def update_tool_usage(tool_id: str):
 # Qdrant operations are now centralized in database/qdrant.py
 
 
-def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "projects"):
+def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "project_summaries"):
     """
     RAG decision logic (strictly implements the 3 cases you specified):
       1) best similarity >= 0.90 -> copy tools & steps from matched project into new project
@@ -214,8 +214,8 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
 
     for hit in hits:
         payload = hit.payload or {}
-        mongo_id_str = payload.get("mongo_id")
-        text_preview = payload.get("text_preview")
+        mongo_id_str = payload.get("project_id")
+        text_preview = payload.get("text")
         chunk_index = payload.get("chunk_index")
         score = getattr(hit, "score", None)
 
