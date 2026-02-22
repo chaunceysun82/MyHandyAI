@@ -5,7 +5,7 @@ from pydantic import Field
 from pymongo.collection import Collection
 from pymongo.database import Database
 
-from agents.information_gathering_agent.agent.embeddings_generation import embed_and_store_project_summary
+from agents.information_gathering_agent.agent.embeddings_generation import embed_and_store_project_summary, find_similar_projects_single_chunk
 from agents.information_gathering_agent.agent.utils import extract_qa_pairs_from_messages
 from database.enums.project import InformationGatheringConversationStatus
 from database.mongodb import mongodb
@@ -14,7 +14,6 @@ database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
-
 
 @tool(
     description="Call this tool AFTER identifying the problem category but BEFORE beginning focused information gathering. This establishes the diagnostic framework and stores your information gathering strategy."
@@ -140,6 +139,15 @@ def store_summary(
                 embedding_model = DEFAULT_EMBEDDING_MODEL
                 if project_doc is None:
                     project_doc = {**update_data, "_id": ObjectId(project_id)}
+
+                summary_text= project_doc.get("summary", "")
+                if summary_text.strip() == "":
+                    logger.warning("No summary text available for embedding generation.")
+                else:
+                    result=find_similar_projects_single_chunk(summary_text)
+                    for p in result["projects"][:1]:
+                        logger.info(f"Similar project found - ID: {p['project_id']}, Score: {p['score']}")
+                        logger.info(p["text"] or "")
                 embedding_result = embed_and_store_project_summary(project_doc, model=embedding_model)
                 print(embedding_result)
                 logger.info(f"Embeddings stored: {embedding_result}")
