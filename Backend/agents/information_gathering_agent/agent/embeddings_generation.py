@@ -222,3 +222,144 @@ def embed_and_store_project_summary(project_doc: Dict[str, Any], model: str = DE
         "chunks": len(chunks),
         "inserted": len(points),
     }
+
+def find_similar_projects_single_chunk(
+    query: str,
+    top_k: int = 2,
+    model: str = DEFAULT_EMBEDDING_MODEL,
+) -> Dict[str, Any]:
+    
+    logger.info("ENTERED find_similar_projects_single_chunk")
+    if not query:
+        return {"query": query, "raw_hits": [], "projects": []}
+
+    embs = get_embeddings([query], model=model)
+    if not embs:
+        return {"query": query, "raw_hits": [], "projects": []}
+    vector = embs[0]
+
+    base, headers = _qdrant_base_and_headers()
+    search_url = f"{base}/collections/{QDRANT_COLLECTION}/points/search"
+    body = {
+        "vector": vector,
+        "limit": top_k,
+        "with_payload": True,
+        "with_vector": False,
+    }
+
+    try:
+        r = requests.post(search_url, headers=headers, json=body, timeout=20)
+        r.raise_for_status()
+        resp = r.json()
+    except requests.HTTPError as e:
+        text = getattr(e.response, "text", "")
+        logger.error(f"Qdrant search HTTP error: {e} - resp: {text}")
+        raise RuntimeError(f"Qdrant search failed: {e} - resp: {text}") from e
+    except requests.RequestException as e:
+        logger.error(f"Qdrant search request failed: {e}")
+        raise
+
+    if isinstance(resp, dict):
+        raw = resp.get("result") or resp.get("hits") or resp.get("data") or []
+    else:
+        raw = resp
+
+    raw_hits = []
+    for item in raw:
+        try:
+            item_id = item.get("id") if isinstance(item, dict) else None
+            payload = item.get("payload", {}) if isinstance(item, dict) else {}
+            score = item.get("score") if isinstance(item, dict) else None
+            if score is None:
+                score = payload.get("score")
+
+            project_id = None
+            text = None
+            chunk_index = None
+            if isinstance(payload, dict):
+                project_id = payload.get("project_id") or payload.get("projectId") or payload.get("project")
+                text = payload.get("text") or payload.get("chunk_text") or payload.get("content")
+                chunk_index = payload.get("chunk_index") or payload.get("chunkIndex") or payload.get("index")
+
+            if not project_id:
+                project_id = str(item_id)
+
+            raw_hits.append({
+                "id": item_id,
+                "score": score,
+                "project_id": str(project_id),
+                "text": text,
+                "chunk_index": chunk_index,
+                "raw_payload": payload,
+                "raw_item": item,
+            })
+        except Exception as e:
+            logger.warning(f"Skipping malformed hit: {e} - item: {item}")
+
+    best_by_project: Dict[str, Dict[str, Any]] = {}
+    for h in raw_hits:
+        pid = h["project_id"]
+        existing = best_by_project.get(pid)
+        def score_val(x):
+            return x if x is not None else float("-inf")
+        if not existing or score_val(h["score"]) > score_val(existing["score"]):
+            best_by_project[pid] = h
+
+    projects = list(best_by_project.values())
+    projects.sort(key=lambda x: (x["score"] is not None, x["score"]), reverse=True)
+
+    return {"query": query, "raw_hits": raw_hits, "projects": projects}
+
+def delete_project_by_point_id(project: Dict[str, Any] | str,
+                               collection_name: str = QDRANT_COLLECTION,
+                               wait: bool = True) -> Dict[str, Any]:
+   
+    if isinstance(project, dict):
+        project_id = project.get("_id")
+        if project_id is None:
+            raise ValueError("project dict provided but '_id' key is missing")
+        project_id = str(project_id)
+    else:
+        project_id = str(project)
+
+    if not project_id:
+        raise ValueError("could not determine project_id")
+
+
+    point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{project_id}_0"))
+    base, headers = _qdrant_base_and_headers()
+    delete_url = f"{base}/collections/{collection_name}/points/delete"
+    body = {"points": [point_id], "wait": wait}
+
+    try:
+        r = requests.post(delete_url, headers=headers, json=body, timeout=20)
+        r.raise_for_status()
+        try:
+            resp = r.json()
+        except ValueError:
+            resp = {"status": "ok", "deleted_ids": [point_id], "http_status": r.status_code}
+
+        
+        deleted_count = resp.get("deleted") or resp.get("deleted_count") or (len(resp.get("deleted_ids", [])) if resp.get("deleted_ids") else None)
+        if deleted_count is None:
+            
+            deleted_count = 1
+
+        logger.info(f"Deleted point id {point_id} for project_id={project_id}. deleted_count={deleted_count}")
+        
+        resp.setdefault("deleted_ids", [point_id])
+        return {"status": "ok", "project_id": project_id, "deleted_count": deleted_count, "resp": resp}
+
+    except requests.HTTPError as e:
+        text = getattr(e.response, "text", "")
+        status = e.response.status_code if e.response is not None else None
+        
+        if status == 404 or (status == 200 and '"not_found"' in text):
+            logger.info(f"Point id {point_id} not found for project_id={project_id}. Nothing to delete.")
+            return {"status": "not_found", "project_id": project_id, "deleted_count": 0, "http_status": status, "resp_text": text}
+        logger.error(f"Qdrant delete-by-ids HTTP error: {e} - resp: {text}")
+        raise
+    except requests.RequestException as e:
+        logger.error(f"Qdrant delete-by-ids request failed: {e}")
+        raise
+
