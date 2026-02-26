@@ -43,6 +43,8 @@ class StepsGenerationAgentService:
         # Build system prompt with adaptation instructions if needed
         system_prompt = self._build_system_prompt(matched_summary, matched_steps)
 
+        print("system_prompt:", system_prompt)  # Debug print
+
         # Build user instruction with all context
         user_instruction = self._build_user_instruction(
             summary=summary,
@@ -50,6 +52,8 @@ class StepsGenerationAgentService:
             user_answers=user_answers,
             questions=questions
         )
+
+        print("user_instruction:", user_instruction)  # Debug print
 
         # Generate steps using agent
         steps_plan: StepsPlan = self.steps_generation_agent.generate_project_steps(
