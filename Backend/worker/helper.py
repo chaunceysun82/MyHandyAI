@@ -180,7 +180,6 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
     query_vec = embeddings[0]
 
     print(f"🔍 Querying Qdrant for similar projects to {project_id} in collection {collection_name}")
-    # Use centralized Qdrant client
     try:
         qclient = get_qdrant_client()
     except RuntimeError as e:
@@ -188,7 +187,6 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
         raise HTTPException(status_code=500, detail="QDRANT config missing in environment")
 
     print(f"🔍 Ensuring Qdrant collection {collection_name} exists")
-    # ensure collection exists
     try:
         qclient.get_collection(collection_name=collection_name)
     except UnexpectedResponse as ex:
@@ -196,16 +194,21 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
             return {"query_project_id": project_id, "collection": collection_name, "matches": []}
         else:
             print(f"❌ Qdrant error: {str(ex)}")
-            # FIXED: Changed Exception to HTTPException
             raise HTTPException(status_code=500, detail=f"Qdrant error: {str(ex)}")
 
     # search (request a few extra to allow skipping self-matches)
     limit = top_k + 5
     try:
-        hits = qclient.search(collection_name=collection_name, query_vector=query_vec, limit=limit, with_payload=True)
+        # FIXED: Upgraded to use query_points() for Qdrant client 1.10+
+        response = qclient.query_points(
+            collection_name=collection_name, 
+            query=query_vec, 
+            limit=limit, 
+            with_payload=True
+        )
+        hits = response.points
     except Exception as e:
         print(f"❌ Qdrant search error: {str(e)}")
-        # FIXED: Changed Exception to HTTPException
         raise HTTPException(status_code=500, detail=f"Qdrant search failed: {str(e)}")
 
     results = []
@@ -271,13 +274,11 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
         return None
 
     matched_mongo_id = best_hit.get("mongo_id")
-    matched_doc = None
     if matched_mongo_id:
         try:
             matched_doc = project_collection.find_one({"_id": ObjectId(matched_mongo_id)})
             return {"project_id": matched_mongo_id, "best_score": best_score}
         except Exception:
-            matched_doc = None
             return None
     else:
         return None
