@@ -8,23 +8,24 @@ from config import (
     CLASSIFY_BATCH_LIMIT,
     INGEST_MAX_ARTICLES_PER_RUN,
     INGEST_CONCURRENCY,
+    SCOPE_KEYWORDS
 )
 from db import init_db, upsert_discovered_urls, get_next_approved_urls
-from discovery import discover_category_graph
+from discovery import discover_category_graph_api
 from classify_stage import classify_queued_urls
 from ingest import ingest_batch
 
+CANONICAL_CATS = [
+    "Plumbing","Electrical","Appliance","Walls","Doors","Toilet","Paint","Exterior","Flooring","HVAC"
+]
+
+
 def run_discovery_all(stores):
-    total_articles = 0
-    for cat_name, seed_url in CATEGORY_SEEDS.items():
-        cats, articles = discover_category_graph(
-            seed_url=seed_url,
-            expected_keyword=cat_name,
-            max_pages=DISCOVERY_MAX_PAGES_PER_CATEGORY,
-            rps=DISCOVERY_RPS,
-        )
-        print(f"[discovery:{cat_name}] categories={len(cats)} articles={len(articles)}")
-        total_articles += len(articles)
+    total = 0
+    for cat_name in CANONICAL_CATS:
+        resolved, cats, articles = discover_category_graph_api(cat_name)
+        print(f"[discovery:{cat_name}] resolved={resolved} categories={len(cats)} articles={len(articles)}")
+        total += len(articles)
 
         upsert_discovered_urls(
             stores,
@@ -34,7 +35,7 @@ def run_discovery_all(stores):
             tags=[cat_name],
         )
 
-    print(f"[discovery] total articles found across categories: {total_articles}")
+    print(f"[discovery] total articles found across categories: {total}")
 
 def run_classify(stores):
     classify_queued_urls(stores, limit=CLASSIFY_BATCH_LIMIT)

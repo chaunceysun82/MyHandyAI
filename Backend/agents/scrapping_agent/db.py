@@ -20,12 +20,6 @@ def init_db() -> Stores:
     docs = db[COL_DOCS]
     state = db[COL_STATE]
 
-    discovered.create_index([("url", 1)], unique=True)
-    discovered.create_index([("source", 1), ("status", 1), ("last_seen_at", -1)])
-    discovered.create_index([("classification.is_diy_manual", 1), ("status", 1)])
-    docs.create_index([("url", 1)], unique=True)
-    state.create_index([("source", 1)], unique=True)
-
     return Stores(discovered=discovered, docs=docs, state=state)
 
 def upsert_discovered_urls(

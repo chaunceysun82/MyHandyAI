@@ -31,6 +31,19 @@ CATEGORY_SEEDS = {
     "HVAC": "https://www.wikihow.com/Category:Heating-and-Cooling",
 }
 
+SCOPE_KEYWORDS = {
+    "Plumbing": ["Plumbing"],
+    "Electrical": ["Electrical"],
+    "Appliance": ["Appliances", "Home Appliances", "Appliance"],
+    "Walls": ["Walls"],
+    "Doors": ["Doors"],
+    "Toilet": ["Toilets", "Toilet"],
+    "Paint": ["Painting", "Paint"],
+    "Exterior": ["Exterior", "Outdoor", "Home Exterior"],
+    "Flooring": ["Flooring"],
+    "HVAC": ["Heating", "Cooling", "Heating and Cooling"],
+}
+
 SOURCE_DOMAIN = "wikihow.com"
 ALLOWED_HOSTS = ["www.wikihow.com", "wikihow.com"]
 
@@ -46,7 +59,7 @@ FETCH_TIMEOUT_MS = 45000
 
 OPENAI_MODEL_CLASSIFIER = os.getenv("OPENAI_MODEL_CLASSIFIER", "gpt-5-nano")
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
 DB_NAME = os.getenv("DB_NAME", "myhandyai_kb")
 
 COL_DISCOVERED = "discovered_urls"
