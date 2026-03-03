@@ -6,6 +6,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 from pymongo.collection import Collection
 from pymongo.database import Database
+from agents.information_gathering_agent.agent.embeddings_generation import delete_project_by_point_id
 
 from database.mongodb import mongodb
 
@@ -92,6 +93,7 @@ def delete_project(project_id: str):
     conversations_collection.delete_many({"projectId": project_obj_id})
     conversations_collection.delete_many({"project": str(project_obj_id)})
 
+    delete_project_by_point_id(project_id)
 
     return {
         "message": "Project, associated conversations, and Qdrant embeddings deleted successfully",
