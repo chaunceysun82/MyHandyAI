@@ -73,3 +73,4 @@ async def ingest_batch(stores: Stores, rows: list[dict], concurrency: int = 2):
                 return {"url": url, "result": "error", "error": str(e)}
 
     return await asyncio.gather(*[_run(r) for r in rows])
+
