@@ -17,6 +17,7 @@ def should_skip(existing: Optional[dict], new_rev: Optional[int], new_hash: str)
     return bool(old_hash) and old_hash == new_hash
 
 async def ingest_one(stores: Stores, url: str, classification: dict, base_tags: list[str]) -> Dict[str, str]:
+    url = url.strip().replace("\u200b", "")
     html, status, final_url = await fetch_html(url, timeout_ms=FETCH_TIMEOUT_MS)
 
     rev_id = extract_revision_id(html)
