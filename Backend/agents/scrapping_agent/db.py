@@ -95,7 +95,7 @@ def get_next_approved_urls(stores: Stores, limit: int) -> list[dict]:
         ).limit(limit)
     )
 
-def bulk_upsert_discovered(stores: Stores, rows: List[dict]):
+def bulk_upsert_discovered(stores: Stores, rows: list[dict]):
     ops = []
     for r in rows:
         url = r["url"]
