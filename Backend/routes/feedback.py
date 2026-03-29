@@ -39,6 +39,7 @@ def find_project_or_404(project_id: str):
 class FeedbackIn(BaseModel):
     rating: int = Field(ge=1, le=5)
     comments: Optional[str] = ""
+    tags: List[str] = Field(default_factory=list)
 
 
 class FeedbackOut(BaseModel):
@@ -99,6 +100,7 @@ def add_feedback(project_id: str, fb: FeedbackIn):
     entry = {
         "rating": fb.rating,
         "comments": fb.comments or "",
+        "tags": fb.tags,
         "createdAt": datetime.utcnow(),
     }
 
