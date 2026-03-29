@@ -7,7 +7,6 @@ import requests
 from dotenv import load_dotenv
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, ValidationError
-from serpapi import GoogleSearch
 
 load_dotenv()
 
@@ -167,8 +166,13 @@ Project summary:
 
         for attempt in range(1, retries + 1):
             try:
-                search = GoogleSearch(params)
-                results = search.get_dict()
+                response = requests.get(
+                    "https://serpapi.com/search.json",
+                    params=params,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                results = response.json()
                 images = results.get("images_results") or []
                 if images:
                     return images[0].get("thumbnail") or images[0].get("original") or None
