@@ -26,8 +26,9 @@ jobs:
         run: |
           docker run --rm \
             -v "$PWD/lambda_package":/var/task \
+            --entrypoint /bin/sh \
             public.ecr.aws/lambda/python:3.11 \
-            /bin/sh -c "
+            -c "
               rm -rf cryptography* cffi* &&
               python -m pip install --upgrade pip setuptools wheel &&
               pip install \
