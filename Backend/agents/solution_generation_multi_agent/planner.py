@@ -7,7 +7,7 @@ import requests
 from dotenv import load_dotenv
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, ValidationError
-from serpapi.google_search import GoogleSearch
+from serpapi import GoogleSearch
 
 load_dotenv()
 
