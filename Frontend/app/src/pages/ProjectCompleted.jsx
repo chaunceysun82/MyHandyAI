@@ -5,7 +5,13 @@ import MobileWrapper from "../components/MobileWrapper";
 import { getCompletionMessage, submitFeedback } from "../services/feedback";
 import { ReactComponent as ShareSuccess } from '../assets/share_success.svg';
 import { ReactComponent as AllProjects } from '../assets/all_projects.svg';
-import { trackMetricOnce } from "../services/metrics";
+
+const FEEDBACK_TAGS = [
+  "Super helpful guides",
+  "Easy to follow",
+  "Confusing",
+  "Too hard",
+];
 
 export default function ProjectCompleted() {
   const navigate = useNavigate();
@@ -21,6 +27,7 @@ export default function ProjectCompleted() {
 
   const [rating, setRating] = useState(0);
   const [feedback, setFeedback] = useState("");
+  const [selectedTags, setSelectedTags] = useState([]);
   const [loadingMsg, setLoadingMsg] = useState(true);
   const [completionMsg, setCompletionMsg] = useState(
     `All done! Your ${projectName.toLowerCase()} should be installed and looking great.`
@@ -45,19 +52,15 @@ export default function ProjectCompleted() {
     return () => { alive = false; };
   }, [projectId]);
 
-  useEffect(() => {
-    if (!projectId) {
-      return;
-    }
-
-    trackMetricOnce(`project_finished:${projectId}`, "project_finished", {
-      userId: userId || undefined,
-      projectId,
-      metadata: { source: "project_completed_page" }
-    });
-  }, [projectId, userId]);
-
   const handleClose = () => navigate("/home");
+  const toggleTag = (tag) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag)
+        ? prev.filter((item) => item !== tag)
+        : [...prev, tag]
+    );
+  };
+
   const handleGoBack = () => {
     // Navigate back to Project Overview, preserving any existing state
     navigate(`/projects/${projectId}/overview`, {
@@ -78,7 +81,11 @@ export default function ProjectCompleted() {
     setError("");
     setSaving(true);
     try {
-      await submitFeedback(projectId, { rating, comments: feedback.trim() });
+      await submitFeedback(projectId, {
+        rating,
+        comments: feedback.trim(),
+        tags: selectedTags,
+      });
       navigate(target);
     } catch (e) {
       setError(e.message || "Could not save feedback.");
@@ -154,6 +161,26 @@ export default function ProjectCompleted() {
             <p className="text-center text-gray-600 mb-3">
               How was your experience fixing this issue?
             </p>
+
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              {FEEDBACK_TAGS.map((tag) => {
+                const active = selectedTags.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => toggleTag(tag)}
+                    className={`rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+                      active
+                        ? "bg-[#1484A3] text-white"
+                        : "bg-[#DDF2F8] text-gray-700 hover:bg-[#cdeaf3]"
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
+            </div>
 
             {/* Feedback Input */}
             <textarea

@@ -9,6 +9,7 @@ from pymongo.database import Database
 from agents.information_gathering_agent.agent.embeddings_generation import delete_project_by_point_id
 
 from database.mongodb import mongodb
+from routes.logs import insert_log_event
 
 router = APIRouter()
 database: Database = mongodb.get_database()
@@ -31,6 +32,12 @@ def create_project(project: Project):
 
     result = project_collection.insert_one(project_dict)
     project_id = result.inserted_id
+    insert_log_event(
+        "project_started",
+        user_id=project.userId,
+        project_id=str(project_id),
+        metadata={"projectTitle": project.projectTitle},
+    )
 
     return {"id": str(project_id)}
 
@@ -169,6 +176,12 @@ def complete_all_steps(project_id):
         project_collection.update_one(
             {"_id": ObjectId(project_id)},
             {"$set": {"step_generation.steps.$[].completed": True, "completed": True}}
+        )
+        insert_log_event(
+            "project_finished",
+            user_id=str(cursor.get("userId")) if cursor.get("userId") else None,
+            project_id=project_id,
+            metadata={"source": "project_complete_endpoint"},
         )
 
         return {"message": "Project/Steps updated"}

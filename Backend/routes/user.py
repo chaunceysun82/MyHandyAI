@@ -8,6 +8,7 @@ from pymongo.collection import Collection
 from pymongo.database import Database
 
 from database.mongodb import mongodb
+from routes.logs import insert_log_event
 
 router = APIRouter()
 database: Database = mongodb.get_database()
@@ -100,9 +101,19 @@ def login(data: LoginData):
     if data.google_flag:
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
+        insert_log_event(
+            "user_logged_in",
+            user_id=str(user["_id"]),
+            metadata={"provider": "google"},
+        )
         return {"message": "Login successful", "id": str(user["_id"])}
     if not user or user.get("password") != data.password:
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    insert_log_event(
+        "user_logged_in",
+        user_id=str(user["_id"]),
+        metadata={"provider": "password"},
+    )
     return {"message": "Login successful", "id": str(user["_id"])}
 
 

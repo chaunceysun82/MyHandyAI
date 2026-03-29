@@ -55,13 +55,48 @@ class LogEventResponse(BaseModel):
     message: str
 
 
+def insert_log_event(
+    event_type: str,
+    *,
+    user_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+    step_number: Optional[int] = None,
+    path: Optional[str] = None,
+    session_id: Optional[str] = None,
+    visitor_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> str:
+    if event_type not in LOG_EVENT_TYPES:
+        raise ValueError(f"Unsupported log event type: {event_type}")
+
+    document = {
+        "eventType": event_type,
+        "userId": user_id,
+        "projectId": project_id,
+        "stepNumber": step_number,
+        "path": path,
+        "sessionId": session_id,
+        "visitorId": visitor_id,
+        "metadata": metadata or {},
+        "createdAt": datetime.utcnow(),
+    }
+    result = logs_collection.insert_one(document)
+    return str(result.inserted_id)
+
+
 @router.post("/logs", response_model=LogEventResponse)
 def create_log_event(payload: LogEventRequest):
-    document = payload.model_dump()
-    document["createdAt"] = datetime.utcnow()
-
-    result = logs_collection.insert_one(document)
-    return {"id": str(result.inserted_id), "message": "Log event created"}
+    log_id = insert_log_event(
+        payload.eventType,
+        user_id=payload.userId,
+        project_id=payload.projectId,
+        step_number=payload.stepNumber,
+        path=payload.path,
+        session_id=payload.sessionId,
+        visitor_id=payload.visitorId,
+        metadata=payload.metadata,
+    )
+    return {"id": log_id, "message": "Log event created"}
 
 
 @router.get("/logs")

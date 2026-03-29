@@ -11,6 +11,7 @@ from pymongo.database import Database
 
 from config.settings import get_settings
 from database.mongodb import mongodb
+from routes.logs import insert_log_event
 from routes.project import update_project
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -69,6 +70,12 @@ async def generate(project):
         }
 
         update_project(str(cursor["_id"]), {"generation_status": "in-progress"})
+        insert_log_event(
+            "solution_generation_started",
+            user_id=str(cursor.get("userId")) if cursor.get("userId") else None,
+            project_id=project,
+            metadata={"source": "generation_endpoint"},
+        )
 
         # LOCAL TESTING: Comment out SQS and call lambda_handler directly
         # Uncomment the block below for local testing

@@ -8,7 +8,6 @@ import SideNavbar from "../components/SideNavbar";
 import MobileWrapper from "../components/MobileWrapper";
 import { fetchProjects, createProject, deleteProject, completeProject, updateProject } from "../services/projects";
 import { getUserById } from "../services/auth";
-import { trackMetric, trackMetricOnce } from "../services/metrics";
 import defaultHome from "../../src/assets/default-home.png";
 import { ReactComponent as Filter } from '../../src/assets/Frame.svg';
 
@@ -180,11 +179,6 @@ export default function Home() {
     setError("");
     try {
       const newId = await createProject(token, name);
-      await trackMetric("project_started", {
-        userId: token,
-        projectId: newId,
-        metadata: { projectTitle: name }
-      });
 
       const newProject = {
         _id: newId,
@@ -290,11 +284,6 @@ export default function Home() {
     setIsCompleting(true); // Start loading
     try {
       await completeProject(projectToComplete._id);
-      await trackMetricOnce(`project_finished:${projectToComplete._id}`, "project_finished", {
-        userId: token,
-        projectId: projectToComplete._id,
-        metadata: { source: "home_complete_project" }
-      });
       // Refresh projects to get updated progress
       const updatedProjects = await fetchProjects(token);
       setProjects(updatedProjects);

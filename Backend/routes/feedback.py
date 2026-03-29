@@ -10,6 +10,7 @@ from pymongo.database import Database
 
 from config.settings import get_settings
 from database.mongodb import mongodb
+from routes.logs import insert_log_event
 
 settings = get_settings()
 
@@ -127,6 +128,12 @@ def add_feedback(project_id: str, fb: FeedbackIn):
     project_collection.update_one(
         {"_id": to_obj_id(project_id)},
         {"$set": {"feedbackAverage": avg, "feedbackCount": total}}
+    )
+    insert_log_event(
+        "project_finished",
+        user_id=str(doc.get("userId")) if doc.get("userId") else None,
+        project_id=project_id,
+        metadata={"source": "feedback_endpoint", "rating": fb.rating, "tags": fb.tags},
     )
 
     return {"ok": True, "averageRating": avg, "totalFeedback": total}
