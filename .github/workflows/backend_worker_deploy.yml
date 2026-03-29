@@ -27,8 +27,15 @@ jobs:
             -v "$PWD/lambda_package":/var/task \
             public.ecr.aws/lambda/python:3.11 \
             /bin/sh -c "
-              python -m pip install --upgrade pip &&
-              pip install -r requirements.txt -t . &&
+              rm -rf cryptography* cffi* &&
+              python -m pip install --upgrade pip setuptools wheel &&
+              pip install \
+                --platform manylinux2014_x86_64 \
+                --implementation cp \
+                --python-version 3.11 \
+                --only-binary=:all: \
+                -r requirements.txt \
+                -t . &&
               zip -r9 function_worker.zip .
             "
 
