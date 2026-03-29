@@ -20,6 +20,7 @@ from routes import (
     steps,
     generation,
     feedback,
+    logs,
     information_gathering_agent,
     project_assistant_agent
 )
@@ -59,6 +60,7 @@ app.include_router(project.router, tags=["Project"])
 app.include_router(steps.router, tags=["Steps"])
 app.include_router(generation.router, tags=["Generation"])
 app.include_router(feedback.router, tags=["Feedback"])
+app.include_router(logs.router, tags=["Logs"])
 app.include_router(information_gathering_agent.router, prefix="/api/v1", tags=["Information Gathering Agent"])
 app.include_router(project_assistant_agent.router, prefix="/api/v1", tags=["Project Assistant Agent"])
 

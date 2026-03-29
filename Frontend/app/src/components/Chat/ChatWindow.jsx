@@ -6,6 +6,7 @@ import ChatInput from "./ChatInput";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { RotatingLines } from "react-loader-spinner";
+import { trackMetricOnce } from "../../services/metrics";
 
 export default function ChatWindow({
   isOpen,
@@ -149,6 +150,11 @@ export default function ChatWindow({
     const getStatus = async () => {
       if (status === true) {
         try {
+          await trackMetricOnce(`solution_generation_started:${projectId}`, "solution_generation_started", {
+            userId,
+            projectId,
+            metadata: { source: "information_gathering_chat" }
+          });
           const response = await axios.post(`${URL}/generation/all/${projectId}`);
           if (response) setStatus2(true);
         } catch (err) {

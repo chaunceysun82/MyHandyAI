@@ -9,6 +9,7 @@ import {getAuth, GoogleAuthProvider, signInWithPopup} from "firebase/auth";
 import { app } from "../../firebase";
 import { getUserById } from "../../services/auth";
 import FieldError from "../../components/FieldError";
+import { trackMetric } from "../../services/metrics";
 
 const Login = () => {
 	const location = useLocation();
@@ -69,6 +70,10 @@ const Login = () => {
 			if (response.ok) {
 				const data = await response.json();
 				console.log("Google login successful:", data);
+				await trackMetric("user_logged_in", {
+					userId: data.id,
+					metadata: { provider: "google" }
+				});
 				
 				// Store backend user ID (not Firebase UID)
 				const store = rememberMe ? localStorage : sessionStorage;
@@ -163,6 +168,10 @@ const Login = () => {
 		try {
 			console.log("Calling the loginUser function");
 			const res = await loginUser(email, password);
+			await trackMetric("user_logged_in", {
+				userId: res.id,
+				metadata: { provider: "password" }
+			});
 			
 			const store = rememberMe ? localStorage : sessionStorage;
      		store.setItem("authToken", res.id);

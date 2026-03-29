@@ -50,7 +50,7 @@ def run_ingest(stores):
     err = sum(1 for r in results if r["result"] == "error")
     print(f"[ingest] done ok={ok} err={err}")
 
-def main_handler():
+if __name__ == "__main__":
     stores = init_db()
     run_discovery_all(stores)
     run_classify(stores)

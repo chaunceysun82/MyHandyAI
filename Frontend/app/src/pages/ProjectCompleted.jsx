@@ -5,6 +5,7 @@ import MobileWrapper from "../components/MobileWrapper";
 import { getCompletionMessage, submitFeedback } from "../services/feedback";
 import { ReactComponent as ShareSuccess } from '../assets/share_success.svg';
 import { ReactComponent as AllProjects } from '../assets/all_projects.svg';
+import { trackMetricOnce } from "../services/metrics";
 
 export default function ProjectCompleted() {
   const navigate = useNavigate();
@@ -12,6 +13,11 @@ export default function ProjectCompleted() {
   const projectId = params.projectId || params.id;
   const { state } = useLocation();
   const projectName = state?.projectName || "Project";
+  const userId =
+    state?.userId ||
+    localStorage.getItem("authToken") ||
+    sessionStorage.getItem("authToken") ||
+    null;
 
   const [rating, setRating] = useState(0);
   const [feedback, setFeedback] = useState("");
@@ -38,6 +44,18 @@ export default function ProjectCompleted() {
     })();
     return () => { alive = false; };
   }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) {
+      return;
+    }
+
+    trackMetricOnce(`project_finished:${projectId}`, "project_finished", {
+      userId: userId || undefined,
+      projectId,
+      metadata: { source: "project_completed_page" }
+    });
+  }, [projectId, userId]);
 
   const handleClose = () => navigate("/home");
   const handleGoBack = () => {

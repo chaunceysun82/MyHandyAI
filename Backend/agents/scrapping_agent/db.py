@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Optional
-
+from typing import Dict
 from pymongo import MongoClient, UpdateOne
 
 from config import MONGO_URI, DB_NAME, COL_DISCOVERED, COL_DOCS, COL_STATE
@@ -25,7 +25,7 @@ def init_db() -> Stores:
     discovered.create_index([("classification.is_diy_manual", 1), ("status", 1)])
     docs.create_index("updated_at")
 
-    return Stores(client=client, discovered=discovered, docs=docs, state=state)
+    return Stores(discovered=discovered, docs=docs, state=state)
 
 def upsert_discovered_urls(
     stores: Stores,
