@@ -22,3 +22,4 @@ langgraph-checkpoint-mongodb~=0.2.2
 tiktoken==0.11.0
 qdrant-client
 numpy==2.2.3
+cryptography<44
