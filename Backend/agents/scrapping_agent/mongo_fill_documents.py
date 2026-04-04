@@ -1,11 +1,11 @@
 from pymongo import MongoClient
 from fetch_tools_materials import fetch_tools_materials
 from dotenv import load_dotenv
-from bson import ObjectId
 from datetime import datetime
 import os
 import time
 import traceback
+import json
 
 load_dotenv()
 
@@ -16,51 +16,40 @@ client = MongoClient(MONGODB_URI)
 db = client[MONGODB_DATABASE]
 col = db["kb_documents"]
 
-SLEEP_SECONDS = 1.0     
-DRY_RUN = False   
-ONLY_UPDATE_EMPTY = True  
+SLEEP_SECONDS = 1.0
+WRITE_TO_MONGO = True
+TEST_ONE_DOC = True
 
-def normalize(name: str) -> str:
-    """Normalize a name for dedupe and storage."""
-    return name.strip()
 
-def merge_string_lists(existing: list, new_list: list) -> list:
-    """Merge existing and new lists (strings). Preserve existing order, append new items.
-       Normalizes and deduplicates case-insensitively."""
-    existing = existing or []
-    new_list = new_list or []
+def format_summary(summary_obj) -> str:
+    """
+    Convert the nested summary object into a single string:
+    Category : ...
+    Issue : ...
+    Location : ...
+    Duration : ...
+    Specific_symptoms : ...
+    safety_concerns : ...
+    """
+    if hasattr(summary_obj, "model_dump"):
+        summary_obj = summary_obj.model_dump()
 
-    seen = set()
-    merged = []
+    if not isinstance(summary_obj, dict):
+        return str(summary_obj)
 
-    for it in existing:
-        if not isinstance(it, str):
-            continue
-        norm = normalize(it).lower()
-        if norm and norm not in seen:
-            seen.add(norm)
-            merged.append(normalize(it))
+    return "\n".join([
+        f"Category : {summary_obj.get('Category', 'Unknown')}",
+        f"Issue : {summary_obj.get('Issue', 'Unknown')}",
+        f"Location : {summary_obj.get('Location', 'Unknown')}",
+        f"Duration : {summary_obj.get('Duration', 'Unknown')}",
+        f"Specific_symptoms : {summary_obj.get('Specific_symptoms', 'Unknown')}",
+        f"safety_concerns : {summary_obj.get('safety_concerns', 'None reported')}",
+    ])
 
-    for it in new_list:
-        if not isinstance(it, str):
-            continue
-        norm = normalize(it).lower()
-        if norm and norm not in seen:
-            seen.add(norm)
-            merged.append(normalize(it))
-
-    return merged
 
 def process_document(doc):
     doc_id = doc.get("_id")
     url = doc.get("url", "<no-url>")
-
-    if ONLY_UPDATE_EMPTY:
-        existing_tools = doc.get("extracted", {}).get("tools", [])
-        existing_materials = doc.get("extracted", {}).get("materials", [])
-        if existing_tools or existing_materials:
-            print(f"[SKIP] {doc_id} ({url}) — already has tools/materials")
-            return
 
     sections = doc.get("extracted", {}).get("sections", []) or []
     if not isinstance(sections, list):
@@ -77,68 +66,128 @@ def process_document(doc):
 
     if not all_steps:
         print(f"[SKIP] {doc_id} ({url}) — no steps found")
-        return
+        return False
+
     steps_text = "\n".join([f"{i+1}. {s}" for i, s in enumerate(all_steps)])
 
     try:
-        tools, materials = fetch_tools_materials(steps_text)
+        output = fetch_tools_materials(steps_text)
 
-        if tools is None:
-            tools = []
-        if materials is None:
-            materials = []
+        tools = output.tools or []
+        materials = output.materials or []
+        warnings = output.safety_warnings or []
+        summary_text = format_summary(output.summary)
 
         if isinstance(tools, str):
             tools = [tools]
         if isinstance(materials, str):
             materials = [materials]
-
-        existing_tools = doc.get("extracted", {}).get("tools", [])
-        existing_materials = doc.get("extracted", {}).get("materials", [])
-
-        merged_tools = merge_string_lists(existing_tools, tools)
-        merged_materials = merge_string_lists(existing_materials, materials)
+        if isinstance(warnings, str):
+            warnings = [warnings]
 
         update_doc = {
-            "extracted.tools": merged_tools,
-            "extracted.materials": merged_materials,
+            "extracted.tools": tools,
+            "extracted.materials": materials,
+            "extracted.warnings": warnings,
+            "extracted.summary": summary_text,
             "extracted.tools_updated_at": datetime.utcnow(),
+            "extracted.materials_updated_at": datetime.utcnow(),
+            "extracted.warnings_updated_at": datetime.utcnow(),
+            "extracted.summary_updated_at": datetime.utcnow(),
         }
 
-        if DRY_RUN:
-            print(f"[DRY RUN] Would update {doc_id} ({url}) with:")
-            print("  tools:", merged_tools)
-            print("  materials:", merged_materials)
+        update_query = {
+            "$set": update_doc,
+            "$unset": {
+                "extracted.safety_warnings": ""
+            }
+        }
+
+        if WRITE_TO_MONGO:
+            result = col.update_one({"_id": doc_id}, update_query)
+
+            updated_doc = col.find_one(
+                {"_id": doc_id},
+                {
+                    "extracted.tools": 1,
+                    "extracted.materials": 1,
+                    "extracted.warnings": 1,
+                    "extracted.summary": 1,
+                    "extracted.safety_warnings": 1,
+                }
+            )
+
+            ok = (
+                updated_doc is not None
+                and updated_doc.get("extracted", {}).get("tools") == tools
+                and updated_doc.get("extracted", {}).get("materials") == materials
+                and updated_doc.get("extracted", {}).get("warnings") == warnings
+                and updated_doc.get("extracted", {}).get("summary") == summary_text
+                and "safety_warnings" not in updated_doc.get("extracted", {})
+            )
+
+            if ok:
+                print(f"[OK] Updated {doc_id} ({url})")
+            else:
+                print(f"[FAIL] Updated {doc_id} ({url}) but verification did not fully match")
+
+            print(json.dumps({
+                "matched_count": result.matched_count,
+                "modified_count": result.modified_count,
+                "tools_count": len(tools),
+                "materials_count": len(materials),
+                "warnings_count": len(warnings),
+                "summary_preview": summary_text[:200]
+            }, indent=2, default=str))
+
         else:
-            col.update_one({"_id": doc_id}, {"$set": update_doc, "$unset": {"extracted.tools_error": ""}})
-            print(f"[OK] Updated {doc_id} ({url}) → tools={len(merged_tools)}, materials={len(merged_materials)}")
+            print(f"[DRY RUN] {doc_id} ({url})")
+            print(json.dumps({
+                "extracted.tools": tools,
+                "extracted.materials": materials,
+                "extracted.warnings": warnings,
+                "extracted.summary": summary_text,
+                "unset": ["extracted.safety_warnings"]
+            }, indent=2, default=str, ensure_ascii=False))
+
+        return True
 
     except Exception as e:
         err_msg = "".join(traceback.format_exception_only(type(e), e))[:2000]
         print(f"[ERROR] {doc_id} ({url}) -> {err_msg}")
-        if not DRY_RUN:
+        if WRITE_TO_MONGO:
             col.update_one(
                 {"_id": doc_id},
                 {"$set": {"extracted.tools_error": {"error": err_msg, "when": datetime.utcnow()}}}
             )
+        return False
+
 
 def main():
     query = {"extracted.sections": {"$exists": True}}
-    if ONLY_UPDATE_EMPTY:
-        query["$or"] = [
-            {"extracted.tools": {"$exists": False}},
-            {"extracted.tools": []},
-            {"extracted.materials": {"$exists": False}},
-            {"extracted.materials": []}
-        ]
 
-    cursor = col.find(query, {"url": 1, "extracted.sections": 1, "extracted.tools": 1, "extracted.materials": 1})
+    cursor = col.find(
+        query,
+        {
+            "url": 1,
+            "extracted.sections": 1,
+            "extracted.tools": 1,
+            "extracted.materials": 1,
+            "extracted.warnings": 1,
+            "extracted.summary": 1,
+        },
+    )
+
     count = 0
     for doc in cursor:
-        process_document(doc)
+        done = process_document(doc)
         count += 1
+        if count>=15:
+            break
         time.sleep(SLEEP_SECONDS)
-    print(f"Processed {count} documents.")
+
+    print(f"Processed {count} document(s).")
+
 
 if __name__ == "__main__":
     main()
