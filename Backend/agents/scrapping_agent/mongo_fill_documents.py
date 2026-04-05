@@ -2,35 +2,92 @@ from pymongo import MongoClient
 from fetch_tools_materials import fetch_tools_materials
 from dotenv import load_dotenv
 from datetime import datetime
+from qdrant_client import QdrantClient
+from qdrant_client.models import (
+    Distance,
+    VectorParams,
+    PointStruct,
+    PayloadSchemaType,
+)
 import os
 import time
 import traceback
 import json
+import uuid
+import openai
 
 load_dotenv()
 
 MONGODB_URI = os.getenv("MONGODB_URI")
 MONGODB_DATABASE = os.getenv("MONGODB_DATABASE")
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 client = MongoClient(MONGODB_URI)
 db = client[MONGODB_DATABASE]
 col = db["kb_documents"]
+
+qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+
+
+openai.api_key = OPENAI_API_KEY
+
+COLLECTION_NAME = "kb_summaries"
+EMBEDDING_MODEL = "text-embedding-3-small"
+EMBEDDING_DIM = 1536  
 
 SLEEP_SECONDS = 1.0
 WRITE_TO_MONGO = True
 TEST_ONE_DOC = True
 
 
+
+def ensure_qdrant_collection():
+    existing = [c.name for c in qdrant.get_collections().collections]
+    if COLLECTION_NAME not in existing:
+        qdrant.create_collection(
+            collection_name=COLLECTION_NAME,
+            vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE),
+        )
+        print(f"[QDRANT] Created collection '{COLLECTION_NAME}'")
+    else:
+        print(f"[QDRANT] Collection '{COLLECTION_NAME}' already exists")
+
+
+def get_embedding(text: str) -> list:
+    """
+    Call the OpenAI Embeddings API and return the embedding as a plain list.
+    No numpy dependency — just a list of floats.
+    """
+    response = openai.embeddings.create(
+        input=text,
+        model=EMBEDDING_MODEL,
+    )
+    return response.data[0].embedding
+
+
+
+def upsert_summary_to_qdrant(mongo_id, url: str, summary_text: str) -> str:
+    
+    embedding = get_embedding(summary_text)
+
+    point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(mongo_id)))
+
+    point = PointStruct(
+        id=point_id,
+        vector=embedding,
+        payload={
+            "mongo_id": str(mongo_id),
+            "url": url,
+            "summary": summary_text,
+        },
+    )
+
+    qdrant.upsert(collection_name=COLLECTION_NAME, points=[point])
+    return point_id
+
 def format_summary(summary_obj) -> str:
-    """
-    Convert the nested summary object into a single string:
-    Category : ...
-    Issue : ...
-    Location : ...
-    Duration : ...
-    Specific_symptoms : ...
-    safety_concerns : ...
-    """
     if hasattr(summary_obj, "model_dump"):
         summary_obj = summary_obj.model_dump()
 
@@ -45,7 +102,6 @@ def format_summary(summary_obj) -> str:
         f"Specific_symptoms : {summary_obj.get('Specific_symptoms', 'Unknown')}",
         f"safety_concerns : {summary_obj.get('safety_concerns', 'None reported')}",
     ])
-
 
 def process_document(doc):
     doc_id = doc.get("_id")
@@ -85,11 +141,15 @@ def process_document(doc):
         if isinstance(warnings, str):
             warnings = [warnings]
 
+        qdrant_point_id = upsert_summary_to_qdrant(doc_id, url, summary_text)
+        print(f"[QDRANT] Upserted point {qdrant_point_id} for doc {doc_id}")
+
         update_doc = {
             "extracted.tools": tools,
             "extracted.materials": materials,
             "extracted.warnings": warnings,
             "extracted.summary": summary_text,
+            "extracted.qdrant_point_id": qdrant_point_id,  
             "extracted.tools_updated_at": datetime.utcnow(),
             "extracted.materials_updated_at": datetime.utcnow(),
             "extracted.warnings_updated_at": datetime.utcnow(),
@@ -137,7 +197,8 @@ def process_document(doc):
                 "tools_count": len(tools),
                 "materials_count": len(materials),
                 "warnings_count": len(warnings),
-                "summary_preview": summary_text[:200]
+                "summary_preview": summary_text[:200],
+                "qdrant_point_id": qdrant_point_id,
             }, indent=2, default=str))
 
         else:
@@ -147,6 +208,7 @@ def process_document(doc):
                 "extracted.materials": materials,
                 "extracted.warnings": warnings,
                 "extracted.summary": summary_text,
+                "qdrant_point_id": qdrant_point_id,
                 "unset": ["extracted.safety_warnings"]
             }, indent=2, default=str, ensure_ascii=False))
 
@@ -162,8 +224,9 @@ def process_document(doc):
             )
         return False
 
-
 def main():
+    ensure_qdrant_collection()
+
     query = {"extracted.sections": {"$exists": True}}
 
     cursor = col.find(
@@ -182,7 +245,7 @@ def main():
     for doc in cursor:
         done = process_document(doc)
         count += 1
-        if count>=15:
+        if count >= 15:
             break
         time.sleep(SLEEP_SECONDS)
 
