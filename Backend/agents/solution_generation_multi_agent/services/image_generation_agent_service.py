@@ -16,6 +16,7 @@ from agents.solution_generation_multi_agent.image_generation_agent.utils import 
 )
 from agents.solution_generation_multi_agent.prompt_templates.v1.image_generation_agent import IMAGE_GENERATION_PROMPT
 from config.settings import get_settings
+from database.llm_consumption import record_google_image_generation, record_openai_response_usage
 
 
 class ImageGenerationAgentService:
@@ -44,7 +45,8 @@ class ImageGenerationAgentService:
             step_text: str,
             summary_text: Optional[str] = None,
             size: str = "1536x1024",
-            project_id: Optional[str] = None
+            project_id: Optional[str] = None,
+            user_id: Optional[str] = None
     ) -> ImageGenerationResult:
         """
         Generate image for a step with prompt building and S3 upload.
@@ -63,7 +65,12 @@ class ImageGenerationAgentService:
 
         try:
             # 1. Build prompt using OpenAI (prompt engineering)
-            prompt = self._build_prompt(step_text, summary_text)
+            prompt = self._build_prompt(
+                step_text,
+                summary_text,
+                project_id=project_id,
+                user_id=user_id
+            )
 
             # 2. Map size to aspect ratio
             aspect_ratio = map_size_to_aspect(size)
@@ -73,6 +80,14 @@ class ImageGenerationAgentService:
                 prompt=prompt,
                 aspect_ratio=aspect_ratio,
                 output_mime_type="image/png"
+            )
+            record_google_image_generation(
+                model=self.image_generation_agent.model,
+                operation="image_generation",
+                project_id=project_id,
+                user_id=user_id,
+                image_count=1,
+                metadata={"step_id": step_id, "size": size, "aspect_ratio": aspect_ratio},
             )
 
             # 4. Normalize PNG to RGBA
@@ -116,7 +131,13 @@ class ImageGenerationAgentService:
             logger.error(f"Error generating step image: {e}")
             raise
 
-    def _build_prompt(self, step_text: str, summary_text: Optional[str] = None) -> str:
+    def _build_prompt(
+            self,
+            step_text: str,
+            summary_text: Optional[str] = None,
+            project_id: Optional[str] = None,
+            user_id: Optional[str] = None
+    ) -> str:
         """
         Build image generation prompt using OpenAI to generate an optimized Imagen prompt.
         
@@ -167,6 +188,15 @@ class ImageGenerationAgentService:
             )
             r.raise_for_status()
             data = r.json()
+            record_openai_response_usage(
+                data,
+                model=payload["model"],
+                operation="image_prompt_generation",
+                project_id=project_id,
+                user_id=user_id,
+                endpoint="/v1/chat/completions",
+                metadata={"step_text": step_text[:120]},
+            )
             content = data["choices"][0]["message"]["content"]
 
             # Parse JSON response to extract imagen_prompt

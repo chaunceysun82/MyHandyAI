@@ -5,6 +5,7 @@ from loguru import logger
 
 from agents.solution_generation_multi_agent.steps_generation_agent.schemas import StepsPlan
 from config.settings import get_settings
+from database.llm_consumption import record_langchain_usage
 
 
 class StepsGenerationAgent:
@@ -28,7 +29,9 @@ class StepsGenerationAgent:
     def generate_project_steps(
             self,
             system_prompt: str,
-            user_instruction: str
+            user_instruction: str,
+            project_id: str | None = None,
+            user_id: str | None = None
     ) -> StepsPlan:
         """
         Generate step-by-step plan using LangChain agent with structured output.
@@ -54,6 +57,16 @@ class StepsGenerationAgent:
             result = agent.invoke(
                 input={"messages": [HumanMessage(content=user_instruction)]}
             )
+
+            if "messages" in result and result["messages"]:
+                last_message = result["messages"][-1]
+                record_langchain_usage(
+                    getattr(last_message, "usage_metadata", None),
+                    model=self.llm.model_name,
+                    operation="steps_generation",
+                    project_id=project_id,
+                    user_id=user_id,
+                )
 
             # Extract structured response
             if "structured_response" not in result:

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, ValidationError
 load_dotenv()
 
 from config.settings import get_settings
+from database.llm_consumption import record_langchain_usage, record_openai_response_usage
 
 settings = get_settings()
 
@@ -105,6 +106,8 @@ Project summary:
             matched_summary: Optional[str] = None,
             matched_tools: Optional[Any] = None,
             matched_steps: Optional[Any] = None,
+            project_id: Optional[str] = None,
+            user_id: Optional[str] = None,
     ) -> None:
         self.serpapi_api_key = serpapi_api_key or settings.SERPAPI_API_KEY
         self.openai_api_key = openai_api_key or settings.OPENAI_API_KEY
@@ -119,6 +122,8 @@ Project summary:
         self.matched_summary = matched_summary
         self.matched_tools = matched_tools
         self.matched_steps = matched_steps
+        self.project_id = project_id
+        self.user_id = user_id
 
         self._schema = {
             "type": "object",
@@ -199,7 +204,16 @@ Project summary:
         r = requests.post(url, headers=headers, json=payload, timeout=self.timeout)
         if r.status_code >= 400:
             raise RuntimeError(f"OpenAI API error {r.status_code}: {r.text}")
-        return r.json()
+        response_json = r.json()
+        record_openai_response_usage(
+            response_json,
+            model=self.model,
+            operation="tools_generation",
+            project_id=self.project_id,
+            user_id=self.user_id,
+            endpoint="/responses",
+        )
+        return response_json
 
     @staticmethod
     def _extract_output_text(resp: Dict[str, Any]) -> str:
@@ -768,13 +782,15 @@ class StepsAgentJSON:
 class EstimationAgent:
     """Agent for generating cost and time estimations"""
 
-    def __init__(self):
+    def __init__(self, project_id: Optional[str] = None, user_id: Optional[str] = None):
         self.api_key = settings.OPENAI_API_KEY
         self.api_url = "https://api.openai.com/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        self.project_id = project_id
+        self.user_id = user_id
 
     def generate_estimation(self, tools_data: Dict[str, Any], steps_data: Dict[str, Any], summary: str) -> Dict[
         str, Any]:
@@ -848,6 +864,14 @@ class EstimationAgent:
             )
             r.raise_for_status()
             data = r.json()
+            record_openai_response_usage(
+                data,
+                model=payload["model"],
+                operation="estimation_complexity_assessment",
+                project_id=self.project_id,
+                user_id=self.user_id,
+                endpoint="/v1/chat/completions",
+            )
             content = data["choices"][0]["message"]["content"]
             print(content)
 

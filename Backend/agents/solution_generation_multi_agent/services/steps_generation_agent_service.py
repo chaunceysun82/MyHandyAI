@@ -22,7 +22,9 @@ class StepsGenerationAgentService:
             user_answers: Optional[Dict[int, str]] = None,
             questions: Optional[List[str]] = None,
             matched_summary: Optional[str] = None,
-            matched_steps: Optional[Any] = None
+            matched_steps: Optional[Any] = None,
+            project_id: Optional[str] = None,
+            user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Generate step-by-step plan with context building and prompt augmentation.
@@ -58,7 +60,9 @@ class StepsGenerationAgentService:
         # Generate steps using agent
         steps_plan: StepsPlan = self.steps_generation_agent.generate_project_steps(
             system_prompt=system_prompt,
-            user_instruction=user_instruction
+            user_instruction=user_instruction,
+            project_id=project_id,
+            user_id=user_id
         )
 
         # Convert to expected format

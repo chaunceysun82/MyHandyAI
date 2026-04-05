@@ -244,6 +244,8 @@ class ProjectAssistantAgentService:
 
         # Build context for the agent
         context = self._build_context(project_id, step_number)
+        project = self.project_collection.find_one({"_id": ObjectId(project_id)})
+        user_id = str(project.get("userId")) if project and project.get("userId") else None
 
         # Create a contextual initial user message based on step_number
         initial_message = self._create_initial_message(project_id, step_number)
@@ -253,7 +255,8 @@ class ProjectAssistantAgentService:
             message=initial_message,
             thread_id=thread_id,
             project_id=project_id,
-            context=context
+            context=context,
+            user_id=user_id
         )
 
         logger.info(f"Successfully initialized conversation with thread_id: {thread_id}")
@@ -289,6 +292,8 @@ class ProjectAssistantAgentService:
         try:
             # Build context for the agent
             context = self._build_context(project_id, step_number)
+            project = self.project_collection.find_one({"_id": ObjectId(project_id)})
+            user_id = str(project.get("userId")) if project and project.get("userId") else None
 
             if image_base64:
                 # Process image with optional text
@@ -299,7 +304,8 @@ class ProjectAssistantAgentService:
                     mime_type=image_mime_type or "image/jpeg",
                     thread_id=thread_id,
                     project_id=project_id,
-                    context=context
+                    context=context,
+                    user_id=user_id
                 )
             elif text:
                 # Process text only
@@ -308,7 +314,8 @@ class ProjectAssistantAgentService:
                     message=text,
                     thread_id=thread_id,
                     project_id=project_id,
-                    context=context
+                    context=context,
+                    user_id=user_id
                 )
             else:
                 raise ValueError("Either text or image must be provided")

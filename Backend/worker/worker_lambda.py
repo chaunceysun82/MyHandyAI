@@ -16,6 +16,7 @@ from agents.solution_generation_multi_agent.services.image_generation_agent_serv
 from agents.solution_generation_multi_agent.services.steps_generation_agent_service import StepsGenerationAgentService
 from agents.solution_generation_multi_agent.steps_generation_agent.steps_generation_agent import StepsGenerationAgent
 from config.settings import get_settings
+from database.llm_consumption import record_openai_response_usage
 from database.mongodb import mongodb
 from helper import similar_by_project, store_tool_in_database, create_and_store_tool_embeddings, find_similar_tools, \
     update_tool_usage
@@ -29,7 +30,7 @@ steps_collection: Collection = database.get_collection("ProjectSteps")
 tools_collection: Collection = database.get_collection("Tools")
 
 
-def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x1024", summary: str = "") -> None:
+def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x1024", summary: str = "", user_id: str | None = None) -> None:
     """Send one SQS message per step (no batch API)."""
 
     # LOCAL TESTING: Process images synchronously instead of sending to SQS
@@ -61,6 +62,7 @@ def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x10
         body = {
             "task": "image_step",
             "project": project_id,
+            "user_id": user_id,
             "step_id": str(i),
             "step_text": step_text,
             "summary_text": sum_text,
@@ -75,6 +77,7 @@ def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x10
 def handle_image_step(msg: dict) -> None:
     """Generate+upload image for a single step and persist result."""
     project_id = msg["project"]
+    user_id = msg.get("user_id")
     step_id = msg["step_id"]
     step_text = msg["step_text"]
     summary_text = msg.get("summary_text")
@@ -91,7 +94,8 @@ def handle_image_step(msg: dict) -> None:
         step_text=step_text,
         summary_text=summary_text,
         size=size,
-        project_id=project_id
+        project_id=project_id,
+        user_id=user_id
     )
 
     # Convert Pydantic model to dict for MongoDB
@@ -229,14 +233,22 @@ def lambda_handler(event, context):
                     tools_agent = ToolsAgent(
                         new_summary=summary,
                         matched_summary=matched_summary,
-                        matched_tools=matched_tools
+                        matched_tools=matched_tools,
+                        project_id=project_id_str,
+                        user_id=str(cursor.get("userId")) if cursor.get("userId") else None
                     )
                 except Exception:
                     print("⚠️ ToolsAgent init with matched context failed, falling back to default ToolsAgent")
-                    tools_agent = ToolsAgent()
+                    tools_agent = ToolsAgent(
+                        project_id=project_id_str,
+                        user_id=str(cursor.get("userId")) if cursor.get("userId") else None
+                    )
             else:
                 # no suitable match -> default agent
-                tools_agent = ToolsAgent()
+                tools_agent = ToolsAgent(
+                    project_id=project_id_str,
+                    user_id=str(cursor.get("userId")) if cursor.get("userId") else None
+                )
 
             # Generate tools (LLM)
             try:
@@ -358,7 +370,9 @@ def lambda_handler(event, context):
                     user_answers=cursor.get("user_answers") or cursor.get("answers"),
                     questions=cursor.get("questions", []),
                     matched_summary=matched_summary,
-                    matched_steps=matched_steps
+                    matched_steps=matched_steps,
+                    project_id=project_id_str,
+                    user_id=str(cursor.get("userId")) if cursor.get("userId") else None
                 )
             except Exception as e:
                 print(f"❌ Steps generation failed: {e}")
@@ -372,10 +386,20 @@ def lambda_handler(event, context):
 
             # Add youtube link & persist steps
             try:
-                youtube_url = get_youtube_link(cursor.get("summary", ""))
+                youtube_url = get_youtube_link(
+                    cursor.get("summary", ""),
+                    project_id=project_id_str,
+                    user_id=str(cursor.get("userId")) if cursor.get("userId") else None
+                )
                 steps_result["youtube"] = youtube_url
                 update_project(str(cursor["_id"]), {"step_generation": steps_result})
-                enqueue_image_tasks(project_id_str, steps_result.get("steps", []), size="1536x1024", summary=cursor.get("summary", ""))
+                enqueue_image_tasks(
+                    project_id_str,
+                    steps_result.get("steps", []),
+                    size="1536x1024",
+                    summary=cursor.get("summary", ""),
+                    user_id=str(cursor.get("userId")) if cursor.get("userId") else None
+                )
             except Exception as e:
                 print(f"⚠️ Failed after steps generation: {e}")
 
@@ -417,7 +441,10 @@ def lambda_handler(event, context):
             update_project(str(cursor["_id"]), {"estimation_generation": {"status": "in progress"}})
 
             try:
-                estimation_agent = EstimationAgent()
+                estimation_agent = EstimationAgent(
+                    project_id=project_id_str,
+                    user_id=str(cursor.get("userId")) if cursor.get("userId") else None
+                )
                 estimation_result = estimation_agent.generate_estimation(
                     tools_data=cursor.get("tool_generation"),
                     steps_data=cursor.get("step_generation"),
@@ -478,7 +505,7 @@ def clean_and_parse_json(raw_str: str):
         raise ValueError(f"Invalid JSON format: {e}")
 
 
-def get_youtube_link(summary):
+def get_youtube_link(summary, project_id: str | None = None, user_id: str | None = None):
     youtube_key = settings.YOUTUBE_API_KEY
     openai_key = settings.OPENAI_API_KEY
 
@@ -505,6 +532,14 @@ def get_youtube_link(summary):
     )
     r.raise_for_status()
     data = r.json()
+    record_openai_response_usage(
+        data,
+        model=payload["model"],
+        operation="youtube_search_query_generation",
+        project_id=project_id,
+        user_id=user_id,
+        endpoint="/v1/chat/completions",
+    )
     content = data["choices"][0]["message"]["content"]
     print(content)
 
@@ -558,6 +593,14 @@ def get_youtube_link(summary):
     )
     r.raise_for_status()
     data = r.json()
+    record_openai_response_usage(
+        data,
+        model=payload["model"],
+        operation="youtube_video_selection",
+        project_id=project_id,
+        user_id=user_id,
+        endpoint="/v1/chat/completions",
+    )
     print(r.json())
     content = data["choices"][0]["message"]["content"]
     verdict = clean_and_parse_json(content)

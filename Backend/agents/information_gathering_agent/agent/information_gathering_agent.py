@@ -14,6 +14,7 @@ from agents.information_gathering_agent.agent.prompt_templates.v4.information_ga
     build_system_prompt
 from agents.information_gathering_agent.agent.tools import store_home_issue, store_summary
 from config.settings import get_settings
+from database.llm_consumption import record_langchain_usage
 
 
 class InformationGatheringAgent:
@@ -35,7 +36,14 @@ class InformationGatheringAgent:
                                            writes_collection_name=self.settings.MYHANDYAI_AGENTS_CHECKPOINT_WRITES_COLLECTION_NAME) as checkpointer:
             yield checkpointer
 
-    def process_text_response(self, message: str, thread_id: UUID, project_id: str, context: str = "") -> str:
+    def process_text_response(
+            self,
+            message: str,
+            thread_id: UUID,
+            project_id: str,
+            context: str = "",
+            user_id: Optional[str] = None
+    ) -> str:
         """
         Process a text message from the user.
         
@@ -79,6 +87,14 @@ class InformationGatheringAgent:
 
                 if result and "messages" in result:
                     last_message = result["messages"][-1]
+                    record_langchain_usage(
+                        getattr(last_message, "usage_metadata", None),
+                        model=self.settings.INFORMATION_GATHERING_AGENT_MODEL,
+                        operation="information_gathering_text_response",
+                        project_id=project_id,
+                        user_id=user_id,
+                        metadata={"thread_id": str(thread_id)},
+                    )
                     logger.info(f"Agent responded successfully for thread_id: {thread_id}")
                     logger.debug(f"Information Gathering Agent response: {last_message.content}")
 
@@ -92,7 +108,7 @@ class InformationGatheringAgent:
             return "I apologize, but I'm having trouble processing your request right now. Please try again."
 
     def process_image_response(self, text: Optional[str], image_base64: str, mime_type: str, thread_id: UUID,
-                               project_id: str, context: str = "") -> str:
+                               project_id: str, context: str = "", user_id: Optional[str] = None) -> str:
         """
         Process a message with an image from the user.
         
@@ -150,6 +166,14 @@ class InformationGatheringAgent:
 
                 if result and "messages" in result:
                     last_message = result["messages"][-1]
+                    record_langchain_usage(
+                        getattr(last_message, "usage_metadata", None),
+                        model=self.settings.INFORMATION_GATHERING_AGENT_MODEL,
+                        operation="information_gathering_image_response",
+                        project_id=project_id,
+                        user_id=user_id,
+                        metadata={"thread_id": str(thread_id)},
+                    )
                     logger.info(f"Agent responded successfully to image for thread_id: {thread_id}")
                     logger.debug(f"Information Gathering Agent response: {last_message.content}")
 

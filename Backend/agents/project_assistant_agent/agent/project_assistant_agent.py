@@ -12,6 +12,7 @@ from loguru import logger
 from agents.project_assistant_agent.agent.prompt_templates.v1.project_assistant_agent import \
     build_system_prompt
 from config.settings import get_settings
+from database.llm_consumption import record_langchain_usage
 
 
 class ProjectAssistantAgent:
@@ -40,7 +41,8 @@ class ProjectAssistantAgent:
             message: str,
             thread_id: UUID,
             project_id: str,
-            context: str
+            context: str,
+            user_id: Optional[str] = None
     ) -> str:
         """
         Process a text message from the user.
@@ -85,6 +87,14 @@ class ProjectAssistantAgent:
 
                 if result and "messages" in result:
                     last_message = result["messages"][-1]
+                    record_langchain_usage(
+                        getattr(last_message, "usage_metadata", None),
+                        model=self.settings.PROJECT_ASSISTANT_AGENT_MODEL,
+                        operation="project_assistant_text_response",
+                        project_id=project_id,
+                        user_id=user_id,
+                        metadata={"thread_id": str(thread_id)},
+                    )
                     logger.info(f"Agent responded successfully for thread_id: {thread_id}")
                     logger.debug(f"Project Assistant Agent response: {last_message.content}")
 
@@ -104,7 +114,8 @@ class ProjectAssistantAgent:
             mime_type: str,
             thread_id: UUID,
             project_id: str,
-            context: str
+            context: str,
+            user_id: Optional[str] = None
     ) -> str:
         """
         Process a message with an image from the user.
@@ -163,6 +174,14 @@ class ProjectAssistantAgent:
 
                 if result and "messages" in result:
                     last_message = result["messages"][-1]
+                    record_langchain_usage(
+                        getattr(last_message, "usage_metadata", None),
+                        model=self.settings.PROJECT_ASSISTANT_AGENT_MODEL,
+                        operation="project_assistant_image_response",
+                        project_id=project_id,
+                        user_id=user_id,
+                        metadata={"thread_id": str(thread_id)},
+                    )
                     logger.info(f"Agent responded successfully to image for thread_id: {thread_id}")
                     logger.debug(f"Project Assistant Agent response: {last_message.content}")
 

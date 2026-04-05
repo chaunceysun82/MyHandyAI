@@ -31,6 +31,7 @@ class InformationGatheringAgentService:
         logger.info(f"Initializing new conversation for project_id: {project_id}")
         thread_id = uuid7()
         project = self.project_collection.find_one({"_id": ObjectId(project_id)})
+        user_id = str(project.get("userId")) if project and project.get("userId") else None
         initial_message = f'Hello, I want to gather information regarding my project titled {project.get("projectTitle", "No Title")}.'
 
         # Set conversation status to PENDING and store thread_id
@@ -52,7 +53,8 @@ class InformationGatheringAgentService:
             message=initial_message,
             thread_id=thread_id,
             project_id=project_id,
-            context=context
+            context=context,
+            user_id=user_id
         )
 
         # Get the conversation status (should be PENDING at this point)
@@ -88,6 +90,8 @@ class InformationGatheringAgentService:
         try:
             # Build user context
             context = self._build_context(project_id)
+            project = self.project_collection.find_one({"_id": ObjectId(project_id)})
+            user_id = str(project.get("userId")) if project and project.get("userId") else None
 
             if image_base64:
                 # Process image with optional text
@@ -98,7 +102,8 @@ class InformationGatheringAgentService:
                     mime_type=image_mime_type or "image/jpeg",
                     thread_id=thread_id,
                     project_id=project_id,
-                    context=context
+                    context=context,
+                    user_id=user_id
                 )
             elif text:
                 # Process text only
@@ -107,7 +112,8 @@ class InformationGatheringAgentService:
                     message=text,
                     thread_id=thread_id,
                     project_id=project_id,
-                    context=context
+                    context=context,
+                    user_id=user_id
                 )
             else:
                 raise ValueError("Either text or image must be provided")
