@@ -337,7 +337,7 @@ export default function Home() {
         <div className="border-b border-gray-100 flex-shrink-0">
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-4 lg:px-8 lg:py-6">
             <h1 className="text-[20px] font-regular text-[#000000] lg:text-[28px]">
-              {welcomeType === "welcome" ? "Welcome" : "Welcome back"}, <span className="text-black font-bold text-[20px]">{getFirstName(userName)}</span>
+              {welcomeType === "welcome" ? "Welcome" : "Welcome back"}, <span className="text-black font-bold text-[20px] lg:text-[28px]">{getFirstName(userName)}</span>
             </h1>
             <button 
               onClick={openSidebar}
@@ -499,7 +499,7 @@ export default function Home() {
               </p>
             </div>
           ) : (
-            <div className="grid h-full gap-4 overflow-y-auto pr-2 xl:grid-cols-2">
+            <div className="grid h-full items-start gap-4 overflow-y-auto pr-2 xl:grid-cols-2">
               {filteredProjects.map((p) => {
                 console.log('Home: Rendering ProjectCard with data:', {
                   id: p._id,
