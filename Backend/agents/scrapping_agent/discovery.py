@@ -24,13 +24,18 @@ def discover_category_graph_api(
     desired_category_name: your canonical label like "HVAC" or "Electrical"
     returns: (resolved_category_title, category_urls, article_urls)
     """
-    resolved = resolve_category_title(desired_category_name)
-    if not resolved:
-        resolved = _seed_url_to_category_title(CATEGORY_SEEDS.get(desired_category_name, ""))
+    resolved = _seed_url_to_category_title(CATEGORY_SEEDS.get(desired_category_name, ""))
+    if resolved:
+        print(
+            f"[discovery:{desired_category_name}] "
+            f"using configured seed category {resolved}"
+        )
+    else:
+        resolved = resolve_category_title(desired_category_name)
         if resolved:
             print(
                 f"[discovery:{desired_category_name}] "
-                f"falling back to configured seed category {resolved}"
+                f"resolved via WikiHow search API to {resolved}"
             )
     if not resolved:
         return None, set(), set()
