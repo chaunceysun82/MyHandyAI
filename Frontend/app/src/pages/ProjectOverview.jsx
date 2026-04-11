@@ -220,7 +220,7 @@ export default function ProjectOverview() {
 					<div className="grid gap-6 px-4 pb-6 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)] lg:px-8 lg:pb-8">
 						<div className="lg:sticky lg:top-20 lg:self-start">
 							<div className="space-y-3 pb-8 pt-3 lg:pt-0">
-								<div className="lg:-mt-10">
+								<div>
 									{loading ? (
 										<div className="animate-pulse">
 											<div className="h-20 rounded-lg bg-gray-200"></div>
