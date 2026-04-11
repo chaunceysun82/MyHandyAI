@@ -204,7 +204,7 @@ export default function ProjectOverview() {
 			<div className="mx-auto flex h-screen w-full max-w-6xl flex-col">
 				<div className="sticky top-0 z-20 bg-[#fffef6]">
 					<div className="px-4 pb-3 pt-5 lg:px-8 lg:pb-5 lg:pt-7">
-						<div className="relative flex items-center justify-center">
+						<div className="relative flex items-center justify-center lg:justify-start">
 							<h1 className="text-[20px] font-semibold lg:text-[28px]">Project Overview</h1>
 							<button
 								aria-label="Close"
@@ -218,8 +218,8 @@ export default function ProjectOverview() {
 
 				<div className="flex-1 overflow-y-auto">
 					<div className="grid gap-6 px-4 pb-6 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)] lg:px-8 lg:pb-8">
-						<div className="lg:sticky lg:top-24 lg:self-start">
-							<div className="space-y-3 pb-1 pt-3">
+						<div className="lg:sticky lg:top-20 lg:self-start">
+							<div className="space-y-3 pb-1 pt-3 lg:pt-0">
 								<div>
 									{loading ? (
 										<div className="animate-pulse">
