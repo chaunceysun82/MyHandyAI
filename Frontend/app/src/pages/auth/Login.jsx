@@ -218,12 +218,13 @@ const Login = () => {
 	};
 
 	return (
-		<div className="min-h-screen flex flex-col items-center p-4">
-			<h1 className="text-[20px] mt-[-24px] font-semibold pt-20 pb-3">Welcome back!</h1>
+		<div className="min-h-screen flex flex-col items-center px-4 py-6 lg:justify-center">
+			<div className="w-full max-w-sm">
+			<h1 className="pb-3 pt-12 text-center text-[20px] font-semibold text-[#000000] lg:pt-0">Welcome back!</h1>
 			
 			{/* General Error Message */}
 			{errors.general && (
-				<div className="w-full max-w-sm mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+				<div className="mb-4 w-full rounded-lg border border-red-200 bg-red-50 p-3">
 					<div className="flex items-center gap-2 text-red-800">
 						<svg className="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
 							<path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -233,7 +234,7 @@ const Login = () => {
 				</div>
 			)}
 			
-			<div className="relative w-full max-w-sm mx-auto mb-8">
+			<div className="relative mb-8 w-full">
 				{/* Tab buttons */}
 				<div className="flex">
 					<Link
@@ -263,7 +264,7 @@ const Login = () => {
 				</div>
 			</div>
 			
-			<form className="w-full " onSubmit={handleSubmit}>
+			<form className="w-full" onSubmit={handleSubmit}>
 				<FieldError error={errors.email}>
 					<label className="block mb-2 text-sm font-medium text-gray-700">
 						Email <span className="text-red-500">*</span>
@@ -339,7 +340,7 @@ const Login = () => {
 					</div>
 				</FieldError>
 
-				<div className="flex justify-between items-center">
+				<div className="flex items-center justify-between gap-4">
 					<label className="flex items-center text-gray-700 cursor-pointer">
 						<div className="relative w-5 h-5 mr-2">
 							<input
@@ -371,7 +372,7 @@ const Login = () => {
 					<Link
 						to="/forgot-password"
 						style={{color: '#595959'}}
-						className="font-light text-[12px] text-[#000000] hover:underline">
+						className="text-right font-light text-[12px] text-[#000000] hover:underline">
 						Forgot password?
 					</Link>
 				</div>
@@ -385,23 +386,24 @@ const Login = () => {
 			</form>
 			<p className="mt-5 text-[12px] font-light">Or</p>
 
-			<div className="h-auto flex flex-col items-center p-4">
+			<div className="flex h-auto w-full flex-col items-center px-4 py-4">
 					
-					<button onClick={signUpWithGoogle} className="rounded-[20px] text-[14px] flex items-center justify-center gap-3 font-bold mb-3 p-2 w-[350px] bg-[#F2F2F5] hover:bg-gray-200 transition duration-200">
+					<button onClick={signUpWithGoogle} className="mb-3 flex w-full items-center justify-center gap-3 rounded-[20px] bg-[#F2F2F5] p-2 text-[14px] font-bold transition duration-200 hover:bg-gray-200">
 						<Google width={28} height={28}/>
 						Continue with Google
 					</button>
 					
 
-					<button className="rounded-[20px] text-[14px] flex items-center justify-center gap-3 font-bold mb-3 p-2 w-[350px] bg-[#F2F2F5] hover:text-blue-600 hover:bg-gray-100 transition duration-200">
+					<button className="mb-3 flex w-full items-center justify-center gap-3 rounded-[20px] bg-[#F2F2F5] p-2 text-[14px] font-bold transition duration-200 hover:bg-gray-100 hover:text-blue-600">
 						<Facebook width={28} height={28} />
 						Continue with Facebook
 					</button>
 			</div>
 			
-			<div className="flex flex-row gap-[20px]">
+			<div className="flex flex-row justify-center gap-[20px]">
 				<p className="text-[12px] text-[#595959] font-light">Don't have an account?</p>
 				<a href = "/signup" className="text-[12px] text-[#55D468] hover:underline font-semibold">Sign up</a>
+			</div>
 			</div>
 		</div>
 	);
