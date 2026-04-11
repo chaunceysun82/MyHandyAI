@@ -220,7 +220,7 @@ const Login = () => {
 	return (
 		<div className="min-h-screen flex flex-col items-center px-4 py-6 lg:justify-center lg:bg-[#f2f8fa]">
 			<div className="w-full max-w-sm lg:max-w-md lg:rounded-[28px] lg:border lg:border-[#d8e8ee] lg:bg-white lg:px-9 lg:py-10 lg:shadow-[0_24px_60px_rgba(17,63,80,0.08)]">
-			<h1 className="pb-3 pt-12 text-center text-[20px] font-semibold text-[#000000] lg:pb-5 lg:pt-0 lg:text-[34px] lg:tracking-[-0.02em]">Welcome back!</h1>
+			<h1 className="pb-3 pt-12 text-center text-[20px] font-semibold text-[#000000] lg:pb-5 lg:pt-0 lg:text-[30px] lg:tracking-[-0.02em]">Welcome back!</h1>
 			
 			{/* General Error Message */}
 			{errors.general && (
