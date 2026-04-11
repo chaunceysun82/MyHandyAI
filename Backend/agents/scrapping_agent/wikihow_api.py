@@ -5,6 +5,8 @@ from typing import Iterable, Literal, Optional
 
 import requests
 import time
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, unquote, urlparse
 
 API = "https://www.wikihow.com/api.php"
 BASE = "https://www.wikihow.com/"
@@ -117,6 +119,65 @@ def iter_category_members(
         cmcontinue = cont.get("cmcontinue")
         if not cmcontinue:
             break
+
+
+def category_title_to_url(category_title: str) -> str:
+    if category_title.startswith("Category:"):
+        slug = category_title[len("Category:"):].strip().replace(" ", "-")
+        return f"{BASE}Category:{slug}"
+    return urljoin(BASE, category_title.replace(" ", "-"))
+
+
+def _is_article_path(path: str) -> bool:
+    if not path or not path.startswith("/"):
+        return False
+    if path.startswith("/Category:"):
+        return False
+    blocked_prefixes = (
+        "/Special:",
+        "/User:",
+        "/Help:",
+        "/About-wikiHow",
+        "/Main-Page",
+        "/Log-in",
+        "/Terms-of-Use",
+        "/wikiHow:",
+    )
+    return not path.startswith(blocked_prefixes)
+
+
+def extract_category_links_from_html(category_title: str) -> tuple[set[str], set[str]]:
+    session = _session()
+    url = category_title_to_url(category_title)
+    try:
+        response = session.get(url, timeout=30)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        print(f"[wikihow_api] html fallback failed for {category_title}: {exc}")
+        return set(), set()
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    category_urls: set[str] = set()
+    article_urls: set[str] = set()
+
+    for anchor in soup.find_all("a", href=True):
+        href = anchor.get("href", "").strip()
+        if not href or href.startswith("#") or href.startswith("javascript:"):
+            continue
+
+        full_url = urljoin(BASE, href)
+        parsed = urlparse(full_url)
+        if parsed.netloc not in ("www.wikihow.com", "wikihow.com"):
+            continue
+
+        clean_path = unquote(parsed.path)
+        if clean_path.startswith("/Category:"):
+            category_urls.add(f"{BASE.rstrip('/')}{clean_path}")
+        elif _is_article_path(clean_path):
+            article_urls.add(f"{BASE.rstrip('/')}{clean_path}")
+
+    return category_urls, article_urls
+
 
 def title_to_url(title: str) -> str:
     # MediaWiki titles use spaces; WikiHow uses underscores or encoded spaces

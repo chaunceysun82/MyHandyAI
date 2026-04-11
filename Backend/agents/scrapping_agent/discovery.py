@@ -3,7 +3,12 @@ from __future__ import annotations
 from typing import Set, Tuple, List
 
 from config import CATEGORY_SEEDS
-from wikihow_api import resolve_category_title, iter_category_members, title_to_url
+from wikihow_api import (
+    resolve_category_title,
+    iter_category_members,
+    title_to_url,
+    extract_category_links_from_html,
+)
 from utils import normalize_url
 
 
@@ -51,7 +56,20 @@ def discover_category_graph_api(
             continue
         seen.add(cat_title)
 
-        for m in iter_category_members(cat_title, cmtype=("page", "subcat")):
+        members = list(iter_category_members(cat_title, cmtype=("page", "subcat")))
+        if not members:
+            fallback_category_urls, fallback_article_urls = extract_category_links_from_html(cat_title)
+            if fallback_category_urls or fallback_article_urls:
+                print(
+                    f"[discovery:{desired_category_name}] "
+                    f"HTML fallback for {cat_title} categories={len(fallback_category_urls)} "
+                    f"articles={len(fallback_article_urls)}"
+                )
+                category_urls.update(normalize_url(u) for u in fallback_category_urls)
+                article_urls.update(normalize_url(u) for u in fallback_article_urls)
+            continue
+
+        for m in members:
             if m.ns == 14 and m.title.startswith("Category:"):
                 u = normalize_url(title_to_url(m.title))
                 category_urls.add(u)
