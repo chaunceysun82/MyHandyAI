@@ -2,8 +2,19 @@ from __future__ import annotations
 
 from typing import Set, Tuple, List
 
+from config import CATEGORY_SEEDS
 from wikihow_api import resolve_category_title, iter_category_members, title_to_url
 from utils import normalize_url
+
+
+def _seed_url_to_category_title(seed_url: str) -> str | None:
+    marker = "/Category:"
+    if marker not in seed_url:
+        return None
+    slug = seed_url.split(marker, 1)[1].strip("/")
+    if not slug:
+        return None
+    return f"Category:{slug.replace('-', ' ')}"
 
 def discover_category_graph_api(
     desired_category_name: str,
@@ -14,6 +25,13 @@ def discover_category_graph_api(
     returns: (resolved_category_title, category_urls, article_urls)
     """
     resolved = resolve_category_title(desired_category_name)
+    if not resolved:
+        resolved = _seed_url_to_category_title(CATEGORY_SEEDS.get(desired_category_name, ""))
+        if resolved:
+            print(
+                f"[discovery:{desired_category_name}] "
+                f"falling back to configured seed category {resolved}"
+            )
     if not resolved:
         return None, set(), set()
 

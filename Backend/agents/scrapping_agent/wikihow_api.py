@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Iterable, Literal, Optional
 
 import requests
+import time
 
 API = "https://www.wikihow.com/api.php"
 BASE = "https://www.wikihow.com/"
@@ -28,6 +29,32 @@ def _session() -> requests.Session:
     })
     return s
 
+
+def _get_json(
+    session: requests.Session,
+    params: dict,
+    timeout: int = 30,
+    retries: int = 3,
+    backoff_seconds: float = 1.0,
+) -> Optional[dict]:
+    last_error: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            response = session.get(API, params=params, timeout=timeout)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as exc:
+            last_error = exc
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            print(
+                f"[wikihow_api] request failed attempt={attempt}/{retries} "
+                f"status={status} params={params} error={exc}"
+            )
+            if attempt < retries:
+                time.sleep(backoff_seconds * attempt)
+    print(f"[wikihow_api] giving up after {retries} attempts: {last_error}")
+    return None
+
 def resolve_category_title(desired: str) -> Optional[str]:
     """
     Try to find the best matching category page title (namespace 14).
@@ -43,9 +70,9 @@ def resolve_category_title(desired: str) -> Optional[str]:
         "srlimit": 5,
         "format": "json",
     }
-    r = s.get(API, params=params, timeout=30)
-    r.raise_for_status()
-    data = r.json()
+    data = _get_json(s, params=params, timeout=30)
+    if not data:
+        return None
     hits = data.get("query", {}).get("search", []) or []
     if not hits:
         return None
@@ -77,9 +104,10 @@ def iter_category_members(
         if cmcontinue:
             params["cmcontinue"] = cmcontinue
 
-        r = s.get(API, params=params, timeout=30)
-        r.raise_for_status()
-        data = r.json()
+        data = _get_json(s, params=params, timeout=30)
+        if not data:
+            print(f"[wikihow_api] stopping category expansion for {category_title} due to repeated API failures")
+            break
 
         members = data.get("query", {}).get("categorymembers", []) or []
         for m in members:
