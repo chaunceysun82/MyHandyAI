@@ -499,7 +499,7 @@ export default function Home() {
               </p>
             </div>
           ) : (
-            <div className="grid h-full items-start gap-4 overflow-y-auto pr-2 xl:grid-cols-2 xl:gap-x-6 xl:gap-y-3">
+            <div className="grid h-full items-start gap-4 overflow-y-auto pr-2 xl:content-start xl:grid-cols-2 xl:gap-x-6 xl:gap-y-3">
               {filteredProjects.map((p) => {
                 console.log('Home: Rendering ProjectCard with data:', {
                   id: p._id,
