@@ -355,8 +355,7 @@ export default function ProjectOverview() {
 							projectId={projectId}
 							onClose={() => setOpenModal(false)}
 							URL={URL}
-							stepNumber={null}
-							userName={userName}
+							stepNumber={-1}
 						/>
 					)}
 

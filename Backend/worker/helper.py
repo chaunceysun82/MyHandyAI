@@ -1,17 +1,23 @@
-
-from fastapi import HTTPException
-from typing import List, Dict, Any, Optional
-import os
-import uuid
-from db import project_collection, tools_collection
 from datetime import datetime
-from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, VectorParams, Distance
+from typing import List, Dict, Any
+
 from bson import ObjectId
-from openai import OpenAI
+from fastapi import HTTPException
+from pymongo.collection import Collection
+from pymongo.database import Database
 from qdrant_client.http.exceptions import UnexpectedResponse
 
-client=OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+from config.settings import get_settings
+from database.mongodb import mongodb
+from database.qdrant import create_embeddings_for_texts, upsert_embeddings_to_qdrant, search_similar_vectors, \
+    get_qdrant_client
+
+settings = get_settings()
+
+database: Database = mongodb.get_database()
+project_collection: Collection = database.get_collection("Project")
+tools_collection: Collection = database.get_collection("Tools")
+
 
 def store_tool_in_database(tool_data: Dict[str, Any]) -> str:
     """
@@ -32,9 +38,10 @@ def store_tool_in_database(tool_data: Dict[str, Any]) -> str:
         "usage_count": 1,
         "last_used": datetime.utcnow()
     }
-    
+
     result = tools_collection.insert_one(tool_doc)
     return str(result.inserted_id)
+
 
 def create_and_store_tool_embeddings(tool_data: Dict[str, Any], tool_id: str):
     """
@@ -42,13 +49,14 @@ def create_and_store_tool_embeddings(tool_data: Dict[str, Any], tool_id: str):
     """
     # Create text representation for embedding
     tool_text = f"{tool_data['name']} {tool_data['description']} {tool_data.get('category', '')} {' '.join(tool_data.get('tags', []))}"
-    
+
     # Generate embedding
-    embedding = create_embeddings_for_texts([tool_text], model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
-    
+    embedding = create_embeddings_for_texts([tool_text],
+                                            model=settings.OPENAI_EMBEDDING_MODEL)
+
     if not embedding:
         return {"status": "embedding_failed"}
-    
+
     # Store in Qdrant tools collection
     qresult = upsert_embeddings_to_qdrant(
         mongo_hex_id=tool_id,
@@ -64,91 +72,36 @@ def create_and_store_tool_embeddings(tool_data: Dict[str, Any], tool_id: str):
     )
     return qresult
 
-def upsert_embeddings_to_qdrant(
-        mongo_hex_id: str,
-        embeddings: List[List[float]],
-        texts: List[str],
-        extra_payload: Optional[dict] = None,
-        collection_name: Optional[str] = None
-    ) -> dict:
 
-    qdrant_url = os.getenv("QDRANT_URL")
-    qdrant_api_key = os.getenv("QDRANT_API_KEY")
-    collection_name = collection_name or "projects"
+# Qdrant operations are now centralized in database/qdrant.py
 
-    if not qdrant_url or not qdrant_api_key:
-        raise RuntimeError("QDRANT_URL and QDRANT_API_KEY must be set in env")
-
-    qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
-
-    if not embeddings:
-        return {"status": "no_embeddings"}
-
-    vector_size = len(embeddings[0])
-
-    
-    try:
-        qclient.get_collection(collection_name=collection_name)
-    except UnexpectedResponse as ex:
-        if ex.status_code == 404:
-            
-            qclient.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
-            )
-        else:
-            raise
-
-    
-    points = []
-    for idx, (vec, txt) in enumerate(zip(embeddings, texts)):
-        unique_str = f"{mongo_hex_id}-{idx}"
-        point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, unique_str))
-
-        payload = {
-            "mongo_id": mongo_hex_id,
-            "chunk_index": idx,
-            "text_preview": txt,
-        }
-        print(payload)
-        if extra_payload:
-            payload.update(extra_payload)
-
-        points.append(PointStruct(id=point_id, vector=vec, payload=payload))
-
-    qclient.upsert(collection_name=collection_name, points=points)
-    return {"status": "ok", "num_points": len(points), "collection": collection_name}
 
 def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
     """
     Find similar tools in Qdrant based on semantic similarity.
+    Uses centralized Qdrant operations from database/qdrant.py
     """
-    qdrant_url = os.getenv("QDRANT_URL")
-    qdrant_api_key = os.getenv("QDRANT_API_KEY")
-    
-    if not qdrant_url or not qdrant_api_key:
-        raise RuntimeError("QDRANT_URL and QDRANT_API_KEY must be set in env")
-    
-    qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
-    
     # Generate embedding for the query
-    query_embedding = create_embeddings_for_texts([query], model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"))
-    
+    query_embedding = create_embeddings_for_texts([query],
+                                                  model=settings.OPENAI_EMBEDDING_MODEL)
+
     if not query_embedding:
         return []
-    
+
     try:
-        # Search in tools collection
-        search_result = qclient.search(
-            collection_name="tools",
+        # Search in tools collection using centralized function
+        search_result = search_similar_vectors(
             query_vector=query_embedding[0],
+            collection_name="tools",
             limit=limit,
             score_threshold=similarity_threshold
         )
-        
+
         similar_tools = []
         for result in search_result:
-            if result.score >= similarity_threshold:
+            # Note: search_similar_vectors already filters by score_threshold, but we check again for safety
+            score = getattr(result, "score", 0.0)
+            if score >= similarity_threshold:
                 # Get tool details from MongoDB
                 tool_id = result.payload.get("tool_id")
                 if tool_id:
@@ -164,17 +117,18 @@ def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float =
                             "image_link": tool_doc.get("image_link"),
                             "amazon_link": tool_doc.get("amazon_link"),
                             "category": tool_doc.get("category"),
-                            "similarity_score": result.score,
+                            "similarity_score": score,
                             "usage_count": tool_doc.get("usage_count", 0)
                         }
                         similar_tools.append(tool_info)
-        
+
         return similar_tools
-        
+
     except Exception as e:
         print(f"Error searching tools in Qdrant: {e}")
         return []
-    
+
+
 def update_tool_usage(tool_id: str):
     """
     Update the usage count and last used timestamp for a tool.
@@ -187,19 +141,11 @@ def update_tool_usage(tool_id: str):
         }
     )
 
-def create_embeddings_for_texts(texts, model: str = "text-embedding-3-small"):
-    """
-    Creates embeddings via OpenAI for a list of strings (batched).
-    Returns list of embedding vectors in same order as texts.
-    """
-    if not texts:
-        return []
-    
-    resp = client.embeddings.create(model=model, input=texts)
-    
-    return [item.embedding for item in resp.data]
 
-def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "projects"):
+# Qdrant operations are now centralized in database/qdrant.py
+
+
+def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "project_summaries"):
     """
     RAG decision logic (strictly implements the 3 cases you specified):
       1) best similarity >= 0.90 -> copy tools & steps from matched project into new project
@@ -218,13 +164,11 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
- 
     summary = project.get("summary")
     if not summary or not str(summary).strip():
         raise HTTPException(status_code=400, detail="Project has no summary or user_description to embed")
 
-    
-    model_name = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    model_name = settings.OPENAI_EMBEDDING_MODEL
     try:
         embeddings = create_embeddings_for_texts([summary], model=model_name)
     except Exception as e:
@@ -236,16 +180,13 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
     query_vec = embeddings[0]
 
     print(f"🔍 Querying Qdrant for similar projects to {project_id} in collection {collection_name}")
-    # qdrant client
-    qdrant_url = os.getenv("QDRANT_URL")
-    qdrant_api_key = os.getenv("QDRANT_API_KEY")
-    if not qdrant_url or not qdrant_api_key:
-        print(f"❌ QDRANT config missing in environment")
+    try:
+        qclient = get_qdrant_client()
+    except RuntimeError as e:
+        print(f"❌ QDRANT config missing: {e}")
         raise HTTPException(status_code=500, detail="QDRANT config missing in environment")
-    qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
 
     print(f"🔍 Ensuring Qdrant collection {collection_name} exists")
-    # ensure collection exists
     try:
         qclient.get_collection(collection_name=collection_name)
     except UnexpectedResponse as ex:
@@ -253,26 +194,33 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
             return {"query_project_id": project_id, "collection": collection_name, "matches": []}
         else:
             print(f"❌ Qdrant error: {str(ex)}")
-            raise Exception(status_code=500, detail=f"Qdrant error: {str(ex)}")
+            raise HTTPException(status_code=500, detail=f"Qdrant error: {str(ex)}")
 
     # search (request a few extra to allow skipping self-matches)
     limit = top_k + 5
     try:
-        hits = qclient.search(collection_name=collection_name, query_vector=query_vec, limit=limit, with_payload=True)
+        # FIXED: Upgraded to use query_points() for Qdrant client 1.10+
+        response = qclient.query_points(
+            collection_name=collection_name, 
+            query=query_vec, 
+            limit=limit, 
+            with_payload=True
+        )
+        hits = response.points
     except Exception as e:
         print(f"❌ Qdrant search error: {str(e)}")
-        raise Exception(status_code=500, detail=f"Qdrant search failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Qdrant search failed: {str(e)}")
 
     results = []
     best_hit = None
     best_score = -1.0
 
     print(f"🔍 Found {len(hits)} hits in Qdrant for project {project_id}")
-   
+
     for hit in hits:
         payload = hit.payload or {}
-        mongo_id_str = payload.get("mongo_id")
-        text_preview = payload.get("text_preview")
+        mongo_id_str = payload.get("project_id")
+        text_preview = payload.get("text")
         chunk_index = payload.get("chunk_index")
         score = getattr(hit, "score", None)
 
@@ -286,7 +234,7 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
             s = -1.0
 
         print(f"🔍 Hit: mongo_id={mongo_id_str} score={s} text_preview={text_preview}")
-        
+
         matched_obj = None
         matched_project_id = None
         if mongo_id_str:
@@ -297,7 +245,6 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
             except Exception:
                 matched_obj = None
 
-        
         if s > best_score:
             best_score = s
             best_hit = {"hit": hit, "payload": payload, "score": s, "mongo_id": mongo_id_str}
@@ -326,15 +273,12 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
     if not best_hit:
         return None
 
-   
     matched_mongo_id = best_hit.get("mongo_id")
-    matched_doc = None
     if matched_mongo_id:
         try:
             matched_doc = project_collection.find_one({"_id": ObjectId(matched_mongo_id)})
             return {"project_id": matched_mongo_id, "best_score": best_score}
         except Exception:
-            matched_doc = None
             return None
     else:
         return None

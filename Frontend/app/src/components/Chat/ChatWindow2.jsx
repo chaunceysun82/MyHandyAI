@@ -1,58 +1,26 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import ChatHeader from "./ChatHeader";
 import MessageList from "./MessageList";
 import ChatInput from "./ChatInput";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
-import { RotatingLines } from 'react-loader-spinner';
 
 export default function ChatWindow2({
   isOpen,
   onClose,
   projectId,
   URL,
-  stepNumber,
-  userName // Add userName prop
+  stepNumber
 }) {
-
-  console.log("Project ID:", projectId);
-  console.log("Step Number:", stepNumber);
-
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState(false);
-  const [status2, setStatus2] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
-
-  const tips = [
-    "💡 We are now analyzing your project...",
-    "💡 Putting  your tailored repair recipe together...this may take a couple of minutes...",
-    "💡 Thanks for your patience! Almost done...",
-    "💡 Almost there, hang tight! MyHandyAI is gathering the best tools for you..."
-  ];
-
-  const [currentTipIndex, setCurrentTipIndex] = useState(0);
-
-  useEffect(() => {
-    if (status) {
-      const interval = setInterval(() => {
-        setCurrentTipIndex((prevIndex) => (prevIndex + 1) % tips.length);
-      }, 4500);
-      return () => clearInterval(interval);
-    }
-  }, [status, tips.length]);
 
   const [drag, setDrag] = useState({ active: false, startY: 0, dy: 0 });
   const THRESHOLD = 120;
   const messagesEndRef = useRef(null);
 
-  const navigate = useNavigate();
-
   const [messages, setMessages] = useState([]);
-  const [sessionId, setSessionId] = useState(null);
-  
-  // State for suggested messages from backend
-  const [suggestedMessages, setSuggestedMessages] = useState([]);
+  const [threadId, setThreadId] = useState(null);
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -63,7 +31,7 @@ export default function ChatWindow2({
     }
   }, [messages]);
 
-  // Load or start session
+  // Load thread ID and conversation history
   useEffect(() => {
     let cancelled = false;
 
@@ -71,82 +39,164 @@ export default function ChatWindow2({
       if (cancelled) return;
 
       try {
-        // First, try to get existing session
-        const sessionRes = await axios.get(`${URL}/step-guidance/session/${projectId}`);
-
+        setLoading(true);
+        
+        // Get thread ID from project assistant agent (same thread as information gathering agent)
+        const threadRes = await axios.get(`${URL}/api/v1/project-assistant-agent/thread/${projectId}`);
+        
         if (cancelled) return;
 
-        if (sessionRes.data?.session) {
-          // Session exists, load history
-          setSessionId(sessionRes.data.session);
+        if (threadRes.data?.thread_id) {
+          const threadIdValue = threadRes.data.thread_id;
+          setThreadId(threadIdValue);
 
           try {
-            const historyRes = await axios.get(`${URL}/step-guidance/session/${sessionRes.data.session}/history`);
+            // Always initialize the conversation when opening the chat component
+            // This ensures a contextual greeting based on the current step_number
+            await axios.post(
+              `${URL}/api/v1/project-assistant-agent/initialize`,
+              {
+                thread_id: threadIdValue,
+                project_id: projectId,
+                step_number: stepNumber !== undefined ? stepNumber : null
+              }
+            );
+            
+            if (cancelled) return;
+
+            // Load conversation history from project assistant agent
+            // This will include the new initial exchange we just created
+            const historyRes = await axios.get(
+              `${URL}/api/v1/project-assistant-agent/chat/${threadIdValue}/history`
+            );
+            
             if (!cancelled) {
-              const formattedMessages = historyRes.data.map(({ role, message }) => ({
-                sender: role === "user" ? "user" : "bot",
-                content: message,
-              }));
+              const historyMessages = historyRes.data.messages || [];
+              
+              // Format existing history messages
+              const formattedMessages = historyMessages.map(({ role, content }) => {
+                // Handle image content (base64 data URLs)
+                const base64ImageRegex = /data:image\/[^;]+;base64,[^\s]+/g;
+                const imageMatches = content.match(base64ImageRegex);
+                
+                if (imageMatches && imageMatches.length > 0) {
+                  const images = imageMatches;
+                  let textContent = content;
+                  
+                  // Remove all image data URLs from the text
+                  imageMatches.forEach(img => {
+                    textContent = textContent.replace(img, '').trim();
+                  });
+                  
+                  return {
+                    sender: role === "user" ? "user" : "bot",
+                    content: textContent,
+                    images: images,
+                    isImageOnly: !textContent || textContent.length === 0,
+                  };
+                }
+                
+                return {
+                  sender: role === "user" ? "user" : "bot",
+                  content: content,
+                };
+              });
               setMessages(formattedMessages);
             }
-          } catch (historyErr) {
+          } catch (err) {
             if (!cancelled) {
-              setMessages([{ sender: "bot", content: "Failed to load chat history." }]);
+              console.error("Error during initialization or loading history:", err);
+              // If initialization fails, try to load existing history as fallback
+              try {
+                const historyRes = await axios.get(
+                  `${URL}/api/v1/project-assistant-agent/chat/${threadIdValue}/history`
+                );
+                
+                if (!cancelled) {
+                  const historyMessages = historyRes.data.messages || [];
+                  
+                  if (historyMessages.length > 0) {
+                    const formattedMessages = historyMessages.map(({ role, content }) => {
+                      const base64ImageRegex = /data:image\/[^;]+;base64,[^\s]+/g;
+                      const imageMatches = content.match(base64ImageRegex);
+                      
+                      if (imageMatches && imageMatches.length > 0) {
+                        const images = imageMatches;
+                        let textContent = content;
+                        imageMatches.forEach(img => {
+                          textContent = textContent.replace(img, '').trim();
+                        });
+                        
+                        return {
+                          sender: role === "user" ? "user" : "bot",
+                          content: textContent,
+                          images: images,
+                          isImageOnly: !textContent || textContent.length === 0,
+                        };
+                      }
+                      
+                      return {
+                        sender: role === "user" ? "user" : "bot",
+                        content: content,
+                      };
+                    });
+                    setMessages(formattedMessages);
+                  } else {
+                    setMessages([{ 
+                      sender: "bot", 
+                      content: "Failed to initialize chat. Please try again." 
+                    }]);
+                  }
+                }
+              } catch (historyErr) {
+                console.error("Error loading history as fallback:", historyErr);
+                if (!cancelled) {
+                  setMessages([{ 
+                    sender: "bot", 
+                    content: "Failed to load chat. Please try again." 
+                  }]);
+                }
+              }
             }
           }
         } else {
-          try {
-            // No session exists, start new one
-            const startRes = await axios.post(
-              `${URL}/step-guidance/start`,
-              { project: projectId },
-              { headers: { "Content-Type": "application/json" } }
-            );
-
-            if (!cancelled) {
-              console.log("Response from starting session:", startRes.data);
-              setSessionId(startRes.data.session_id);
-              
-              // Set suggested messages from backend response
-              if (startRes.data.suggested_messages) {
-                setSuggestedMessages(startRes.data.suggested_messages);
-                console.log("💬 Step guidance suggested messages received:", startRes.data.suggested_messages);
-              }
-              
-              const historyRes = await axios.get(`${URL}/step-guidance/session/${startRes.data.session_id}/history`);
-              const formattedMessages = historyRes.data.map(({ role, message }) => ({
-                sender: role === "user" ? "user" : "bot",
-                content: message,
-              }));
-              console.log("message: ", formattedMessages);
-              setMessages(formattedMessages);
-            }
-          } catch (historyErr) {
-            if (!cancelled) {
-              setMessages([{ sender: "bot", content: "Failed to load chat history." }]);
-            }
+          // No thread exists yet - user needs to start with information gathering agent first
+          if (!cancelled) {
+            setMessages([{ 
+              sender: "bot", 
+              content: "Please start a conversation with the information gathering agent first to begin your project." 
+            }]);
           }
         }
       } catch (err) {
-        console.log("Error during session initialization:", err);
+        console.error("Error during session initialization:", err);
+        if (!cancelled) {
+          setMessages([{ sender: "bot", content: "Failed to initialize chat. Please try again." }]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
-    initializeSession();
+    if (isOpen && projectId) {
+      initializeSession();
+    }
 
     return () => {
       cancelled = true;
     };
-  }, [projectId, URL]);
+  }, [projectId, URL, isOpen, stepNumber]);
 
   // Handle close with animation
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setIsClosing(true);
     setTimeout(() => {
       onClose?.();
       setIsClosing(false);
-    }, 300); // Match animation duration
-  };
+    }, 300);
+  }, [onClose]);
 
   // Drag handlers
   const startDrag = (e) => setDrag({ active: true, startY: e.clientY, dy: 0 });
@@ -167,7 +217,7 @@ export default function ChatWindow2({
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
     };
-  }, [drag.active, drag.dy, drag.startY]);
+  }, [drag.active, drag.dy, drag.startY, handleClose]);
 
   // Lock scroll + Esc
   useEffect(() => {
@@ -180,58 +230,18 @@ export default function ChatWindow2({
       document.body.style.overflow = prev;
       window.removeEventListener("keydown", onKey);
     };
-  }, [isOpen]);
-
-  useEffect(() => {
-    const getStatus = async () => {
-      if (status === true) {
-        try {
-          const response = await axios.post(`${URL}/generation/all/${projectId}`);
-
-          if (response) {
-            setStatus2(true);
-          }
-        } catch (err) {
-          console.log("Err: ", err);
-        }
-      }
-    }
-    getStatus();
-  }, [status, navigate]);
-
-  useEffect(() => {
-    if (status2 === true) {
-      const interval = setInterval(async () => {
-        try {
-          const response = await axios.get(`${URL}/generation/status/${projectId}`);
-
-          if (response) {
-            const message = response.data.message;
-
-            console.log("Message:", message);
-            if (message === "generation completed") {
-              clearInterval(interval);
-              navigate(`/projects/${projectId}/overview`, { state: { userName } });
-            }
-          }
-        }
-        catch (err) {
-          console.log("Err: ", err);
-        }
-      }, 5000);
-
-      return () => clearInterval(interval);
-    }
-  }, [status2, navigate]);
-
+  }, [isOpen, handleClose]);
 
 
   const handleSend = async (text, files = []) => {
+    // Prevent sending if already loading or no thread ID
+    if (loading || !threadId) {
+      return;
+    }
+
     if (!text.trim() && files.length === 0) return;
 
     // Validate files before processing
-
-    
     const validFiles = files.filter(file => {
       if (!file.type.startsWith("image/")) {
         console.warn(`Skipping non-image file: ${file.name}`);
@@ -258,7 +268,7 @@ export default function ChatWindow2({
       ]);
     }
 
-    // 1) Show selected images as separate messages (image bubbles)
+    // Show selected images as separate messages (image bubbles)
     if (validFiles.length > 0) {
       for (const file of validFiles) {
         try {
@@ -283,7 +293,7 @@ export default function ChatWindow2({
       }
     }
 
-    let messageContent = text.trim();
+    const messageContent = text.trim();
 
     try {
       // Only create text message if there's actual content
@@ -295,14 +305,17 @@ export default function ChatWindow2({
         setMessages((prev) => [...prev, userMsg]);
       }
 
-      // Prepare payload for backend (combine text and first image)
-      const currInput = text;
-      let uploadedimage = null;
+      // Prepare payload for backend
+      let image_base64 = null;
+      let image_mime_type = null;
 
-      const currFile = files[0];
+      const currFile = validFiles[0];
       if (currFile && currFile.type.startsWith('image/')) {
         try {
-          uploadedimage = await toBase64(currFile);
+          const dataUrl = await toBase64(currFile);
+          // Extract base64 string (remove data:image/jpeg;base64, prefix)
+          image_base64 = dataUrl.split(',')[1];
+          image_mime_type = currFile.type || "image/jpeg";
         } catch (error) {
           console.error("Error converting image to base64:", error);
           setMessages((prev) => [
@@ -318,52 +331,34 @@ export default function ChatWindow2({
       }
 
       const payload = {
-        message: currInput,
-        project: projectId,
-        uploaded_image: uploadedimage,
-        step: stepNumber || -1
+        project_id: projectId,
+        text: messageContent || null,
+        image_base64: image_base64,
+        image_mime_type: image_mime_type,
+        step_number: stepNumber !== undefined ? stepNumber : null
       };
 
       setLoading(true);
 
       const res = await axios.post(
-        `${URL}/step-guidance/chat`,
+        `${URL}/api/v1/project-assistant-agent/chat/${threadId}`,
         payload,
         {
-          headers:
-            { "Content-Type": "application/json" }
+          headers: { "Content-Type": "application/json" }
         }
       );
 
-      const botMsg = { sender: "bot", content: res.data.response };
+      const botMsg = { sender: "bot", content: res.data.agent_response };
 
       setLoading(false);
-
       setMessages((prev) => [...prev, botMsg]);
-      
-      // Update suggested messages if provided in response
-      if (res.data.suggested_messages) {
-        setSuggestedMessages(res.data.suggested_messages);
-        console.log("💬 Updated step guidance suggested messages:", res.data.suggested_messages);
-      }
-
-      // check for the current_state of the response:
-      console.log("Current State:", res.data.current_state);
-
-      if (res.data.current_state === 'complete') {
-        // Wait a bit for the user to read the final message, then show loading
-        setTimeout(() => {
-          setStatus(true);
-        }, 1500);
-      }
 
     } catch (err) {
       setLoading(false);
       console.error("Chat error", err);
-
       setMessages((prev) => [
         ...prev,
-        { sender: "bot", content: "Oops! Something went wrong." },
+        { sender: "bot", content: "Oops! Something went wrong. Please try again." },
       ]);
     }
   };
@@ -410,7 +405,6 @@ export default function ChatWindow2({
   if (!isOpen) return null;
 
   // Calculate drag transform and closing animation
-  const dragTransform = drag.active ? `translateY(${drag.dy}px)` : '';
   const closingTransform = isClosing ? 'translate(-50%, 100%)' : 'translate(-50%, 0px)';
   const finalTransform = drag.active ? `translate(-50%, ${drag.dy}px)` : closingTransform;
 
@@ -467,62 +461,36 @@ export default function ChatWindow2({
           <div className="mx-auto max-w-[380px] rounded-t-3xl bg-white shadow-2xl flex flex-col h-full overflow-hidden">
             <ChatHeader onClose={handleClose} dragHandleProps={{ onPointerDown: startDrag }} />
 
-            {status === false ? (
-              <div
-                ref={messagesEndRef}
-                className="flex-1 overflow-y-auto px-5 pt-1 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-              >
-                <MessageList messages={messages} />
+            <div
+              ref={messagesEndRef}
+              className="flex-1 overflow-y-auto px-5 pt-1 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
+              <MessageList messages={messages} />
 
-                {loading && (
-                  <div className="flex items-center gap-2 text-gray-500 mt-2">
-                    <div className="loader w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
+              {loading && (
+                <div className="flex items-center gap-2 text-gray-500 mt-2">
+                  <div className="loader w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
 
-                    <div className="flex items-center gap-1">
-                      <span>Bot is thinking</span>
-                      <div className="flex items-center gap-1 translate-y-[4px]">
-                        <span className="w-1 h-1 bg-gray-400 rounded-full animate-typing-wave"></span>
-                        <span className="w-1 h-1 bg-gray-400 rounded-full animate-typing-wave [animation-delay:0.2s]"></span>
-                        <span className="w-1 h-1 bg-gray-400 rounded-full animate-typing-wave [animation-delay:0.4s]"></span>
-                      </div>
+                  <div className="flex items-center gap-1">
+                    <span>Bot is thinking</span>
+                    <div className="flex items-center gap-1 translate-y-[4px]">
+                      <span className="w-1 h-1 bg-gray-400 rounded-full animate-typing-wave"></span>
+                      <span className="w-1 h-1 bg-gray-400 rounded-full animate-typing-wave [animation-delay:0.2s]"></span>
+                      <span className="w-1 h-1 bg-gray-400 rounded-full animate-typing-wave [animation-delay:0.4s]"></span>
                     </div>
                   </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full w-full px-4">
-                <RotatingLines
-                  strokeColor="blue"
-                  strokeWidth="2"
-                  animationDuration="0.1"
-                  width="45"
-                  visible={true}
-                />
-                <p className="mt-6 text-gray-600 text-sm text-center transition-all duration-500 ease-in-out">
-                  {tips[currentTipIndex]}
-                </p>
-              </div>
-            )}
+                </div>
+              )}
+            </div>
 
             {/* Chat Input */}
             <div className="flex-shrink-0 flex flex-col px-4 py-3 gap-2 mb-3">
               <hr className="border-t border-gray-200/70" />
-              <ChatInput onSend={handleSend} suggestedMessages={suggestedMessages} />
+              <ChatInput 
+                onSend={handleSend} 
+                disabled={loading || !threadId}
+              />
             </div>
-
-            {/* Navigation Buttons
-            <div className="mt-auto grid grid-cols-2 gap-4 px-4 pb-4">
-              <button 
-                onClick={() => navigate("/home")}
-                className="rounded-[8px] font-regular bg-[#D9D9D9] px-4 py-2 text-black-700 hover:bg-gray-300 transition-colors"
-              >
-                Previous
-              </button>
-
-              <button className="rounded-[8px] font-regular bg-[#D9D9D9] px-4 py-2 text-black-700 hover:bg-gray-300 transition-colors">
-                Next
-              </button>
-            </div> */}
           </div>
         </div>
       </div>

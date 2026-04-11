@@ -16,6 +16,7 @@ import {
 	transformStepData 
 } from "../utilities/StepUtils";
 import LoadingPlaceholder from "../components/LoadingPlaceholder";
+import { trackMetricOnce } from "../services/metrics";
 
 export default function StepPage() {
 	const { stepIndex, projectId } = useParams();
@@ -134,6 +135,19 @@ export default function StepPage() {
 			cancelled = true;
 		};
 	}, [projectId, stepIndex]);
+
+	useEffect(() => {
+		if (!step) {
+			return;
+		}
+
+		trackMetricOnce(`step_viewed:${projectId}:${stepIndex}`, "step_viewed", {
+			userId: userId || undefined,
+			projectId,
+			stepNumber: parseInt(stepIndex, 10),
+			metadata: { stepTitle: step.title }
+		});
+	}, [projectId, stepIndex, step, userId]);
 
 	const handleBack = () => {
 		// Always go back to Project Overview from any step page
@@ -322,7 +336,7 @@ export default function StepPage() {
 				<StepFooter
 					projectId={projectId}
 					projectName={state?.projectName || "Project"}
-					stepNumber={parseInt(stepIndex) + 1}
+					stepNumber={parseInt(stepIndex)}
 					stepTitle={step?.title || ""}
 					totalSteps={step?.total || 0}
 					projectVideoUrl={projectVideoUrl}

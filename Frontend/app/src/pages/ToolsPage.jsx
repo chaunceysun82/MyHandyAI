@@ -7,6 +7,7 @@ import MobileWrapper from "../components/MobileWrapper";
 import { fetchProjectTools, mockTools, transformToolsData } from "../services/tools";
 import { fetchSteps } from "../services/overview";
 import StepVideoGuide from "../components/steps/StepVideoGuide"; // Add this import
+import { trackMetricOnce } from "../services/metrics";
 
 export default function ToolsPage() {
 	const { projectId } = useParams();
@@ -31,6 +32,11 @@ export default function ToolsPage() {
 	
 	// Get userName from navigation state or localStorage
 	const userName = location.state?.userName || localStorage.getItem("displayName") || sessionStorage.getItem("displayName") || "User";
+	const userId =
+		location.state?.userId ||
+		localStorage.getItem("authToken") ||
+		sessionStorage.getItem("authToken") ||
+		null;
 
 	// const userId = location.state?.userId;
 	// console.log("User ID:", userId);
@@ -98,6 +104,19 @@ export default function ToolsPage() {
 			cancelled = true;
 		};
 	}, [projectId]);
+
+	useEffect(() => {
+		if (loading) {
+			return;
+		}
+
+		trackMetricOnce(`step_viewed:${projectId}:0`, "step_viewed", {
+			userId: userId || undefined,
+			projectId,
+			stepNumber: 0,
+			metadata: { stepTitle: "Tools and Materials" }
+		});
+	}, [loading, projectId, userId]);
 
 	// Debug effect to track selection changes and cost updates
 	useEffect(() => {

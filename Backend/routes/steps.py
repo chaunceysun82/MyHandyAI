@@ -1,16 +1,24 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, conint
-from typing import List, Optional, Annotated
-from bson import ObjectId
-from db import steps_collection
 from datetime import datetime
+from typing import List, Optional, Annotated
+
+from bson import ObjectId
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+from pymongo.collection import Collection
+from pymongo.database import Database
+
+from database.mongodb import mongodb
 
 router = APIRouter()
+database: Database = mongodb.get_database()
+steps_collection: Collection = database.get_collection("ProjectSteps")
+
 
 class Tool(BaseModel):
     name: str
     description: str
     link: Optional[str] = None
+
 
 class Material(BaseModel):
     name: str
@@ -18,6 +26,7 @@ class Material(BaseModel):
     quantity: int
     size: float
     link: Optional[str] = None
+
 
 class Step(BaseModel):
     projectId: str
@@ -28,7 +37,7 @@ class Step(BaseModel):
     time_text: str = ""
     instructions: List[str] = []
     status: str = "pending"
-    progress: int = 0  #percentage
+    progress: int = 0  # percentage
     tools_needed: List[str] = []
     safety_warnings: List[str] = []
     tips: List[str] = []
@@ -36,9 +45,11 @@ class Step(BaseModel):
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
 
+
 class ProgressUpdate(BaseModel):
     progress: Annotated[int, Field(ge=0, le=100)]  # 0–100
     status: Optional[str] = None
+
 
 @router.post("/steps")
 def create_step(step: Step):
@@ -58,16 +69,18 @@ def create_step(step: Step):
     result = steps_collection.insert_one(step_dict)
     return {"id": str(result.inserted_id)}
 
+
 @router.get("/projects/{project_id}/steps")
 def get_steps_by_project(project_id: str):
     steps = list(
         steps_collection.find({"projectId": ObjectId(project_id)})
-                        .sort("order", 1)
+        .sort("order", 1)
     )
     for step in steps:
         step["_id"] = str(step["_id"])
         step["projectId"] = str(step["projectId"])
     return steps
+
 
 @router.put("/steps/{step_id}")
 def update_step(step_id: str, update_data: dict):
@@ -79,6 +92,7 @@ def update_step(step_id: str, update_data: dict):
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Step not found")
     return {"message": "Step updated"}
+
 
 @router.put("/steps/{step_id}/progress")
 def update_step_progress(step_id: str, body: ProgressUpdate):
@@ -108,6 +122,7 @@ def update_step_progress(step_id: str, body: ProgressUpdate):
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Step not found")
     return {"message": "Progress updated", "modified": bool(result.modified_count)}
+
 
 @router.get("/projects/{project_id}/progress")
 def get_project_progress(project_id: str):
@@ -150,9 +165,10 @@ def get_project_progress(project_id: str):
         "project_id": project_id,
         "total_steps": count,
         "completed_steps": completed,
-        "average_progress": avg,         # 0–100 for the homepage bar
+        "average_progress": avg,  # 0–100 for the homepage bar
         "steps": steps
     }
+
 
 @router.put("/projects/{project_id}/complete-all")
 def complete_all_steps(project_id: str):

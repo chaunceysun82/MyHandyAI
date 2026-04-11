@@ -1,388 +1,484 @@
-import os, io, time
+import json
 import json
 import re
 import traceback
+from datetime import datetime
+
 import boto3
-from pydantic import BaseModel
-from datetime import datetime
-from bson.objectid import ObjectId
-from db import project_collection, steps_collection
-from datetime import datetime
-from planner import ToolsAgent, StepsAgentJSON, EstimationAgent
-from typing import Optional
 import requests
-from google import genai
-from PIL import Image
-from helper import similar_by_project
+from bson.objectid import ObjectId
+from pymongo.collection import Collection
+from pymongo.database import Database
+
+from agents.solution_generation_multi_agent.image_generation_agent.image_generation_agent import ImageGenerationAgent
+from agents.solution_generation_multi_agent.planner import ToolsAgent, EstimationAgent
+from agents.solution_generation_multi_agent.services.image_generation_agent_service import ImageGenerationAgentService
+from agents.solution_generation_multi_agent.services.steps_generation_agent_service import StepsGenerationAgentService
+from agents.solution_generation_multi_agent.steps_generation_agent.steps_generation_agent import StepsGenerationAgent
+from config.settings import get_settings
+from database.llm_consumption import record_openai_response_usage
+from database.mongodb import mongodb
+from helper import similar_by_project, store_tool_in_database, create_and_store_tool_embeddings, find_similar_tools, \
+    update_tool_usage
+
+settings = get_settings()
+s3 = boto3.client("s3", region_name=settings.AWS_REGION)
+sqs = boto3.client("sqs", region_name=settings.AWS_REGION)
+database: Database = mongodb.get_database()
+project_collection: Collection = database.get_collection("Project")
+steps_collection: Collection = database.get_collection("ProjectSteps")
+tools_collection: Collection = database.get_collection("Tools")
 
 
-SQS_URL = os.getenv("IMAGES_SQS_URL")  
-api_key = os.getenv("GOOGLE_API_KEY")
-OPENAI_KEY   = os.getenv("OPENAI_API_KEY")
-S3_BUCKET = "handyimages"
-AWS_REGION="us-east-2"
-s3 = boto3.client("s3", region_name=AWS_REGION) 
-sqs = boto3.client("sqs", region_name=AWS_REGION)
-PUBLIC_BASE    = "https://handyimages.s3.us-east-2.amazonaws.com"
-
-def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x1024",summary:str="") -> None:
+def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x1024", summary: str = "", user_id: str | None = None) -> None:
     """Send one SQS message per step (no batch API)."""
-    if not SQS_URL:
-        print("⚠️ IMAGES_SQS_URL not set; skipping enqueue")
+
+    # LOCAL TESTING: Process images synchronously instead of sending to SQS
+    # Uncomment the block below for local testing
+    # for i, step in enumerate(steps, start=1):
+    #     sum_text = "Overall summary: " + summary + "\n"
+    #     step_text = "CURRENT STEP: " + ", ".join(s for s in step.get("instructions", []) if s and s.strip())
+    #     body = {
+    #         "task": "image_step",
+    #         "project": project_id,
+    #         "step_id": str(i),
+    #         "step_text": step_text,
+    #         "summary_text": sum_text,
+    #         "size": size
+    #     }
+    #     project_collection.update_one({"_id": ObjectId(project_id)},
+    #                                   {"$set": {f"step_generation.steps.{int(i) - 1}.image.status": "in-progress"}})
+    #     handle_image_step(body)
+    # return
+
+    # PRODUCTION: Use SQS
+    images_sqs_url = settings.AWS_SQS_URL
+    if not images_sqs_url:
+        print("⚠️ AWS_SQS_URL not set; skipping enqueue")
         return
     for i, step in enumerate(steps, start=1):
-        sum_text = "Overall summary: " +summary+"\n"
-        step_text ="CURRENT STEP: "+ ", ".join(s for s in step.get("instructions", []) if s and s.strip())
+        sum_text = "Overall summary: " + summary + "\n"
+        step_text = "CURRENT STEP: " + ", ".join(s for s in step.get("instructions", []) if s and s.strip())
         body = {
             "task": "image_step",
             "project": project_id,
+            "user_id": user_id,
             "step_id": str(i),
             "step_text": step_text,
             "summary_text": sum_text,
             "size": size
         }
-        project_collection.update_one({"_id": ObjectId(project_id)}, {"$set": {f"step_generation.steps.{int(i)-1}.image.status": "in-progress"}})
-        
-        sqs.send_message(QueueUrl=SQS_URL, MessageBody=json.dumps(body))
-        
+        project_collection.update_one({"_id": ObjectId(project_id)},
+                                      {"$set": {f"step_generation.steps.{int(i) - 1}.image.status": "in-progress"}})
+
+        sqs.send_message(QueueUrl=images_sqs_url, MessageBody=json.dumps(body))
+
+
 def handle_image_step(msg: dict) -> None:
     """Generate+upload image for a single step and persist result."""
     project_id = msg["project"]
-    step_id    = msg["step_id"]
-    step_text  = msg["step_text"]
-    size       = msg.get("size", "1536x1024")
+    user_id = msg.get("user_id")
+    step_id = msg["step_id"]
+    step_text = msg["step_text"]
+    summary_text = msg.get("summary_text")
+    size = msg.get("size", "1536x1024")
 
-    # Call your existing generator (OpenAI/Gemini under the hood)
-    res = generate_step_image(step_id, {"step_text": step_text, "project_id": project_id, "size": size})
-    
-    res['status']="complete"
+    image_generation_agent = ImageGenerationAgent()
+    image_generation_service = ImageGenerationAgentService(
+        image_generation_agent=image_generation_agent,
+        s3_client=s3
+    )
+    # Use Image Generation Service
+    result = image_generation_service.generate_step_image(
+        step_id=step_id,
+        step_text=step_text,
+        summary_text=summary_text,
+        size=size,
+        project_id=project_id,
+        user_id=user_id
+    )
 
-    project_collection.update_one({"_id": ObjectId(project_id)}, {"$set": {f"step_generation.steps.{int(step_id)-1}.image": res}})
+    # Convert Pydantic model to dict for MongoDB
+    res = result.model_dump()
+
+    project_collection.update_one({"_id": ObjectId(project_id)},
+                                  {"$set": {f"step_generation.steps.{int(step_id) - 1}.image": res}})
+
 
 def reset_all_steps(project_id):
-    cursor= project_collection.find_one({
+    cursor = project_collection.find_one({
         "_id": ObjectId(project_id)
     })
     if "step_generation" in cursor and "steps" in cursor["step_generation"]:
         print("there is steps")
         print(cursor)
-        project_collection.update_one(   
+        project_collection.update_one(
             {"_id": ObjectId(project_id)},
-            {"$set": { "step_generation.steps.$[].completed": False, "completed": False } }
+            {"$set": {"step_generation.steps.$[].completed": False, "completed": False}}
         )
-    
+
         return {"message": "Project/Steps updated"}
 
     return {"message": "No steps found"}
 
+
 def lambda_handler(event, context):
+    # Process each incoming message (SQS records etc.)
     for record in event.get("Records", []):
         try:
-            payload = json.loads(record["body"])
+            payload = json.loads(record.get("body", "{}"))
             task = payload.get("task", "full")
 
             if task == "image_step":
                 # Image-only job (runs in parallel for each step)
-                handle_image_step(payload)
-                continue
-            
-            project = payload.get("project")
-
-            if not project:
-                print("⚠️ Incomplete message")
+                try:
+                    handle_image_step(payload)
+                except Exception as e:
+                    print(f"❌ handle_image_step failed: {e}")
                 continue
 
-            print(f"📦 Received job for {project}")
+            project_id_str = payload.get("project")
+            if not project_id_str:
+                print("⚠️ Incomplete message: missing project id")
+                continue
 
-            # Validate project exists
-            cursor = project_collection.find_one({"_id": ObjectId(project)})
+            print(f"📦 Received job for project {project_id_str}")
+
+            # Validate project exists in Mongo
+            cursor = project_collection.find_one({"_id": ObjectId(project_id_str)})
             if not cursor:
-                print("Project not found")
-                return {"message": "Project not found"}
-            
+                print("⚠️ Project not found in Mongo -> skipping")
+                continue
 
-            # print("🔍 Searching for similar projects")
-            # similar_result = similar_by_project(str(cursor["_id"]))
-            # if similar_result:
-            #     print(f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
+            # Avoid duplicate generation
+            gen_status = cursor.get("generation_status")
+            if gen_status == "complete":
+                print(f"⚠️ Project {project_id_str} already generated (status=complete) -> skipping")
+                continue
 
-            # if similar_result and similar_result["best_score"] >= 0.95:
-            #     # If we found a highly similar project, we can use it as a reference
-            #     print(f"🔗 Using similar project {similar_result['project_id']} as reference"
-            #           f" (score: {similar_result['best_score']})")
-                
-            #     matched_project = project_collection.find_one({"_id": ObjectId(similar_result["project_id"])})
+            # Build or get summary
+            summary = cursor.get("summary")
+            if not summary or not isinstance(summary, str) or not summary.strip():
+                # Attempt to build from structured fields
+                print("⚠️ Project has no valid summary → skipping RAG and generation")
+                update_project(str(cursor["_id"]), {"generation_status": "failed", "error": "Missing summary"})
+                continue
 
-            #     tools_result = matched_project.get("tool_generation", {})
+            # If we have a usable summary, try similarity; otherwise skip RAG
+            similar_result = None
+            if summary and summary.strip():
+                print("🔍 Searching for similar projects")
+                try:
+                    similar_result = similar_by_project(str(cursor["_id"]))
+                    print(f"🔍 similar_result: {similar_result}")
+                except Exception as e:
+                    print(f"⚠️ similar_by_project failed: {e}")
+                    similar_result = None
 
-            #     steps_result = matched_project.get("step_generation", {})
+            # Normalize similar_result shape: if it's the 'collection missing' form, treat as no match
+            if similar_result and isinstance(similar_result, dict) and "matches" in similar_result:
+                print("🔍 Qdrant collection missing (or no data) -> treating as no match")
+                similar_result = None
 
-            #     estimation_result = matched_project.get("estimation_generation", {})
+            # If a match was returned, ensure the matched project still exists in Mongo and has generated data if we plan to copy
+            matched_project = None
+            if similar_result and "project_id" in similar_result and similar_result.get("best_score") is not None:
+                matched_id = similar_result["project_id"]
+                try:
+                    matched_project = project_collection.find_one({"_id": ObjectId(matched_id)})
+                except Exception:
+                    matched_project = None
 
-            #     update_project(str(cursor["_id"]), {
-            #         "tool_generation": tools_result,
-            #         "step_generation": steps_result,
-            #         "estimation_generation": estimation_result
-            #     })
+                if not matched_project:
+                    print(f"⚠️ Orphan vector: matched project {matched_id} not present in Mongo -> skipping reuse")
+                    similar_result = None
+                    matched_project = None
 
-            #     reset_all_steps(str(cursor["_id"]))
-                
-            #     print("✅ Copied tools, steps, and estimation from matched project")
+            # COPY PATH: very high similarity -> copy tools/steps/estimation
+            if similar_result and similar_result["best_score"] >= 0.95 and matched_project:
+                # ensure matched project actually has generated content to copy
+                tools_result = matched_project.get("tool_generation")
+                steps_result = matched_project.get("step_generation")
+                estimation_result = matched_project.get("estimation_generation")
 
-            #     update_project(str(cursor["_id"]), {"generation_status":"complete"})
+                if not tools_result or not steps_result:
+                    print("⚠️ Matched project missing generated tools/steps -> falling back to generation")
+                    similar_result = None
+                    matched_project = None
+                else:
+                    print(f"🔗 Using similar project {matched_project['_id']} as reference (score: {similar_result['best_score']})")
 
-            #     print("✅ project generation complete via RAG")
+                    update_project(str(cursor["_id"]), {
+                        "tool_generation": tools_result,
+                        "step_generation": steps_result,
+                        "estimation_generation": estimation_result
+                    })
 
-            #     continue
+                    reset_all_steps(str(cursor["_id"]))
 
-            # if similar_result and 0.7 <= similar_result["best_score"] < 0.95:
-            #     print(f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
-            #     print(f"⚠️ Similarity below threshold for reuse; proceeding with full generation")
+                    update_project(str(cursor["_id"]), {"generation_status": "complete"})
+                    print("✅ project generation complete via RAG (copy)")
+                    # done with this record
+                    continue
 
-            #     similar_project = project_collection.find_one({"_id": ObjectId(similar_result["project_id"])})
-            #     if similar_project:
-            #         tools_agent = ToolsAgent(new_summary=cursor["summary"], matched_summary=similar_project["summary"], matched_tools=similar_project["tool_generation"]["tools"])
-            #     else:
-            #         tools_agent = ToolsAgent()
-            # else:
-            #     tools_agent = ToolsAgent()
+            # MODIFY PATH: medium similarity -> use matched project as context for agents
+            tools_agent = None
+            if similar_result and 0.7 <= similar_result["best_score"] < 0.95 and matched_project:
+                print(f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
+                # If matched project has generation data, pass matched tools/summary as context; otherwise proceed with plain agent
+                matched_tools = matched_project.get("tool_generation", {}).get("tools") if matched_project else None
+                matched_summary = matched_project.get("summary") if matched_project else None
 
-            tools_agent = ToolsAgent()
-            
-            tools_result = tools_agent.recommend_tools(
-                    summary=cursor["summary"],
-                    include_json=True
+                try:
+                    tools_agent = ToolsAgent(
+                        new_summary=summary,
+                        matched_summary=matched_summary,
+                        matched_tools=matched_tools,
+                        project_id=project_id_str,
+                        user_id=str(cursor.get("userId")) if cursor.get("userId") else None
+                    )
+                except Exception:
+                    print("⚠️ ToolsAgent init with matched context failed, falling back to default ToolsAgent")
+                    tools_agent = ToolsAgent(
+                        project_id=project_id_str,
+                        user_id=str(cursor.get("userId")) if cursor.get("userId") else None
+                    )
+            else:
+                # no suitable match -> default agent
+                tools_agent = ToolsAgent(
+                    project_id=project_id_str,
+                    user_id=str(cursor.get("userId")) if cursor.get("userId") else None
                 )
 
-            # Generate tools using the independent agent
+            # Generate tools (LLM)
+            try:
+                tools_result = tools_agent.recommend_tools(
+                    summary=summary,
+                    include_json=True
+                )
+            except Exception as e:
+                print(f"❌ tools_agent.recommend_tools failed: {e}")
+                tools_result = None
+
             if tools_result is None:
-                print("LLM Generation tools failed")
-                return {"message": "LLM Generation tools failed"}
-            
-            # FLOW 2: Compare and enhance tools with existing ones
-            if "tools" in tools_result and tools_result["tools"]:
-                print(f"🔄 FLOW 2: Comparing {len(tools_result['tools'])} generated tools with existing tools")
-                
+                print("❌ LLM Generation tools failed -> skipping this record")
+                # mark failure optionally
+                update_project(str(cursor["_id"]), {"generation_status": "failed"})
+                continue
+
+            # FLOW 2: Compare and enhance tools with existing tools collection (reuse images/amazon links)
+            if tools_result and "tools" in tools_result and tools_result["tools"]:
                 try:
-                    # Import comparison functions
-                    from helper import find_similar_tools, update_tool_usage
-                    
                     enhanced_tools = []
                     reuse_stats = {"reused": 0, "new": 0, "errors": 0}
-                    
+
                     for tool in tools_result["tools"]:
                         try:
-                            # Search for similar existing tools
+                            # Use tool name as query for similarity
                             similar_tools = find_similar_tools(
                                 query=tool.get("name", ""),
                                 limit=3,
                                 similarity_threshold=0.75
                             )
-                            
-                            if similar_tools and similar_tools[0]["similarity_score"] >= 0.8:
-                                # High similarity - reuse image and amazon link
+
+                            if similar_tools and similar_tools[0].get("similarity_score", 0) >= 0.8:
                                 best_match = similar_tools[0]
-                                tool["image_link"] = best_match["image_link"]
-                                tool["amazon_link"] = best_match["amazon_link"]
-                                tool["reused_from"] = best_match["tool_id"]
-                                tool["similarity_score"] = best_match["similarity_score"]
-                                
-                                # Update usage count
+                                tool["image_link"] = best_match.get("image_link")
+                                tool["amazon_link"] = best_match.get("amazon_link")
+                                tool["reused_from"] = best_match.get("tool_id")
+                                tool["similarity_score"] = best_match.get("similarity_score")
                                 update_tool_usage(best_match["tool_id"])
-                                
                                 reuse_stats["reused"] += 1
-                                print(f"   ✅ Reused image/links for: {tool['name']}")
-                                
+                                print(f"   ✅ Reused image/links for: {tool.get('name')}")
                             else:
-                                # No good match - keep as new tool
                                 reuse_stats["new"] += 1
-                                print(f"   🆕 New tool: {tool['name']}")
+                                print(f"   🆕 New tool: {tool.get('name')}")
                                 try:
-                                    img = tools_agent._get_image_url(tool["name"])
+                                    img = tools_agent._get_image_url(tool.get("name", ""))
                                     tool["image_link"] = img
                                 except Exception:
                                     tool["image_link"] = None
-
-                                safe = tools_agent._sanitize_for_amazon(tool["name"])
+                                safe = tools_agent._sanitize_for_amazon(tool.get("name", ""))
                                 tool["amazon_link"] = f"https://www.amazon.com/s?k={safe}&tag={tools_agent.amazon_affiliate_tag}"
 
                             enhanced_tools.append(tool)
-                            
+
                         except Exception as e:
                             print(f"❌ Error processing tool {tool.get('name', 'unknown')}: {e}")
                             enhanced_tools.append(tool)
                             reuse_stats["errors"] += 1
-                    
-                    # Update tools_result with enhanced tools
+
                     tools_result["tools"] = enhanced_tools
                     tools_result["reuse_metadata"] = reuse_stats
-                    
                     print(f"✅ FLOW 2 completed: {reuse_stats['reused']} reused, {reuse_stats['new']} new")
-                    
+
                 except Exception as e:
                     print(f"⚠️ FLOW 2 comparison error: {e}")
-                    tools_result["reuse_metadata"] = {"error": str(e)}
-            
-            tools_result["status"]="complete"
+                    tools_result.setdefault("reuse_metadata", {"error": str(e)})
 
-            update_project(str(cursor["_id"]), {"tool_generation":tools_result})
-            
-            # FLOW 1: Extract and save tools to tools_collection
+            tools_result["status"] = "complete"
+            update_project(str(cursor["_id"]), {"tool_generation": tools_result})
+
+            # FLOW 1: Extract and save new tools to tools_collection
             try:
-                print(f"🔄 FLOW 1: Extracting generated tools to tools_collection")
-                
-                # Import extraction functions
-                from helper import store_tool_in_database, create_and_store_tool_embeddings
-                from db import tools_collection
-                
+                print("🔄 FLOW 1: Extracting generated tools to tools_collection")
                 saved_tools = []
                 failed_tools = []
-                
-                if "tools" in tools_result and tools_result["tools"]:
+                if tools_result and "tools" in tools_result and tools_result["tools"]:
                     for tool in tools_result["tools"]:
                         try:
-                            # Check if tool already exists (avoid duplicates)
-                            existing_tool = tools_collection.find_one({"name": tool["name"]})
+                            existing_tool = tools_collection.find_one({"name": tool.get("name")})
                             if existing_tool:
-                                print(f"✅ Tool '{tool['name']}' already exists, skipping")
+                                print(f"✅ Tool '{tool.get('name')}' already exists, skipping")
                                 continue
-                            
-                            # Save new tool
+
                             tool_id = store_tool_in_database(tool)
-                            embedding_result = create_and_store_tool_embeddings(tool, tool_id)
-                            
-                            saved_tools.append({
-                                "tool_id": tool_id,
-                                "name": tool["name"],
-                                "status": "saved"
-                            })
-                            
-                            print(f"✅ FLOW 1: Saved tool '{tool['name']}' to tools_collection")
-                            
+                            # create embeddings and upsert into Qdrant tools collection
+                            try:
+                                embedding_result = create_and_store_tool_embeddings(tool, tool_id)
+                            except Exception as ee:
+                                print(f"⚠️ Failed creating/storing embeddings for tool {tool.get('name')}: {ee}")
+
+                            saved_tools.append({"tool_id": tool_id, "name": tool.get("name"), "status": "saved"})
+                            print(f"✅ FLOW 1: Saved tool '{tool.get('name')}'")
                         except Exception as e:
                             print(f"❌ FLOW 1: Failed to save tool {tool.get('name', 'unknown')}: {e}")
                             failed_tools.append({"tool": tool.get('name', 'unknown'), "error": str(e)})
-                    
-                    print(f"✅ FLOW 1: Completed - {len(saved_tools)} tools saved to collection")
-                
+
+                print(f"✅ FLOW 1: Completed - saved {len(saved_tools)} tools")
             except Exception as e:
                 print(f"⚠️ FLOW 1: Failed to extract tools: {e}")
-            
-            cursor = project_collection.find_one({"_id": ObjectId(project)})
 
-            # if similar_result and 0.7 <= similar_result["best_score"] < 0.95:
-            #     print(f"🔍 Steps Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
-            #     print(f"⚠️ Similarity below threshold for reuse; proceeding with full generation")
-            #     similar_project = project_collection.find_one({"_id": ObjectId(similar_result["project_id"])})
-            #     if similar_project:
-            #         steps_agent = StepsAgentJSON(new_summary=cursor["summary"], matched_summary=similar_project["summary"], matched_steps=similar_project["step_generation"]["steps"])
-            #     else:
-            #         steps_agent = StepsAgentJSON()
-            # else:
-            #     steps_agent = StepsAgentJSON()
+            # Refresh cursor for steps generation
+            cursor = project_collection.find_one({"_id": ObjectId(project_id_str)})
+            update_project(str(cursor["_id"]), {"step_generation": {"status": "in progress"}})
 
-            steps_agent = StepsAgentJSON()
+            # Prepare matched data for steps if modify path
+            matched_summary = None
+            matched_steps = None
+            if similar_result and 0.7 <= similar_result["best_score"] < 0.95 and matched_project:
+                matched_summary = matched_project.get("summary")
+                matched_steps = matched_project.get("step_generation", {}).get("steps")
 
-            update_project(str(cursor["_id"]), {"step_generation":{"status": "in progress"}})
-            
-            steps_agent = StepsAgentJSON()
-            steps_result = steps_agent.generate(
-                tools= cursor["tool_generation"],
-                summary=cursor["summary"],
-                user_answers=cursor.get("user_answers") or cursor.get("answers"),
-                questions=cursor["questions"]
-            )
-            
-            if steps_result is None:
-                print("LLM Generation steps failed")
-                return {"message": "LLM Generation steps failed"}
-            
-            youtube_url = get_youtube_link(cursor["summary"])
-            steps_result["youtube"]= youtube_url
-            
-            enqueue_image_tasks(project, steps_result["steps"], size="1536x1024",summary=cursor["summary"])
-            # i = 1
-            # for step in steps_result["steps"]:
-            #     # if it's always a list of strings:
-            #     step_text = ", ".join(s for s in step["instructions"] if s and s.strip())
-            #     step["image"] = generate_step_image(str(i), {"step_text": step_text, "project_id": project})
-            #     i += 1
-            
-            step_meta = {k: v for k, v in steps_result.items() if k != "steps"}
-            step_meta["status"] = "complete"
+            # Generate steps
+            try:
+                steps_agent = StepsGenerationAgent()
+                steps_service = StepsGenerationAgentService(steps_agent)
+                steps_result = steps_service.generate_steps(
+                    tools=cursor.get("tool_generation"),
+                    summary=cursor.get("summary"),
+                    user_answers=cursor.get("user_answers") or cursor.get("answers"),
+                    questions=cursor.get("questions", []),
+                    matched_summary=matched_summary,
+                    matched_steps=matched_steps,
+                    project_id=project_id_str,
+                    user_id=str(cursor.get("userId")) if cursor.get("userId") else None
+                )
+            except Exception as e:
+                print(f"❌ Steps generation failed: {e}")
+                update_project(str(cursor["_id"]), {"step_generation": {"status": "failed"}})
+                continue
 
-            update_project(str(cursor["_id"]), {"step_generation": steps_result})
+            if not steps_result:
+                print("❌ LLM Generation steps failed -> skipping")
+                update_project(str(cursor["_id"]), {"step_generation": {"status": "failed"}})
+                continue
 
-            for step in steps_result.get("steps", []):
-                step_doc = {
-                    "projectId": ObjectId(project),
-                    "order": step.get("order"),
-                    "stepNumber": step.get("order"),  # keep for backward compatibility
-                    "title": step.get("title", f"Step {step.get('order', 0)}"),
-                    "instructions": step.get("instructions", []),
-                    "description": " ".join(step.get("instructions", [])),
-                    "est_time_min": step.get("est_time_min", 0),
-                    "time_text": step.get("time_text", ""),
-                    "tools_needed": step.get("tools_needed", []),
-                    "safety_warnings": step.get("safety_warnings", []),
-                    "tips": step.get("tips", []),
-                    "image_url": step.get("image_url"),
-                    "videoTutorialLink": youtube_url,
-                    "referenceLinks": [],
-                    "status": (step.get("status") or "pending").lower(),
-                    "progress": 0, 
-                    "completed": False,
-                    "createdAt": datetime.utcnow(),
-                    "updatedAt": datetime.utcnow(),
-                }
-                steps_collection.insert_one(step_doc)
+            # Add youtube link & persist steps
+            try:
+                youtube_url = get_youtube_link(
+                    cursor.get("summary", ""),
+                    project_id=project_id_str,
+                    user_id=str(cursor.get("userId")) if cursor.get("userId") else None
+                )
+                steps_result["youtube"] = youtube_url
+                update_project(str(cursor["_id"]), {"step_generation": steps_result})
+                enqueue_image_tasks(
+                    project_id_str,
+                    steps_result.get("steps", []),
+                    size="1536x1024",
+                    summary=cursor.get("summary", ""),
+                    user_id=str(cursor.get("userId")) if cursor.get("userId") else None
+                )
+            except Exception as e:
+                print(f"⚠️ Failed after steps generation: {e}")
 
-            # for idx, step in enumerate(steps_result.get("steps", []), start=1):
-            #     step_doc = {
-            #         "projectId": ObjectId(str(cursor["_id"])),
-            #         "stepNumber": step.get("order", idx),
-            #         "title": step.get("title", f"Step {idx}"),
-            #         "description": " ".join(step.get("instructions", [])),
-            #         "tools": [],
-            #         "materials": [],
-            #         "images": [],
-            #         "videoTutorialLink": None,
-            #         "referenceLinks": [],
-            #         "completed": False,
-            #         "createdAt": datetime.utcnow(),
-            #     }
-            #     steps_collection.insert_one(step_doc)
-            
-            print("Steps Generated")
-            
-            cursor = project_collection.find_one({"_id": ObjectId(project)})
-            
-            update_project(str(cursor["_id"]), {"estimation_generation":{"status": "in progress"}})
-            
-            estimation_agent = EstimationAgent()
-            
-            estimation_result = estimation_agent.generate_estimation(
-                tools_data=cursor["tool_generation"],
-                steps_data=cursor["step_generation"],
-                summary=cursor["summary"]
-            )
-            
-            if estimation_result is None:
-                print("LLM Generation steps failed")
-                return {"message": "LLM Generation steps failed"}
-            
-            estimation_result["status"]="complete"
+            # save individual step docs
+            try:
+                step_meta = {k: v for k, v in steps_result.items() if k != "steps"}
+                step_meta["status"] = "complete"
 
+                for step in steps_result.get("steps", []):
+                    step_doc = {
+                        "projectId": ObjectId(project_id_str),
+                        "order": step.get("order"),
+                        "stepNumber": step.get("order"),
+                        "title": step.get("title", f"Step {step.get('order', 0)}"),
+                        "instructions": step.get("instructions", []),
+                        "description": " ".join(step.get("instructions", [])),
+                        "est_time_min": step.get("est_time_min", 0),
+                        "time_text": step.get("time_text", ""),
+                        "tools_needed": step.get("tools_needed", []),
+                        "safety_warnings": step.get("safety_warnings", []),
+                        "tips": step.get("tips", []),
+                        "image_url": step.get("image_url"),
+                        "videoTutorialLink": youtube_url,
+                        "referenceLinks": [],
+                        "status": (step.get("status") or "pending").lower(),
+                        "progress": 0,
+                        "completed": False,
+                        "createdAt": datetime.utcnow(),
+                        "updatedAt": datetime.utcnow(),
+                    }
+                    steps_collection.insert_one(step_doc)
+
+                print("✅ Steps Generated and saved")
+            except Exception as e:
+                print(f"⚠️ Saving steps to DB failed: {e}")
+
+            # Refresh cursor and generate estimation
+            cursor = project_collection.find_one({"_id": ObjectId(project_id_str)})
+            update_project(str(cursor["_id"]), {"estimation_generation": {"status": "in progress"}})
+
+            try:
+                estimation_agent = EstimationAgent(
+                    project_id=project_id_str,
+                    user_id=str(cursor.get("userId")) if cursor.get("userId") else None
+                )
+                estimation_result = estimation_agent.generate_estimation(
+                    tools_data=cursor.get("tool_generation"),
+                    steps_data=cursor.get("step_generation"),
+                    summary=cursor.get("summary")
+                )
+            except Exception as e:
+                print(f"❌ Estimation generation failed: {e}")
+                update_project(str(cursor["_id"]), {"estimation_generation": {"status": "failed"}})
+                continue
+
+            if not estimation_result:
+                print("❌ Estimation generation returned None -> skipping")
+                update_project(str(cursor["_id"]), {"estimation_generation": {"status": "failed"}})
+                continue
+
+            estimation_result["status"] = "complete"
             update_project(str(cursor["_id"]), {"estimation_generation": estimation_result})
-            
-            update_project(str(cursor["_id"]), {"generation_status":"complete"})
-            
-            print("✅ project generation complete")
 
+            # mark project complete
+            update_project(str(cursor["_id"]), {"generation_status": "complete"})
+            print(f"✅ project generation complete for {project_id_str}")
+
+            # continue to next record
+            continue
 
         except Exception as e:
             traceback.print_exc()
-            
+            # Continue processing remaining records instead of returning early
+            continue
+
+    # finished processing all records
+    return None
+
+
 def update_project(project_id: str, update_data: dict):
     result = project_collection.update_one(
         {"_id": ObjectId(project_id)},
@@ -392,6 +488,7 @@ def update_project(project_id: str, update_data: dict):
         print("Project not found")
     return {"message": "Project updated", "modified": bool(result.modified_count)}
 
+
 def clean_and_parse_json(raw_str: str):
     """
     Cleans code fences (```json ... ```) from a string and parses it as JSON.
@@ -399,18 +496,19 @@ def clean_and_parse_json(raw_str: str):
     if raw_str is None:
         raise ValueError("No input string")
     s = raw_str.strip()
-    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)           # strip fences
-    m = re.search(r"\{.*\}\s*$", s, flags=re.S)               # grab last JSON object
+    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)  # strip fences
+    m = re.search(r"\{.*\}\s*$", s, flags=re.S)  # grab last JSON object
     if m: s = m.group(0)
     try:
         return json.loads(s)
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON format: {e}")
 
-def get_youtube_link(summary):
-    YOUTUBE_KEY = os.getenv("YOUTUBE_API_KEY")
-    OPENAI_KEY   = os.getenv("OPENAI_API_KEY")
-    
+
+def get_youtube_link(summary, project_id: str | None = None, user_id: str | None = None):
+    youtube_key = settings.YOUTUBE_API_KEY
+    openai_key = settings.OPENAI_API_KEY
+
     payload = {
         "model": "gpt-5-mini",  # or the model you prefer
         "messages": [
@@ -429,17 +527,25 @@ def get_youtube_link(summary):
     }
     r = requests.post(
         "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OPENAI_KEY}"},
+        headers={"Authorization": f"Bearer {openai_key}"},
         json=payload, timeout=30
     )
     r.raise_for_status()
     data = r.json()
+    record_openai_response_usage(
+        data,
+        model=payload["model"],
+        operation="youtube_search_query_generation",
+        project_id=project_id,
+        user_id=user_id,
+        endpoint="/v1/chat/completions",
+    )
     content = data["choices"][0]["message"]["content"]
-    print (content)
-    
+    print(content)
+
     url = "https://www.googleapis.com/youtube/v3/search"
     params = {
-        "key": YOUTUBE_KEY,
+        "key": youtube_key,
         "part": "snippet",
         "q": content,
         "type": "video",
@@ -452,14 +558,14 @@ def get_youtube_link(summary):
     r = requests.get(url, params=params, timeout=25)
     r.raise_for_status()
     items = r.json().get("items", [])
-    videos=[{
+    videos = [{
         "videoId": it["id"]["videoId"],
         "title": it["snippet"]["title"],
         "description": it["snippet"].get("description", ""),
         "channelTitle": it["snippet"].get("channelTitle", ""),
     } for it in items]
     print(r.json())
-    
+
     payload = {
         "model": "gpt-5-mini",  # or the model you prefer
         "messages": [
@@ -482,239 +588,25 @@ def get_youtube_link(summary):
     }
     r = requests.post(
         "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OPENAI_KEY}"},
+        headers={"Authorization": f"Bearer {openai_key}"},
         json=payload, timeout=30
     )
     r.raise_for_status()
     data = r.json()
+    record_openai_response_usage(
+        data,
+        model=payload["model"],
+        operation="youtube_video_selection",
+        project_id=project_id,
+        user_id=user_id,
+        endpoint="/v1/chat/completions",
+    )
     print(r.json())
     content = data["choices"][0]["message"]["content"]
-    verdict=clean_and_parse_json(content)
+    verdict = clean_and_parse_json(content)
     best_id = verdict.get("best_videoId")
     best = next((c for c in videos if c["videoId"] == best_id), None)
     if not best:
         # fallback to top candidate
         best = videos[0]
     return f"https://www.youtube.com/embed/{best['videoId']}"
-
-class SceneSpec(BaseModel):
-    action: Optional[str] = None
-    tool: Optional[str] = None
-    target: Optional[str] = None
-    measures: Optional[str] = None
-    angle: Optional[str] = None
-    view: Optional[str] = None
-    distance: Optional[str] = None
-    style: Optional[str] = None
-    hands_visible: Optional[str] = None
-    safety: Optional[str] = None
-    background: Optional[str] = None
-    
-class ImageRequest(BaseModel):
-    step_text: str
-    summary_text: Optional[str] = None
-    scene: Optional[SceneSpec] = None
-    size: str = "1024x1024" 
-    n: int = 1             
-    project_id: str
-
-def _build_prompt(step_text: str, summary_text: Optional[str] = None, guidance="neutral") -> str:
-        # payload = {
-        #     "model": "gpt-5-nano", 
-        #     "messages": [
-        #         {"role": "system", "content": (
-        #             "You are an image generation agent specializing in DIY/repair steps."
-        #             "Your task is to create a detailed prompt for an image generation model. based on the user input provided."
-        #             f"Context summary of the overall project: {summary_text}"
-        #             "Focus on depicting the CURRENT STEP for the image. Overall summary is just for context."
-        #         )},
-        #         {"role": "user", "content": json.dumps({
-        #             "description": step_text
-        #         })}
-        #     ],
-        #     "max_completion_tokens": 2000,
-        #     "reasoning_effort": "low",
-        #     "verbosity": "low",
-        # }
-        payload = {
-            "model": "gpt-5-nano",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an expert image-prompt engineer who crafts single, high-precision prompts"
-                        " optimized for Imagen 4.O to create step-by-step DIY / repair images.\n\n"
-                        "TASK: Using the provided project_summary only for context, produce a single concise"
-                        " *image-generation prompt string* that clearly depicts the CURRENT STEP described"
-                        " in the user description. The assistant's reply must be ONLY a single JSON object"
-                        " containing the key 'imagen_prompt' whose value is the full textual prompt (no"
-                        " extra explanation or metadata outside that JSON).\n\n"
-                        "REQUIREMENTS FOR THE GENERATED PROMPT (must be encoded into the prompt):\n"
-                        "- Focal point & action: exactly what to show (e.g., 'tight eye-level or medium shot of the working phase with tools and materials"
-                        " using a Philips #2 screwdriver to loosen the silver M3 screw at the lower-left corner of the metal bracket').\n"
-                        "- Tools & materials: list visible tools and materials and approximate positions.\n"
-                        "- Vantage & composition: camera angle (close-up / eye-level / medium shot / top-down), framing"
-                        " (rule of thirds, centered), and how much of the scene to include.\n"
-                        "- Photographic directives: lens (e.g., 50mm macro), aperture (e.g., f/2.8 for shallow DOF),"
-                        " perspective, depth of field, resolution/high detail, natural soft directional lighting,\n"
-                        "- Texture & state: clear textures (metal scratches, painted wood grain), exact state"
-                        " (e.g., 'screw half-out', 'wire exposed 2 mm'), before/after indication if relevant.\n"
-                        "- Safety & human elements: include gloved hands if safety needed; avoid showing faces;"
-                        " hands only, cropped above the wrist.\n"
-                        "- Annotations & overlays: if helpful, include small, non-intrusive annotation positions"
-                        " (e.g., 'place a small white label near the screw reading \"1\"'), and specify whether the"
-                        " labels should be part of the image or added later. Prefer no large text in the image.\n"
-                        "- Style & mood: photorealistic, high-contrast, true color, minimal clutter in background."
-                        "\n\n"
-                        "NEGATIVE CONSTRAINTS: explicitly avoid watermarks, logos, UI chrome, extraneous people/faces,"
-                        " cartoon styling, or ambiguous camera directions. Keep the language unambiguous and actionable."
-                        "\n\n"
-                        "OUTPUT RULE: produce only: {\"imagen_prompt\": \"<single prompt string>\"} as the assistant response."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps({
-                        "project_summary": summary_text,
-                        "description": step_text,
-                        "visible_tools": [],     
-                        "required_materials": [],  
-                        "safety": "gloves recommended",  
-                        "preferred_camera_angle": "eye-level", 
-                        "preferred_aspect_ratio": "4:3"
-                    })
-                }
-            ],
-            "max_completion_tokens": 2000,
-            "reasoning_effort": "low",
-            "verbosity": "low"
-        }
-        r = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {OPENAI_KEY}"},
-            json=payload, timeout=30
-        )
-        data = r.json()
-        print(r.json())
-        content = data["choices"][0]["message"]["content"]
-        lines = [
-            "Create an instructional image that faithfully depicts the context provided.",
-            "No text overlays, no logos, no watermarks.",
-            "DONT GENERATE ANY WORD OR WRITTEN INSTRUCTION,DONT WRITE ANYTHING",
-            f"Context: \n{content}"
-        ]
-        # ... keep your optional lines ...
-        if guidance == "neutral":
-            lines.append("If any attributes are unspecified, choose the most informative composition.")
-        else:
-            lines.append("Prioritize clarity of tool-to-surface contact; choose view and distance to avoid occlusion.")
-        
-        lines.append("DONT GENERATE ANY WORD OR WRITTEN INSTRUCTION,DONT WRITE ANYTHING")
-        return "\n".join(lines)
-
-# def _generate_png(prompt: str, size: str, seed: Optional[int] = None) -> bytes:
-#     client = OpenAI(api_key=OPENAI_KEY)
-#     kwargs: Dict[str, Any] = {"model": "gpt-image-1", "prompt": prompt, "size": size, "n": 1}
-#     # If your account supports seed; if not, you can remove this key
-#     if seed is not None:
-#         kwargs["seed"] = seed
-#     resp = client.images.generate(**kwargs)
-#     b64png = resp.data[0].b64_json
-#     return base64.b64decode(b64png)
-
-def _generate_png(prompt: str, size: str, seed: int | None = None) -> bytes:
-    """
-    Generate PNG bytes via Gemini API (Imagen 4).
-    Uses dict 'config' to avoid SDK type validation issues.
-    """
-    client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
-    aspect = _map_size_to_aspect(size)
-
-    resp = client.models.generate_images(
-        model=os.getenv("GEMINI_IMAGE_MODEL", "imagen-3.0-generate-002"),
-        prompt=prompt,
-        config={
-            "numberOfImages": 1,
-            "aspectRatio": aspect,         # "1:1","3:4","4:3","9:16","16:9"
-            "outputMimeType": "image/png", # ask for PNG bytes
-            # "sampleImageSize": "2K",     # optional; omit if your SDK rejects it
-        },
-    )
-    return resp.generated_images[0].image.image_bytes
-
-def _png_to_bytes_ensure_rgba(png_bytes: bytes) -> bytes:
-    # Defensive: normalize to PNG/RGBA
-    im = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
-    out = io.BytesIO()
-    im.save(out, format="PNG", optimize=True)
-    return out.getvalue()
-
-def _s3_key(step_id: str, project_id: Optional[str]) -> str:
-    ts = int(time.time())
-    base = f"project_{project_id or 'na'}/steps/{step_id}"
-    return f"{base}/image_{ts}.png"
-
-def _public_url_or_presigned(key: str) -> str:
-    # If you use CloudFront or a public bucket, construct a public URL
-    if PUBLIC_BASE:
-        return f"{PUBLIC_BASE.rstrip('/')}/{key}"
-    
-def _map_size_to_aspect(size_str: str) -> str:
-    # map "WxH" to Imagen aspectRatio; keep it simple and robust
-    try:
-        w, h = [int(x) for x in size_str.lower().split("x")]
-        ar = w / h
-        if 1.66 <= ar <= 1.90:  # ~16:9
-            return "16:9"
-        if 1.25 <= ar < 1.66:   # ~4:3
-            return "4:3"
-        if 0.90 <= ar < 1.25:   # ~1:1
-            return "1:1"
-        if 0.75 <= ar < 0.90:   # ~3:4
-            return "3:4"
-        return "9:16"
-    except Exception:
-        return "16:9"
-
-def generate_step_image(step_id: str, payload: ImageRequest | dict):
-    try:
-        if isinstance(payload, dict):
-            payload = ImageRequest(**payload)
-        prompt = _build_prompt(payload.step_text, payload.summary_text)
-        raw_png = _generate_png(prompt=prompt, size=payload.size)
-        png_bytes = _png_to_bytes_ensure_rgba(raw_png)
-    except Exception as e:
-        print(f"Image generation failed: {e}")
-        raise
-
-    key = _s3_key(step_id, payload.project_id)
-    try:
-        s3.put_object(
-            Bucket=S3_BUCKET,
-            Key=key,
-            Body=png_bytes,
-            ContentType="image/png",
-            Metadata={
-                "step_id": step_id,
-                "project_id": payload.project_id or "",
-                "size": payload.size,
-                "model": "imagen-3.0-generate-002"
-            },
-        )
-    except Exception as e:
-        print(f"S3 upload failed: {e}")
-        raise
-
-    url = _public_url_or_presigned(key)
-    return {
-        "message": "ok",
-        "step_id": step_id,
-        "project_id": payload.project_id,
-        "s3_key": key,
-        "url": url,
-        "size": payload.size,
-        "model": "imagen-3.0-generate-002",
-        "prompt_preview": prompt[:180],
-    }
-    
-    

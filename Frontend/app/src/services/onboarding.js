@@ -5,7 +5,7 @@ const BASE_URL = process.env.REACT_APP_BASE_URL;
 
 export const fetchOnboardingQuestions = async () => {
 	try {
-		const response = await axios.get(`${BASE_URL}/onboarding/`);
+		const response = await axios.get(`${BASE_URL}/onboarding`);
 		console.log("Onboarding questions fetched:", response.data);
 		return response.data; // Assuming backend returns the array directly
 	} catch (error) {

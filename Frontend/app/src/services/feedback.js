@@ -16,11 +16,11 @@ export async function getCompletionMessage(projectId) {
   return res.json(); // { message: "..." }
 }
 
-export async function submitFeedback(projectId, { rating, comments }) {
+export async function submitFeedback(projectId, { rating, comments, tags = [] }) {
   const res = await fetch(`${API}/projects/${encodeURIComponent(projectId)}/feedback`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rating, comments }),
+    body: JSON.stringify({ rating, comments, tags }),
   });
   if (!res.ok) throw new Error(await readErr(res));
   return res.json(); // { ok: true, averageRating, totalFeedback }

@@ -15,12 +15,15 @@ import StepPage from "./pages/StepPage.jsx";
 import ToolsPage from "./pages/ToolsPage.jsx";
 import ProjectCompleted from "./pages/ProjectCompleted.jsx";
 import Feedback from "./pages/Feedback.jsx";
+import { trackMetricOnce } from "./services/metrics";
 
 function App() {
 	const navigate = useNavigate();
 	const location = useLocation();
 
 	useEffect(() => {
+		trackMetricOnce("app_entered", "app_entered");
+
 		const token =
 			localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
 		if (

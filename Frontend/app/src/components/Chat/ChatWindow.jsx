@@ -43,21 +43,8 @@ export default function ChatWindow({
   }, [status, tips.length]);
 
   // Which API to talk to
-  const api = secondChatStatus ? "step-guidance" : "chatbot";
+  const api = "api/v1/information-gathering-agent";
 
-  // Step-guidance bootstrap flag
-  const [bool, setBool] = useState(null);
-  useEffect(() => {
-    const check = async () => {
-      try {
-        const res = await axios.get(`${URL}/step-guidance/started/${projectId}`);
-        if (res.data) setBool(res.data);
-      } catch (err) {
-        console.error("Error checking step guidance status:", err);
-      }
-    };
-    check();
-  }, [URL, projectId]);
 
   const [drag, setDrag] = useState({ active: false, startY: 0, dy: 0 });
   const THRESHOLD = 120;
@@ -81,7 +68,7 @@ export default function ChatWindow({
       sessionId: saved || "No existing session",
       projectId: projectId,
       userId: userId,
-      api: secondChatStatus ? "step-guidance" : "chatbot"
+      api: "api/v1/information-gathering-agent"
     });
     return saved || null;
   });
@@ -192,9 +179,34 @@ export default function ChatWindow({
     }
   }, [status2, navigate, URL, projectId]);
 
-  // Persist messages/tools locally
+  // Persist messages/tools locally (exclude images to avoid quota issues)
   useEffect(() => {
-    localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messages));
+    try {
+      // Strip images from messages before saving to localStorage (images are stored in backend)
+      const messagesWithoutImages = messages.map(({ images, isImageOnly, ...msg }) => ({
+        ...msg,
+        // Keep a flag that image existed, but don't store the actual image data
+        hasImage: !!images && images.length > 0,
+      }));
+      localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messagesWithoutImages));
+    } catch (error) {
+      // Handle quota exceeded or other storage errors gracefully
+      if (error.name === 'QuotaExceededError') {
+        console.warn('localStorage quota exceeded, clearing old messages');
+        try {
+          // Try to clear and save only recent messages (last 50)
+          const recentMessages = messages.slice(-50).map(({ images, isImageOnly, ...msg }) => ({
+            ...msg,
+            hasImage: !!images && images.length > 0,
+          }));
+          localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(recentMessages));
+        } catch (e) {
+          console.error('Failed to save messages to localStorage:', e);
+        }
+      } else {
+        console.error('Error saving messages to localStorage:', error);
+      }
+    }
   }, [messages, STORAGE_MESSAGES_KEY]);
 
   useEffect(() => {
@@ -206,40 +218,102 @@ export default function ChatWindow({
   // Load or start session
   useEffect(() => {
     async function loadOrStartSession() {
-      const sessionRes= await axios.get(`${URL}/${api}/session/${projectId}`);
-      if (!sessionRes.data?.session) {
+      const sessionRes= await axios.get(`${URL}/${api}/thread/${projectId}`);
+      const conversationStatus = sessionRes.data?.conversation_status;
+      
+      // Don't initialize if conversation is already COMPLETED
+      if (conversationStatus === "COMPLETED") {
+        console.log("⚠️ Conversation already COMPLETED, skipping initialize");
+        if (sessionRes.data?.thread_id) {
+          setSessionId(sessionRes.data.thread_id);
+          // Load history instead
+          try {
+            setLoading(true);
+            const historyRes = await axios.get(
+              `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`
+            );
+            const formattedMessages = historyRes.data.messages.map(
+              ({ role, content }) => {
+                if (!content || typeof content !== 'string') {
+                  return {
+                    sender: role === "user" ? "user" : "bot",
+                    content: content || "",
+                  };
+                }
+                
+                const base64ImageRegex = /data:image\/[^;]+;base64,[^\s]+/g;
+                const imageMatches = content.match(base64ImageRegex);
+                
+                if (imageMatches && imageMatches.length > 0) {
+                  const images = imageMatches;
+                  let textContent = content;
+                  imageMatches.forEach(img => {
+                    textContent = textContent.replace(img, '').trim();
+                  });
+                  
+                  return {
+                    sender: role === "user" ? "user" : "bot",
+                    content: textContent,
+                    images: images,
+                    isImageOnly: !textContent || textContent.length === 0,
+                  };
+                }
+                
+                return {
+                  sender: role === "user" ? "user" : "bot",
+                  content: content,
+                };
+              }
+            );
+            setMessages(formattedMessages);
+            setLoading(false);
+          } catch (err) {
+            console.error("Error loading completed conversation history:", err);
+            setMessages([{ sender: "bot", content: "Conversation completed. Please check your project overview." }]);
+            setLoading(false);
+          }
+        }
+        return;
+      }
+      
+      if (!sessionRes.data?.thread_id) {
         try {
+          setLoading(true);
           const res = await axios.post(
-            `${URL}/${api}/start`,
+            `${URL}/${api}/initialize`,
             // chatbot expects {user, project}; step-guidance ignores user.
-            { user: userId, project: projectId },
+            { project_id: projectId },
             { headers: { "Content-Type": "application/json" } }
           );
-          setSessionId(res.data.session_id);
-          localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
-          setMessages([{ sender: "bot", content: res.data.intro_message }]);
+           console.log("🆕 New Chat: ", res);
+          setSessionId(res.data.thread_id);
+          localStorage.setItem(STORAGE_SESSION_KEY, res.data.thread_id);
+          setMessages([{ sender: "bot", content: res.data.initial_message }]);
+          setLoading(false);
           
           // Set suggested messages from backend response
-          if (res.data.suggested_messages) {
-            setSuggestedMessages(res.data.suggested_messages);
-            console.log("💬 Suggested messages received:", res.data.suggested_messages);
-          }
+          // if (res.data.suggested_messages) {
+          //   setSuggestedMessages(res.data.suggested_messages);
+          //   console.log("💬 Suggested messages received:", res.data.suggested_messages);
+          // }
           
+          // Save detected tools if any
           // Console log the new session ID
           console.log("🆕 New Chat Session Started:", {
-            sessionId: res.data.session_id,
+            sessionId: res.data.thread_id,
             api: api,
             projectId: projectId,
             userId: userId,
-            suggestedMessages: res.data.suggested_messages
+            //suggestedMessages: res.data.suggested_messages
           });
         } catch (err) {
           console.error("Intro message error", err);
         }
       } else {
         // Console log the existing session ID
+        setLoading(true);
         console.log("🔄 Existing Chat Session Loaded:", {
-          sessionId: sessionRes.data.session,
+          sessionId: sessionRes.data.thread_id,
           api: api,
           projectId: projectId,
           userId: userId
@@ -248,30 +322,49 @@ export default function ChatWindow({
         try {
           // fetch history from the right API family
           const historyRes = await axios.get(
-            `${URL}/${api}/session/${sessionRes.data.session}/history`
+            `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`
           );
-          const formattedMessages = historyRes.data.map(
-            ({ role, message }) => ({
-              sender: role === "user" ? "user" : "bot",
-              content: message,
-            })
+          const formattedMessages = historyRes.data.messages.map(
+            ({ role, content }) => {
+              if (!content || typeof content !== 'string') {
+                return {
+                  sender: role === "user" ? "user" : "bot",
+                  content: content || "",
+                };
+              }
+              
+              // Check if content contains a base64 image data URL
+              const base64ImageRegex = /data:image\/[^;]+;base64,[^\s]+/g;
+              const imageMatches = content.match(base64ImageRegex);
+              
+              if (imageMatches && imageMatches.length > 0) {
+                // Extract images and remove them from text
+                const images = imageMatches;
+                let textContent = content;
+                
+                // Remove all image data URLs from the text
+                imageMatches.forEach(img => {
+                  textContent = textContent.replace(img, '').trim();
+                });
+                
+                return {
+                  sender: role === "user" ? "user" : "bot",
+                  content: textContent,
+                  images: images,
+                  isImageOnly: !textContent || textContent.length === 0,
+                };
+              }
+              
+              // Regular text message
+              return {
+                sender: role === "user" ? "user" : "bot",
+                content: content,
+              };
+            }
           );
           setMessages(formattedMessages);
+          setLoading(false);
 
-          // If step-guidance mode and not started, kick it off using the existing session
-          if (secondChatStatus && !bool) {
-            const res = await axios.post(
-              `${URL}/${api}/start`,
-              { project: projectId, session_id: sessionId },
-              { headers: { "Content-Type": "application/json" } }
-            );
-            setSessionId(res.data.session_id);
-            localStorage.setItem(STORAGE_SESSION_KEY, res.data.session_id);
-            setMessages((prev) => [
-              ...prev,
-              { sender: "bot", content: res.data.response },
-            ]);
-          }
         } catch (err) {
           setMessages([{ sender: "bot", content: "Failed to load chat history." }]);
         }
@@ -353,10 +446,27 @@ export default function ChatWindow({
 
       // 4) Prepare payload per API
       let uploaded_image = null;
+      let image_mime_type = null;
       const firstImage = validFiles.find((f) => f.type.startsWith("image/"));
       if (firstImage) {
         try {
-          uploaded_image = await toBase64(firstImage);
+          const dataUrl = await toBase64(firstImage);
+          // Extract base64 string by splitting on comma (remove data:image/jpeg;base64, prefix)
+          // Format: "data:image/jpeg;base64,/9j/4AAQS..." -> "/9j/4AAQS..."
+          uploaded_image = dataUrl.split(',')[1];
+          
+          if (!uploaded_image) {
+            throw new Error("Failed to extract base64 string from data URL");
+          }
+          
+          // Use file.type directly for MIME type (more reliable than parsing data URL)
+          // Normalize common MIME types to ensure backend compatibility
+          let mimeType = firstImage.type || "image/jpeg";
+          // Ensure we have a valid MIME type (compression converts to JPEG)
+          if (!mimeType || !mimeType.startsWith("image/")) {
+            mimeType = "image/jpeg"; // Default fallback
+          }
+          image_mime_type = mimeType;
         } catch (error) {
           console.error("Error converting image to base64:", error);
           setMessages((prev) => [
@@ -372,16 +482,29 @@ export default function ChatWindow({
       }
 
       let payload;
-      let endpoint = `${URL}/${api}/chat`;
-      if (api === "chatbot") {
+      let endpoint = `${URL}/${api}/chat/${sessionId}`;
+      if (api === "api/v1/information-gathering-agent") {
         payload = {
-          message: currInput,
-          user: userId,
-          project: projectId,
-          session_id: sessionId,
-          uploaded_image,
-          owned_tools: ownedTools,
+          text: currInput,
+          project_id: projectId,
+          thread_id: sessionId,
         };
+        
+        // Always include image fields together if image exists
+        if (uploaded_image) {
+          payload.image_base64 = uploaded_image;
+          payload.image_mime_type = image_mime_type || "image/jpeg"; // Fallback to jpeg if type is missing
+        }
+        
+        // Debug logging
+        if (uploaded_image) {
+          console.log("📤 Sending image payload:", {
+            has_image: !!uploaded_image,
+            image_length: uploaded_image?.length,
+            mime_type: payload.image_mime_type,
+            image_preview: uploaded_image?.substring(0, 50) + "..."
+          });
+        }
       } else {
         // step-guidance
         payload = {
@@ -398,7 +521,7 @@ export default function ChatWindow({
         headers: { "Content-Type": "application/json" },
       });
 
-      const botMsg = { sender: "bot", content: res.data.response };
+      const botMsg = { sender: "bot", content: res.data.agent_response };
       setLoading(false);
       setMessages((prev) => [...prev, botMsg]);
       
@@ -408,8 +531,9 @@ export default function ChatWindow({
         console.log("💬 Updated suggested messages:", res.data.suggested_messages);
       }
 
-      if (res.data.current_state === "complete") {
-        // Wait longer for the user to read the final message, then show loading
+      // Check conversation status - if COMPLETED, trigger generation pipeline after delay
+      if (res.data.conversation_status === "COMPLETED") {
+        // Wait 5 seconds for the user to read the final message, then trigger generation
         setTimeout(() => setStatus(true), 5000);
       }
     } catch (err) {

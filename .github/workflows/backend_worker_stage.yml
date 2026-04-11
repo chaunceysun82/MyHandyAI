@@ -1,4 +1,4 @@
-name: Deploy Backend to AWS Lambda Worker
+name: Deploy Backend to AWS Lambda Worker Stage
 
 on:
   push:
@@ -14,25 +14,36 @@ jobs:
 
       - name: Prepare lambda build folder
         run: |
+          rm -rf lambda_package
           mkdir -p lambda_package
+          cp -r Backend/agents lambda_package/
+          cp -r Backend/database lambda_package/
+          cp -r Backend/config lambda_package/
           cp Backend/worker/*.py lambda_package/
-          cp -r Backend/prompts lambda_package/
-          cp Backend/requirements.txt lambda_package/
+          cp Backend/worker/requirements.txt lambda_package/
 
-      - name: Build dependencies inside Amazon Linux 2023 (compatible with Lambda)
+      - name: Build dependencies inside Lambda Python 3.11 image
         run: |
-          docker run --rm -v "$PWD/lambda_package":/app public.ecr.aws/amazonlinux/amazonlinux:2023 /bin/bash -c '
-            dnf install -y python3.11 python3.11-pip zip &&
-            alternatives --install /usr/bin/python python /usr/bin/python3.11 1 &&
-            alternatives --install /usr/bin/pip pip /usr/bin/pip3.11 1 &&
-            cd /app &&
-            pip install -r requirements.txt -t . &&
-            zip -r9 /app/function_worker-stage.zip .
-          '
+          docker run --rm \
+            -v "$PWD/lambda_package":/var/task \
+            --entrypoint /bin/sh \
+            public.ecr.aws/lambda/python:3.11 \
+            -c "
+              rm -rf cryptography* cffi* &&
+              python -m pip install --upgrade pip setuptools wheel &&
+              pip install \
+                --platform manylinux2014_x86_64 \
+                --implementation cp \
+                --python-version 3.11 \
+                --only-binary=:all: \
+                -r requirements.txt \
+                -t .
+            "
 
-      - name: Move ZIP from Docker volume to root
+      - name: Create deployment ZIP
         run: |
-          mv lambda_package/function_worker-stage.zip .
+          cd lambda_package
+          zip -r9 ../function_worker-stage.zip .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
