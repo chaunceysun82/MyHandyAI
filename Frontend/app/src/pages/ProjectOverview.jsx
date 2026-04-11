@@ -200,177 +200,164 @@ export default function ProjectOverview() {
 	};
 
 	return (
-		<div className="min-h-screen flex justify-center bg-[#fffef6]">
-			<div className="w-full max-w-md flex flex-col h-screen">
-				{/* Sticky Project Title Only */}
+		<div className="min-h-screen bg-[#fffef6]">
+			<div className="mx-auto flex h-screen w-full max-w-6xl flex-col">
 				<div className="sticky top-0 z-20 bg-[#fffef6]">
-					<div className="pt-5 pb-3 px-4">
-						<div className="flex items-center justify-center relative">
-							<h1 className="text-[20px] font-semibold">Project Overview</h1>
+					<div className="px-4 pb-3 pt-5 lg:px-8 lg:pb-5 lg:pt-7">
+						<div className="relative flex items-center justify-center">
+							<h1 className="text-[20px] font-semibold lg:text-[28px]">Project Overview</h1>
 							<button
 								aria-label="Close"
 								onClick={handleClose}
-								className="absolute right-0 text-3xl leading-none px-2 py-1 rounded hover:bg-gray-100">
+								className="absolute right-0 rounded px-2 py-1 text-3xl leading-none hover:bg-gray-100">
 								×
 							</button>
 						</div>
 					</div>
 				</div>
 
-				{/* Scrollable Content Section */}
 				<div className="flex-1 overflow-y-auto">
-					{/* Estimated Breakdown */}
-					<div className="px-4 pt-3 pb-3">
-						{loading ? (
-							<div className="animate-pulse">
-								<div className="bg-gray-200 h-20 rounded-lg"></div>
-							</div>
-						) : (
-							<EstimatedBreakdown stats={stats} />
-						)}
-					</div>
+					<div className="grid gap-6 px-4 pb-6 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)] lg:px-8 lg:pb-8">
+						<div className="lg:sticky lg:top-24 lg:self-start">
+							<div className="space-y-3 pb-1 pt-3">
+								<div>
+									{loading ? (
+										<div className="animate-pulse">
+											<div className="h-20 rounded-lg bg-gray-200"></div>
+										</div>
+									) : (
+										<EstimatedBreakdown stats={stats} />
+									)}
+								</div>
 
-					{/* Tools and Materials Card */}
-					<div className="px-4 pb-3" ref={toolsSectionRef}>
-						{loading ? (
-							<div className="animate-pulse">
-								<div className="bg-gray-200 h-20 rounded-lg"></div>
-							</div>
-						) : (
-							<StepCard
-								key="tools-step"
-								index={0}
-								icon="🧰"
-								title="Tools and Materials"
-								subtitle="List of tools needed for this project"
-								time=""
-								status=""
-								imageUrl={defaultTools}
-								completed={false}
-								onClick={() => goToStep(0)}
-							/>
-						)}
-					</div>
-
-					{/* Step-by-step guidance heading and description */}
-					<div className="px-4 pb-4">
-						{loading ? (
-							<div className="animate-pulse">
-								<div className="bg-gray-200 h-4 w-48 rounded mb-2"></div>
-								<div className="bg-gray-200 h-3 w-64 rounded"></div>
-							</div>
-						) : (
-							<>
-								<h2 className="text-md font-bold text-gray-900 mb-1">Step-by-step guidance</h2>
-								<p className="text-[10px] text-gray-600">
-									Based on our conversation, here is your {displayedSteps.length > 0 ? displayedSteps.length - 1 : 0} step solution:
-								</p>
-							</>
-						)}
-					</div>
-
-					{/* Error banner */}
-					{error && (
-						<div className="px-4 mt-2">
-							<div className="text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">
-								{error}
+								<div ref={toolsSectionRef}>
+									{loading ? (
+										<div className="animate-pulse">
+											<div className="h-20 rounded-lg bg-gray-200"></div>
+										</div>
+									) : (
+										<StepCard
+											key="tools-step"
+											index={0}
+											icon="🧰"
+											title="Tools and Materials"
+											subtitle="List of tools needed for this project"
+											time=""
+											status=""
+											imageUrl={defaultTools}
+											completed={false}
+											onClick={() => goToStep(0)}
+										/>
+									)}
+								</div>
 							</div>
 						</div>
-					)}
 
-					{/* Steps Container */}
-					<div className="px-4" ref={stepsContainerRef}>
-						<div className="space-y-3 pb-4">
-							{loading ? (
-								// Loading state with empty containers
-								<>
-									{[...Array(4)].map((_, i) => (
-										<div key={i} className="animate-pulse">
-											<div className="w-full px-3 py-3 rounded-2xl bg-gray-200 flex items-center gap-3">
-												{/* Step Image Container */}
-												<div className="w-14 h-14 rounded-lg bg-gray-300"></div>
-												
-												{/* Step Text Container */}
-												<div className="flex-1">
-													{/* Time + Status Row */}
-													<div className="flex gap-2 mb-1">
-														<div className="bg-gray-300 h-4 w-16 rounded-md"></div>
-														<div className="bg-gray-300 h-4 w-20 rounded-md"></div>
-													</div>
-													
-													{/* Title */}
-													<div className="bg-gray-300 h-4 w-32 rounded mb-2"></div>
-													
-													{/* Subtitle */}
-													<div className="bg-gray-300 h-3 w-40 rounded"></div>
-												</div>
-												
-												{/* Step Number Container */}
-												<div className="shrink-0">
-													<div className="bg-gray-300 h-6 w-16 rounded-full"></div>
-												</div>
-											</div>
-										</div>
-									))}
-								</>
-							) : (
-								// Actual step cards - filter out tools step (index 0)
-								displayedSteps
-									.filter((s, i) => i > 0) // Skip tools step
-									.map((s, i) => {
-										const actualStepIndex = i + 1; // Adjust index since we filtered out tools
-										
-										return (
-											<StepCard
-												key={s.key || actualStepIndex}
-												index={actualStepIndex}
-												icon={s.icon}
-												title={s.title}
-												subtitle={s.subtitle}
-												time={s.time}
-												status={s.status}
-												imageUrl={null}
-												completed={s.completed}
-												onClick={() => goToStep(actualStepIndex)}
-											/>
-										);
-									})
+						<div className="min-w-0 pt-3">
+							<div className="pb-4">
+								{loading ? (
+									<div className="animate-pulse">
+										<div className="mb-2 h-4 w-48 rounded bg-gray-200"></div>
+										<div className="h-3 w-64 rounded bg-gray-200"></div>
+									</div>
+								) : (
+									<>
+										<h2 className="mb-1 text-md font-bold text-gray-900 lg:text-xl">Step-by-step guidance</h2>
+										<p className="text-[10px] text-gray-600 lg:text-sm">
+											Based on our conversation, here is your {displayedSteps.length > 0 ? displayedSteps.length - 1 : 0} step solution:
+										</p>
+									</>
+								)}
+							</div>
+
+							{error && (
+								<div className="mt-2">
+									<div className="rounded-lg border border-red-200 bg-red-50 p-2 text-[12px] text-red-600">
+										{error}
+									</div>
+								</div>
 							)}
+
+							<div ref={stepsContainerRef}>
+								<div className="space-y-3 pb-4">
+									{loading ? (
+										<>
+											{[...Array(4)].map((_, i) => (
+												<div key={i} className="animate-pulse">
+													<div className="flex w-full items-center gap-3 rounded-2xl bg-gray-200 px-3 py-3">
+														<div className="h-14 w-14 rounded-lg bg-gray-300"></div>
+														<div className="flex-1">
+															<div className="mb-1 flex gap-2">
+																<div className="h-4 w-16 rounded-md bg-gray-300"></div>
+																<div className="h-4 w-20 rounded-md bg-gray-300"></div>
+															</div>
+															<div className="mb-2 h-4 w-32 rounded bg-gray-300"></div>
+															<div className="h-3 w-40 rounded bg-gray-300"></div>
+														</div>
+														<div className="shrink-0">
+															<div className="h-6 w-16 rounded-full bg-gray-300"></div>
+														</div>
+													</div>
+												</div>
+											))}
+										</>
+									) : (
+										displayedSteps
+											.filter((s, i) => i > 0)
+											.map((s, i) => {
+												const actualStepIndex = i + 1;
+
+												return (
+													<StepCard
+														key={s.key || actualStepIndex}
+														index={actualStepIndex}
+														icon={s.icon}
+														title={s.title}
+														subtitle={s.subtitle}
+														time={s.time}
+														status={s.status}
+														imageUrl={null}
+														completed={s.completed}
+														onClick={() => goToStep(actualStepIndex)}
+													/>
+												);
+											})
+									)}
+								</div>
+							</div>
 						</div>
 					</div>
 				</div>
 
-				{/* Fixed Bottom Section */}
-				<div className="px-4 pb-4 space-y-3 bg-[white] border-t">
-					{/* Assistant prompt pill */}
-					<button onClick={openAssistant} className="rounded-xl w-full shadow-xl border justify-center items-center gap-[10px] flex border-gray-200 bg-[#1484A3] transition-all ease-in-out duration-200 hover:bg-[#026e8c] px-3 py-2 mt-2 text-[12px] text-white font-light">
-						<Bot width = {20} height = {20} />
-						<span>Hi {getFirstName(userName)}, Need MyHandyAI Assistant?</span>
-					</button>
-
-					{/* Chat Assistant Modal */}
-					{openModal && (
-						<ChatWindow2
-							isOpen={openModal}
-							projectId={projectId}
-							onClose={() => setOpenModal(false)}
-							URL={URL}
-							stepNumber={-1}
-						/>
-					)}
-
-					{/* Bottom Navigation */}
-					<div className="grid grid-cols-2 gap-3">
-						<button
-							onClick={goPrev}
-							className="py-2 rounded-lg bg-[#E9FAFF] shadow-md text-[12px] font-regular hover:bg-[#d9f7ff] transition-all ease-in-out duration-200">
-							Previous
+				<div className="border-t bg-[white]">
+					<div className="mx-auto w-full max-w-6xl space-y-3 px-4 pb-4 lg:px-8 lg:pb-6">
+						<button onClick={openAssistant} className="mt-2 flex w-full items-center justify-center gap-[10px] rounded-xl border border-gray-200 bg-[#1484A3] px-3 py-2 text-[12px] font-light text-white shadow-xl transition-all duration-200 ease-in-out hover:bg-[#026e8c]">
+							<Bot width = {20} height = {20} />
+							<span>Hi {getFirstName(userName)}, Need MyHandyAI Assistant?</span>
 						</button>
-						<button
-							onClick={goNext}
-							className="py-2 rounded-lg bg-[#E9FAFF] shadow-md text-black text-[12px] font-regular hover:bg-[#d9f7ff] transition-all ease-in-out duration-200">
-							Next Step
-						</button>
+
+						{openModal && (
+							<ChatWindow2
+								isOpen={openModal}
+								projectId={projectId}
+								onClose={() => setOpenModal(false)}
+								URL={URL}
+								stepNumber={-1}
+							/>
+						)}
+
+						<div className="grid grid-cols-2 gap-3">
+							<button
+								onClick={goPrev}
+								className="rounded-lg bg-[#E9FAFF] py-2 text-[12px] font-regular shadow-md transition-all duration-200 ease-in-out hover:bg-[#d9f7ff]">
+								Previous
+							</button>
+							<button
+								onClick={goNext}
+								className="rounded-lg bg-[#E9FAFF] py-2 text-[12px] font-regular text-black shadow-md transition-all duration-200 ease-in-out hover:bg-[#d9f7ff]">
+								Next Step
+							</button>
+						</div>
 					</div>
 				</div>
 			</div>

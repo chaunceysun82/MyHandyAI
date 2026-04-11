@@ -292,44 +292,40 @@ export default function StepPage() {
 				/>
 
 				{/* Main Content - Scrollable */}
-				<main className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-					{/* Time Estimate with Feedback */}
-					<StepTimeEstimate 
-						time={step.time} 
-						completed={step.completed} 
-						projectId={projectId}
-						stepNumber={parseInt(stepIndex)}
-					/>
+				<main className="mx-auto flex-1 w-full max-w-6xl overflow-y-auto px-4 py-4 lg:px-8 lg:py-6">
+					<div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]">
+						<div className="space-y-4">
+							<StepTimeEstimate 
+								time={step.time} 
+								completed={step.completed} 
+								projectId={projectId}
+								stepNumber={parseInt(stepIndex)}
+							/>
 
-					{/* Media Guide Section - Video and Image */}
-					<StepMediaGuide 
-						videoUrl={projectVideoUrl} 
-						imageData={step.image || step.imageData || step.image_data} 
-						title="Step Guide" 
-					/>
+							<StepMediaGuide 
+								videoUrl={projectVideoUrl} 
+								imageData={step.image || step.imageData || step.image_data} 
+								title="Step Guide" 
+							/>
 
-					{/* Instructions */}
-					<StepInstructions instructions={step.instructions} />
+							<StepInstructions instructions={step.instructions} />
+						</div>
 
-					{/* Tools Needed */}
-					<StepToolsNeeded toolsNeeded={step.toolsNeeded} />
-
-					{/* Safety Warnings */}
-					<StepSafetyWarnings safety={step.safety} />
-
-					{/* Pro Tips */}
-					<StepTips tips={step.tips} />
-
-					{/* Step Completion Confirmation */}
-					<StepCompletionConfirmation 
-						projectId={projectId} 
-						stepNumber={step.number} 
-						stepCompleted={step.completed}
-						allSteps={allSteps}
-						currentStepIndex={parseInt(stepIndex)}
-						onStepUpdate={refreshStepData}
-						onProjectComplete={() => navigate(`/projects/${projectId}/completed`)}
-					/>
+						<div className="space-y-4 xl:sticky xl:top-6 xl:self-start">
+							<StepToolsNeeded toolsNeeded={step.toolsNeeded} />
+							<StepSafetyWarnings safety={step.safety} />
+							<StepTips tips={step.tips} />
+							<StepCompletionConfirmation 
+								projectId={projectId} 
+								stepNumber={step.number} 
+								stepCompleted={step.completed}
+								allSteps={allSteps}
+								currentStepIndex={parseInt(stepIndex)}
+								onStepUpdate={refreshStepData}
+								onProjectComplete={() => navigate(`/projects/${projectId}/completed`)}
+							/>
+						</div>
+					</div>
 				</main>
 
 				{/* Footer - Fixed at bottom */}

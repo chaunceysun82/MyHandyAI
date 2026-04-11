@@ -3,7 +3,7 @@ import ToolCard from "./ToolCard";
 
 export default function ToolsGrid({ tools, selectedTools, onToolSelection, isSelectionMode }) {
 	return (
-		<div className="grid grid-cols-2 gap-3 place-items-stretch">
+		<div className="grid grid-cols-2 gap-3 place-items-stretch lg:grid-cols-3 xl:grid-cols-4">
 			{tools.map((tool, idx) => {
 				// Use a more reliable identifier - try multiple fields
 				const toolId = tool._id || tool.id || tool.tool_id || `tool-${idx}`;

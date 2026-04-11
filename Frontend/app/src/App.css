@@ -1,0 +1,14 @@
+[data-app-shell] [data-app-shell] {
+	min-height: auto;
+	background: transparent;
+	padding: 0;
+}
+
+[data-app-shell] [data-app-shell] [data-app-shell-frame] {
+	min-height: auto;
+	max-width: none;
+	background: transparent;
+	box-shadow: none;
+	border-radius: 0;
+	overflow: visible;
+}

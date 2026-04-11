@@ -27,7 +27,7 @@ export default function ToolsLayout({
 			/>
 
 			{/* Middle Content */}
-			<main className="flex-1 overflow-y-auto p-4">{children}</main>
+			<main className="mx-auto flex-1 w-full max-w-6xl overflow-y-auto p-4 lg:px-8 lg:py-6">{children}</main>
 
 			{/* Footer */}
 			<StepFooter 
