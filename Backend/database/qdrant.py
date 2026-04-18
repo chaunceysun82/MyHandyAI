@@ -63,14 +63,14 @@ def upsert_embeddings_to_qdrant(
 ) -> dict:
     """
     Upsert embeddings to Qdrant vector database.
-    
+
     Args:
         mongo_hex_id: MongoDB document ID (hex string)
         embeddings: List of embedding vectors
         texts: List of text strings corresponding to embeddings
         extra_payload: Additional metadata to include in payload
         collection_name: Qdrant collection name (default: "projects")
-    
+
     Returns:
         dict with status, num_points, and collection name
     """
@@ -121,27 +121,36 @@ def search_similar_vectors(
         score_threshold: Optional[float] = None
 ) -> List[Any]:
     """
-    Search for similar vectors in Qdrant collection.
-    
+    Search for similar vectors in a Qdrant collection.
+
+    Uses query_points() (qdrant-client >= 1.10) instead of the removed search().
+    Falls back to returning [] and logging on any error.
+
     Args:
         query_vector: Query embedding vector
         collection_name: Qdrant collection name
         limit: Maximum number of results
         score_threshold: Minimum similarity score (optional)
-    
+
     Returns:
-        List of search results with score and payload
+        List of ScoredPoint results with .score and .payload
     """
     qclient = get_qdrant_client()
 
     try:
-        search_result = qclient.search(
+        kwargs = dict(
             collection_name=collection_name,
-            query_vector=query_vector,
+            query=query_vector,
             limit=limit,
-            score_threshold=score_threshold
+            with_payload=True,
         )
-        return list(search_result)
+        # score_threshold is only passed when explicitly set to avoid filtering everything
+        if score_threshold is not None:
+            kwargs["score_threshold"] = score_threshold
+
+        response = qclient.query_points(**kwargs)
+        return list(response.points)
+
     except Exception as e:
         print(f"Error searching Qdrant collection {collection_name}: {e}")
         return []
