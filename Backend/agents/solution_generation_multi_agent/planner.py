@@ -106,6 +106,7 @@ Project summary:
             matched_summary: Optional[str] = None,
             matched_tools: Optional[Any] = None,
             matched_steps: Optional[Any] = None,
+            kb_knowledge: Optional[str] = None,
             project_id: Optional[str] = None,
             user_id: Optional[str] = None,
     ) -> None:
@@ -122,6 +123,7 @@ Project summary:
         self.matched_summary = matched_summary
         self.matched_tools = matched_tools
         self.matched_steps = matched_steps
+        self.kb_knowledge = kb_knowledge    
         self.project_id = project_id
         self.user_id = user_id
 
@@ -286,6 +288,16 @@ Project summary:
 
     def recommend_tools(self, summary: str, include_json: bool = False) -> Dict[str, Any]:
         prompt = self.PROMPT_TEXT.format(summary=summary)
+
+        if self.kb_knowledge:
+            prompt += (
+                "\n\nKNOWLEDGE BASE CONTEXT:\n"
+                "The following information comes from a verified knowledge base article "
+                "about a similar type of job. Use it as domain reference to improve the "
+                "accuracy, safety, and tool selection for the new project summary above. "
+                "Do NOT copy tools verbatim — adapt them to the specific project.\n\n"
+                f"{self.kb_knowledge}\n"
+            )
 
         # If matched_tools or matched_summary exists, instruct the model to modify them
         matched_tools_text = None
