@@ -1,3 +1,4 @@
+# utils.py
 """Utility functions for Image Generation Agent."""
 
 import io
@@ -5,29 +6,46 @@ import re
 import time
 from typing import Optional
 
-import requests
 from PIL import Image
 
 
 def map_size_to_aspect(size_str: str) -> str:
+    """
+    Map "WxH" size string to Gemini 2.5 Flash Image supported aspect ratios.
+
+    Gemini 2.5 Flash Image supported ratios:
+        "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"
+
+    Note: Imagen used a different set ("16:9", "4:3", "1:1", "3:4", "9:16").
+    Gemini adds "2:3", "4:5", "5:4", "21:9" and drops nothing from Imagen's set.
+    """
     try:
         w, h = [int(x) for x in size_str.lower().split("x")]
         ar = w / h
-        if 1.66 <= ar <= 1.90:
-            return "16:9"
-        if 1.25 <= ar < 1.66:
-            return "4:3"
-        if 0.90 <= ar < 1.25:
+
+        # Match to nearest supported ratio
+        if ar >= 1.8:        # ~21:9 (2.33) or ~16:9 (1.78)
+            return "21:9" if ar >= 2.0 else "16:9"
+        if ar >= 1.2:        # ~5:4 (1.25) or ~4:3 (1.33)
+            return "5:4" if ar < 1.29 else "4:3"
+        if 0.95 <= ar < 1.2: # ~1:1
             return "1:1"
-        if 0.75 <= ar < 0.90:
-            return "3:4"
-        return "9:16"
+        if 0.78 <= ar < 0.95: # ~4:5 (0.80) or ~3:4 (0.75)
+            return "4:5" if ar >= 0.78 else "3:4"
+        if 0.6 <= ar < 0.78: # ~2:3 (0.67) or ~3:4 (0.75)
+            return "2:3" if ar < 0.72 else "3:4"
+        return "9:16"        # very tall
+
     except Exception:
         return "16:9"
 
 
-def png_to_bytes_ensure_rgba(png_bytes: bytes) -> bytes:
-    im = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+def png_to_bytes_ensure_rgba(raw_bytes: bytes) -> bytes:
+    """
+    Normalize raw image bytes (PNG or JPEG) to RGBA PNG format.
+    Gemini 2.5 Flash Image may return JPEG — this normalizes either format.
+    """
+    im = Image.open(io.BytesIO(raw_bytes)).convert("RGBA")
     out = io.BytesIO()
     im.save(out, format="PNG", optimize=True)
     return out.getvalue()
@@ -35,8 +53,7 @@ def png_to_bytes_ensure_rgba(png_bytes: bytes) -> bytes:
 
 def generate_s3_key(step_id: str, project_id: Optional[str]) -> str:
     ts = int(time.time())
-    base = f"project_{project_id or 'na'}/steps/{step_id}"
-    return f"{base}/image_{ts}.png"
+    return f"project_{project_id or 'na'}/steps/{step_id}/image_{ts}.png"
 
 
 def get_public_url(key: str, public_base: Optional[str]) -> Optional[str]:
@@ -45,53 +62,28 @@ def get_public_url(key: str, public_base: Optional[str]) -> Optional[str]:
     return None
 
 
-# ─── Style lock ──────────────────────────────────────────────────────────────
-
-def extract_style_lock(openai_api_key: str, step1_prompt: str) -> str:
+def apply_physics_filter(prompt: str, physics_redflags: list[dict]) -> tuple[str, list[str]]:
     """
-    Call GPT once after step 1 to extract a reusable style lock string.
-    This is a short, precise descriptor of every visual constant in the scene.
-    It is prepended verbatim to ALL subsequent Imagen prompts for this project.
-
-    Example output:
-        "white shaker-style under-sink cabinet, grey stone countertop,
-         stainless steel drop-in sink, white PVC P-trap pipes, blue nitrile
-         gloves, warm natural lighting from upper-left, eye-level medium shot,
-         grey painted drywall background"
+    Strip clauses matching domain-specific physics red-flag patterns.
+    physics_redflags is a list of {"pattern": str, "label": str} from the Visual DNA.
+    Returns (cleaned_prompt, list_of_violation_labels_found).
     """
-    payload = {
-        "model": "gpt-5-nano",
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are a visual consistency assistant for an image generation pipeline. "
-                    "Given an Imagen prompt, extract ONLY the static scene descriptors — "
-                    "the elements that must stay identical across all steps of the project. "
-                    "Output a single comma-separated string of 15-25 words. "
-                    "Include: cabinet style+colour, countertop material+colour, sink type, "
-                    "pipe material+colour, glove colour+type, lighting direction+tone, "
-                    "camera angle, wall/floor material. "
-                    "Do NOT include actions, tools being used, or step-specific details. "
-                    "Output ONLY the descriptor string, nothing else."
-                ),
-            },
-            {
-                "role": "user",
-                "content": f"Extract the style lock from this prompt:\n\n{step1_prompt}",
-            },
-        ],
-        "max_completion_tokens": 120,
-        "reasoning_effort": "low",
-    }
-    try:
-        r = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {openai_api_key}"},
-            json=payload,
-            timeout=20,
-        )
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"].strip()
-    except Exception:
-        return ""
+    violations = []
+    cleaned = prompt
+    for flag in physics_redflags:
+        pattern = flag.get("pattern", "")
+        label = flag.get("label", "unknown")
+        if not pattern:
+            continue
+        try:
+            if re.search(pattern, cleaned, flags=re.IGNORECASE):
+                violations.append(label)
+                cleaned = re.sub(
+                    r'[^.,]*' + pattern + r'[^.,]*[.,]?',
+                    '',
+                    cleaned,
+                    flags=re.IGNORECASE,
+                ).strip()
+        except re.error:
+            continue  # Malformed pattern from GPT — skip silently
+    return cleaned, violations
