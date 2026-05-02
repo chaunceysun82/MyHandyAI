@@ -78,7 +78,7 @@ def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x10
         project_collection.update_one({"_id": ObjectId(project_id)},
                                       {"$set": {f"step_generation.steps.{int(i) - 1}.image.status": "in-progress"}})
 
-        sqs.send_message(QueueUrl=images_sqs_url, MessageBody=json.dumps(body), DelaySeconds=min(i * 5, 900))
+        sqs.send_message(QueueUrl=images_sqs_url, MessageBody=json.dumps(body), DelaySeconds=min((i - 1) * 8, 900))
 
 
 def handle_image_step(msg: dict) -> None:
@@ -93,7 +93,7 @@ def handle_image_step(msg: dict) -> None:
     image_generation_service = ImageGenerationAgentService(
         image_generation_agent=image_generation_agent,
         s3_client=s3,
-        project_collection=project_collection,   # ← pass in so service can read context
+        project_collection=project_collection,   # ← NEW: needed for reference image fetching + visual DNA
     )
     result = image_generation_service.generate_step_image(
         step_id=step_id,
@@ -104,11 +104,22 @@ def handle_image_step(msg: dict) -> None:
     )
     res = result.model_dump()
 
-    # Persist the full result including style_anchor so future steps can read it
+    # Persist the full result so future steps can fetch this image as a reference
     project_collection.update_one(
         {"_id": ObjectId(project_id)},
         {"$set": {f"step_generation.steps.{int(step_id) - 1}.image": res}},
     )
+
+    # ← NEW: persist state_summary separately so fetch_step_states() can read it
+    # (model_dump() includes it if present, but this makes it explicit and
+    #  ensures it's written even if the result schema evolves)
+    if hasattr(result, "state_summary") and result.state_summary:
+        project_collection.update_one(
+            {"_id": ObjectId(project_id)},
+            {"$set": {
+                f"step_generation.steps.{int(step_id) - 1}.image.state_summary": result.state_summary
+            }},
+        )
 
 def reset_all_steps(project_id):
     cursor = project_collection.find_one({"_id": ObjectId(project_id)})
