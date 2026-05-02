@@ -78,7 +78,7 @@ def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x10
         project_collection.update_one({"_id": ObjectId(project_id)},
                                       {"$set": {f"step_generation.steps.{int(i) - 1}.image.status": "in-progress"}})
 
-        sqs.send_message(QueueUrl=images_sqs_url, MessageBody=json.dumps(body))
+        sqs.send_message(QueueUrl=images_sqs_url, MessageBody=json.dumps(body), DelaySeconds=min(i * 5, 900))
 
 
 def handle_image_step(msg: dict) -> None:
@@ -92,19 +92,23 @@ def handle_image_step(msg: dict) -> None:
     image_generation_agent = ImageGenerationAgent()
     image_generation_service = ImageGenerationAgentService(
         image_generation_agent=image_generation_agent,
-        s3_client=s3
+        s3_client=s3,
+        project_collection=project_collection,   # ← pass in so service can read context
     )
     result = image_generation_service.generate_step_image(
         step_id=step_id,
         step_text=step_text,
         summary_text=summary_text,
         size=size,
-        project_id=project_id
+        project_id=project_id,
     )
     res = result.model_dump()
-    project_collection.update_one({"_id": ObjectId(project_id)},
-                                  {"$set": {f"step_generation.steps.{int(step_id) - 1}.image": res}})
 
+    # Persist the full result including style_anchor so future steps can read it
+    project_collection.update_one(
+        {"_id": ObjectId(project_id)},
+        {"$set": {f"step_generation.steps.{int(step_id) - 1}.image": res}},
+    )
 
 def reset_all_steps(project_id):
     cursor = project_collection.find_one({"_id": ObjectId(project_id)})
