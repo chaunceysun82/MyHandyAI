@@ -31,5 +31,5 @@ class ImageGenerationResult(BaseModel):
     size: str
     model: str
     prompt_preview: Optional[str] = None
-    style_anchor: Optional[str] = None   # saved back to MongoDB for future steps
+    state_summary: Optional[str] = None    # ← NEW: memory for future steps
     status: str = "complete"
