@@ -94,9 +94,34 @@ class ImageGenerationAgentService:
                 json=payload, timeout=30,
             )
             r.raise_for_status()
-            content = r.json()["choices"][0]["message"]["content"].strip()
+
+            # Guard: log raw text before attempting JSON parse
+            raw_text = r.text
+            if not raw_text or not raw_text.strip():
+                logger.error("generate_visual_dna: empty response body from OpenAI")
+                return None
+
+            resp_json = r.json()
+            content = resp_json["choices"][0]["message"]["content"]
+            if not content or not content.strip():
+                logger.error("generate_visual_dna: empty content field in OpenAI response")
+                return None
+
+            content = content.strip()
             content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content).strip()
+
+            if not content:
+                logger.error("generate_visual_dna: content empty after stripping markdown fences")
+                return None
+
             return json.loads(content)
+
+        except requests.HTTPError as e:
+            logger.error(f"generate_visual_dna HTTP error {e.response.status_code}: {e.response.text[:300]}")
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(f"generate_visual_dna JSON parse failed: {e} — raw content: {content!r:.200}")
+            return None
         except Exception as e:
             logger.error(f"generate_visual_dna failed: {e}")
             return None
