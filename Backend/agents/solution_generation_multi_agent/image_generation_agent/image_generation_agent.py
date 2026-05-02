@@ -38,33 +38,16 @@ class ImageGenerationAgent:
             return None
 
     def generate_image(
-            self,
-            prompt: str,
-            reference_images: Optional[list[PIL.Image.Image]] = None,
-            aspect_ratio: str = "16:9",
-            output_mime_type: str = "image/png",
-            max_retries: int = 2,
-    ) -> bytes:
-        """
-        Generate a step image using Gemini 2.5 Flash Image.
-
-        Args:
-            prompt:           Text prompt describing the action for this step.
-            reference_images: PIL images from prior steps — passed directly to
-                              the model as visual context. The model sees them
-                              natively, not as text descriptions.
-            aspect_ratio:     "16:9" | "4:3" | "1:1" | "3:4" | "9:16"
-            output_mime_type: "image/png" (default) or "image/jpeg"
-            max_retries:      Retry count on empty response.
-
-        Returns:
-            Raw image bytes.
-        """
-        # Build contents: [ref_image_1, ref_image_2, ..., prompt_text]
-        # Gemini 2.5 Flash Image reads the images, then follows the text instruction.
+        self,
+        prompt: str,
+        reference_images: Optional[list[PIL.Image.Image]] = None,
+        aspect_ratio: str = "16:9",
+        output_mime_type: str = "image/png",
+        max_retries: int = 2,
+) -> bytes:
         contents: list = []
         if reference_images:
-            contents.extend(reference_images)
+            contents.extend(self._pil_to_part(img) for img in reference_images)
             logger.info(f"Passing {len(reference_images)} reference image(s) to model")
         contents.append(prompt)
 
@@ -73,7 +56,8 @@ class ImageGenerationAgent:
             image_config=ImageConfig(aspect_ratio=aspect_ratio),
         )
 
-        for attempt in range(1, max_retries + 2):
+        max_attempts = max_retries + 1
+        for attempt in range(1, max_attempts + 1):
             try:
                 logger.info(f"Generating image — attempt {attempt}")
                 response = self.client.models.generate_content(
@@ -82,8 +66,17 @@ class ImageGenerationAgent:
                     config=config,
                 )
 
-                # Extract image bytes from response
-                for part in response.candidates[0].content.parts:
+                candidate = response.candidates[0] if response.candidates else None
+                if candidate is None:
+                    logger.warning(f"Attempt {attempt}: no candidates — retrying")
+                    continue
+
+                if candidate.content is None:
+                    finish_reason = getattr(candidate, "finish_reason", "unknown")
+                    logger.warning(f"Attempt {attempt}: content is None (finish_reason={finish_reason}) — retrying")
+                    continue
+
+                for part in candidate.content.parts:
                     if part.inline_data is not None:
                         logger.info("Image generated successfully")
                         return part.inline_data.data
@@ -91,10 +84,17 @@ class ImageGenerationAgent:
                 logger.warning(f"Attempt {attempt}: no image part in response — retrying")
 
             except Exception as e:
-                if attempt <= max_retries:
+                if attempt < max_attempts:
                     logger.warning(f"Attempt {attempt} failed: {e} — retrying")
                 else:
-                    logger.error(f"All attempts failed: {e}")
+                    logger.error(f"All {max_attempts} attempts failed: {e}")
                     raise
 
         raise ValueError("Image generation failed after all retries")
+
+    @staticmethod
+    def _pil_to_part(img: PIL.Image.Image):
+        from google.genai import types
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return types.Part.from_bytes(data=buf.getvalue(), mime_type="image/png")
