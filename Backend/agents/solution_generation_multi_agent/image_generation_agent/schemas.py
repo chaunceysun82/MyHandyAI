@@ -1,16 +1,8 @@
 """Schemas for Image Generation Agent."""
 
-from typing import Optional, List
+from typing import Optional
 
 from pydantic import BaseModel
-
-
-class VisualContextFrame(BaseModel):
-    """A single frame of visual context from a previously generated step image."""
-    step_id: str
-    url: str
-    prompt_preview: str
-    style_anchor: Optional[str] = None   # extracted style descriptor for continuity
 
 
 class ImageRequest(BaseModel):
@@ -31,5 +23,4 @@ class ImageGenerationResult(BaseModel):
     size: str
     model: str
     prompt_preview: Optional[str] = None
-    style_anchor: Optional[str] = None   # saved back to MongoDB for future steps
     status: str = "complete"
