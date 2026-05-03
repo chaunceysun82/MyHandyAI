@@ -59,7 +59,10 @@ def verify_cognito_token(token: str) -> dict:
             key,
             algorithms=["RS256"],
             issuer=get_cognito_issuer(),
-            options={"verify_aud": False},
+            options={
+                "verify_aud": False,
+                "verify_at_hash": False,
+            },
         )
     except (JOSEError, KeyError, StopIteration, requests.RequestException) as exc:
         raise HTTPException(
