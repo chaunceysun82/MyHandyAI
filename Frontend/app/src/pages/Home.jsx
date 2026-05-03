@@ -73,6 +73,23 @@ export default function Home() {
   const openSidebar = () => setIsSidebarOpen(true);
   const closeSidebar = () => setIsSidebarOpen(false);
 
+  const openProject = (project) => {
+    const progress = Number(project.percentComplete) || 0;
+    const hasGeneratedSolution = progress > 0 || progress >= 100;
+
+    if (hasGeneratedSolution) {
+      navigate(`/projects/${project._id}/overview`, {
+        state: { userId: token, userName },
+      });
+      return;
+    }
+
+    setActiveChatProject({
+      projectId: project._id,
+      projectName: project.projectTitle,
+    });
+  };
+
   useEffect(() => {
     const pendingChatProject = location.state?.openChatProject;
     if (!pendingChatProject?.projectId) return;
@@ -561,12 +578,7 @@ export default function Home() {
                     projectTitle={p.projectTitle}
                     lastActivity={p.lastActivity}
                     percentComplete={p.percentComplete}
-                    onStartChat={() =>
-                      setActiveChatProject({
-                        projectId: p._id,
-                        projectName: p.projectTitle,
-                      })
-                    }
+                    onStartChat={() => openProject(p)}
                     onRemove={handleRemoveProject}
                     onComplete={() => showCompletionConfirmation(p)}
                     onRename={() => showRenameConfirmation(p)}

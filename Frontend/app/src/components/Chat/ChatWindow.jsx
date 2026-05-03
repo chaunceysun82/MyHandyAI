@@ -627,20 +627,23 @@ export default function ChatWindow({
   return createPortal(
     <div className="fixed inset-0 z-[1000]">
       <div
-        className={`absolute inset-0 bg-[#07313d]/15 backdrop-blur-[1px] transition-opacity duration-300 ${
-          closing ? "opacity-0" : "opacity-100"
+        className={`absolute inset-0 bg-[#07313d]/15 backdrop-blur-[1px] transition-opacity duration-500 ease-out ${
+          closing || opening ? "opacity-0" : "opacity-100"
         }`}
         onClick={onClose}
       />
 
       <div
         className={`absolute bottom-0 left-1/2 h-[90svh] w-full max-w-[420px] -translate-x-1/2 px-4 pt-4 pb-0 md:h-[95vh] ${
-          isDragging ? "transition-none" : "transition-[transform,opacity] duration-300 ease-out"
+          isDragging ? "transition-none" : "transition-[transform,opacity,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
         }`}
         style={{
-          transform: `translate(-50%, ${translateY}) ${closing ? "scale(0.98)" : "scale(1)"}`,
-          opacity: closing ? 0.98 : 1,
-          willChange: "transform, opacity",
+          transform: `translate(-50%, ${translateY}) ${
+            closing || opening ? "scale(0.96)" : "scale(1)"
+          }`,
+          opacity: closing || opening ? 0 : 1,
+          filter: closing || opening ? "blur(2px)" : "blur(0)",
+          willChange: "transform, opacity, filter",
         }}
         onClick={(e) => e.stopPropagation()}
         onTransitionEnd={(e) => {
