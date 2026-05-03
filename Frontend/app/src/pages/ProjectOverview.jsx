@@ -219,7 +219,7 @@ export default function ProjectOverview() {
 				<div className="flex-1 overflow-y-auto">
 					<div className="grid gap-6 px-4 pb-6 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)] lg:px-8 lg:pb-8">
 						<div className="lg:sticky lg:top-20 lg:self-start">
-							<div className="space-y-3 pb-8 pt-3 lg:pt-0">
+							<div className="space-y-3 pb-2 pt-3 lg:pb-8 lg:pt-0">
 								<div>
 									{loading ? (
 										<div className="animate-pulse">
@@ -253,7 +253,7 @@ export default function ProjectOverview() {
 							</div>
 						</div>
 
-						<div className="min-w-0 pt-3">
+						<div className="min-w-0 pt-0 lg:pt-3">
 							<div className="pb-4">
 								{loading ? (
 									<div className="animate-pulse">
