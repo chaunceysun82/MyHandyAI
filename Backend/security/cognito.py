@@ -58,19 +58,25 @@ def verify_cognito_token(token: str) -> dict:
             token,
             key,
             algorithms=["RS256"],
-            audience=settings.COGNITO_APP_CLIENT_ID,
             issuer=get_cognito_issuer(),
+            options={"verify_aud": False},
         )
     except (JOSEError, KeyError, StopIteration, requests.RequestException) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid Cognito token: {type(exc).__name__}",
+            detail=f"Invalid Cognito token: {type(exc).__name__}: {str(exc)}",
         ) from exc
 
     if claims.get("token_use") != "id":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Expected Cognito ID token, got {claims.get('token_use', 'unknown')}",
+        )
+
+    if claims.get("aud") != settings.COGNITO_APP_CLIENT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Cognito token audience does not match app client",
         )
 
     return claims
