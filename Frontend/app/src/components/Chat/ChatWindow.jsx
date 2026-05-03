@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import ChatHeader from "./ChatHeader";
 import MessageList from "./MessageList";
@@ -21,8 +21,9 @@ export default function ChatWindow({
 }) {
   const [render, setRender] = useState(isOpen);
   const [closing, setClosing] = useState(false);
-  const [opening, setOpening] = useState(false);
+  const [opening, setOpening] = useState(isOpen);
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(false);
   const [status, setStatus] = useState(false);
   const [status2, setStatus2] = useState(false);
 
@@ -56,6 +57,17 @@ export default function ChatWindow({
   const STORAGE_TOOLS_KEY   = `owned_tools_${userId}_${projectId}`;
 
   const navigate = useNavigate();
+
+  const requestClose = useCallback(() => {
+    if (closing) return;
+
+    setClosing(true);
+    window.setTimeout(() => {
+      onClose?.();
+      setClosing(false);
+      setRender(false);
+    }, 300);
+  }, [closing, onClose]);
 
   const [messages, setMessages] = useState(() => {
     const saved = localStorage.getItem(STORAGE_MESSAGES_KEY);
@@ -106,7 +118,7 @@ export default function ChatWindow({
     const up = () => {
       const shouldClose = drag.dy > THRESHOLD;
       setDrag({ active: false, startY: 0, dy: 0 });
-      if (shouldClose) onClose?.();
+      if (shouldClose) requestClose();
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -116,7 +128,7 @@ export default function ChatWindow({
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
     };
-  }, [drag.active, drag.dy, drag.startY, onClose]);
+  }, [drag.active, drag.dy, drag.startY, requestClose]);
 
   // Mount/unmount animation
   useEffect(() => {
@@ -137,13 +149,13 @@ export default function ChatWindow({
     if (!render) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const onKey = (e) => e.key === "Escape" && onClose?.();
+    const onKey = (e) => e.key === "Escape" && requestClose();
     window.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener("keydown", onKey);
     };
-  }, [render, onClose]);
+  }, [render, requestClose]);
 
   // Generation status poll (step flow)
   useEffect(() => {
@@ -226,6 +238,9 @@ export default function ChatWindow({
   // Load or start session
   useEffect(() => {
     async function loadOrStartSession() {
+      setInitializing(true);
+
+      try {
       const sessionRes= await axios.get(`${URL}/${api}/thread/${projectId}`, axiosAuthConfig());
       const conversationStatus = sessionRes.data?.conversation_status;
       
@@ -317,10 +332,14 @@ export default function ChatWindow({
           });
         } catch (err) {
           console.error("Intro message error", err);
+          setMessages([{ sender: "bot", content: "Failed to start chat. Please close and try again." }]);
+          setLoading(false);
         }
       } else {
         // Console log the existing session ID
         setLoading(true);
+        setSessionId(sessionRes.data.thread_id);
+        localStorage.setItem(STORAGE_SESSION_KEY, sessionRes.data.thread_id);
         console.log("🔄 Existing Chat Session Loaded:", {
           sessionId: sessionRes.data.thread_id,
           api: api,
@@ -377,7 +396,15 @@ export default function ChatWindow({
 
         } catch (err) {
           setMessages([{ sender: "bot", content: "Failed to load chat history." }]);
+          setLoading(false);
         }
+      }
+      } catch (err) {
+        console.error("Chat session setup error:", err);
+        setMessages([{ sender: "bot", content: "Failed to get chat ready. Please close and try again." }]);
+        setLoading(false);
+      } finally {
+        setInitializing(false);
       }
     }
     loadOrStartSession();
@@ -387,6 +414,13 @@ export default function ChatWindow({
   // Send message handler (merged behavior)
   const handleSend = async (text, files = []) => {
     if (!text.trim() && files.length === 0) return;
+    if (!sessionId) {
+      setMessages((prev) => [
+        ...prev,
+        { sender: "bot", content: "I am still getting this chat ready. Please try again in a moment." },
+      ]);
+      return;
+    }
 
     try {
       // Validate files before processing
@@ -630,7 +664,7 @@ export default function ChatWindow({
         className={`absolute inset-0 bg-[#07313d]/15 backdrop-blur-[1px] transition-opacity duration-500 ease-out ${
           closing || opening ? "opacity-0" : "opacity-100"
         }`}
-        onClick={onClose}
+        onClick={requestClose}
       />
 
       <div
@@ -649,12 +683,11 @@ export default function ChatWindow({
         onTransitionEnd={(e) => {
           if (closing && e.target === e.currentTarget) {
             setRender(false);
-            setClosing(false);
           }
         }}
       >
         <div className="mx-auto max-w-[380px] rounded-t-3xl bg-[#fffef6] shadow-2xl flex flex-col h-full overflow-hidden">
-          <ChatHeader onClose={onClose} dragHandleProps={{ onPointerDown: startDrag }} />
+          <ChatHeader onClose={requestClose} dragHandleProps={{ onPointerDown: startDrag }} />
 
           {status === false ? (
             <div
@@ -699,6 +732,7 @@ export default function ChatWindow({
               onDetected={handleDetectedTools}
               apiBase={URL}
               suggestedMessages={suggestedMessages}
+              disabled={initializing || loading || !sessionId}
             />
           </div>
 
