@@ -77,7 +77,7 @@ export default function ProjectCard({
   const canComplete = hasSteps && percentComplete < 100;
 
   return (
-    <div className="bg-gray-100 rounded-xl flex items-center justify-between relative select-none shadow-md border-l-4 border-[#288AA5] lg:min-h-0 lg:rounded-[20px]"
+    <div className="bg-gray-100 rounded-xl flex items-center justify-between relative select-none shadow-md border-l-4 border-[#288AA5] min-h-[72px] lg:min-h-0 lg:rounded-[20px]"
     style={{
       boxShadow: '0 6px 12px -2px rgba(0, 0, 0, 0.1)',
     }}
@@ -85,11 +85,11 @@ export default function ProjectCard({
 
       {/* Left Section - Image and Project Details - Clickable */}
       <div 
-        className="flex items-center space-x-4 flex-1 rounded-lg p-1 hover:bg-transparent lg:px-4 lg:py-3"
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-2 hover:bg-transparent lg:gap-4 lg:px-4 lg:py-3"
         onClick={handleCardClick}
       >
         {/* Project Image */}
-        <div className="w-14 h-14 mx-2 bg-blue-50 rounded-lg flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0 lg:mx-0 lg:h-16 lg:w-16">
+        <div className="h-11 w-11 bg-blue-50 rounded-lg flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0 lg:h-16 lg:w-16">
           <img 
             src={defaultProjectImage} 
             alt="Project" 
@@ -106,17 +106,17 @@ export default function ProjectCard({
         </div>
         
         {/* Project Details - Three lines as shown in image */}
-        <div className="flex flex-col space-y-1 lg:space-y-0.5">
+        <div className="flex min-w-0 flex-col gap-0.5 pr-9 lg:pr-10">
           {/* Project Title - First line */}
-          <h3 className="text-base font-semibold text-gray-900 hover:no-underline lg:text-[18px]">
+          <h3 className="truncate text-[15px] font-semibold leading-5 text-gray-900 hover:no-underline lg:text-[18px] lg:leading-6">
             {projectTitle}
           </h3>
           {/* Last Activity - Second line */}
-          <span className="text-sm text-gray-500 lg:text-[15px]">
+          <span className="text-[12px] leading-4 text-gray-500 lg:text-[15px] lg:leading-5">
             {formatLastActivity(lastActivity)}
           </span>
           {/* Completion Status - Third line */}
-          <span className="text-sm text-gray-500 lg:text-[15px]">
+          <span className="text-[12px] leading-4 text-gray-500 lg:text-[15px] lg:leading-5">
             {percentComplete || 0}% completed
           </span>
         </div>
@@ -126,7 +126,7 @@ export default function ProjectCard({
       <div className="flex items-center flex-shrink-0">
         <button
           onClick={handleMenuClick}
-          className="absolute right-2 top-2 rounded-lg p-2 text-black transition-colors hover:bg-gray-200 hover:text-gray-800 lg:right-3 lg:top-3"
+          className="absolute right-1.5 top-1.5 rounded-lg p-2 text-black transition-colors hover:bg-gray-200 hover:text-gray-800 lg:right-3 lg:top-3"
           title="More options"
         >
           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">

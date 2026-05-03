@@ -157,14 +157,29 @@ export function getCognitoUser() {
 	}
 }
 
-export function isCognitoAuthenticated() {
+export function getCognitoTokenExpiration() {
 	const user = getCognitoUser();
 
 	if (!user?.exp) {
+		return null;
+	}
+
+	return user.exp * 1000;
+}
+
+export function isCognitoAuthenticated() {
+	const expiresAt = getCognitoTokenExpiration();
+
+	return !!expiresAt && expiresAt > Date.now();
+}
+
+export function ensureValidCognitoSession() {
+	if (getCognitoIdToken() && !isCognitoAuthenticated()) {
+		clearAuthStorage();
 		return false;
 	}
 
-	return user.exp * 1000 > Date.now();
+	return isCognitoAuthenticated();
 }
 
 export function clearAuthStorage() {

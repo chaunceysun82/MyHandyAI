@@ -1,6 +1,14 @@
-import { getCognitoIdToken } from "./cognitoAuth";
+import { clearAuthStorage, ensureValidCognitoSession, getCognitoIdToken } from "./cognitoAuth";
 
 export function authHeaders(extraHeaders = {}) {
+	if (!ensureValidCognitoSession()) {
+		clearAuthStorage();
+		if (!window.location.pathname.startsWith("/login")) {
+			window.location.assign("/login");
+		}
+		return extraHeaders;
+	}
+
 	const token = getCognitoIdToken();
 
 	return {

@@ -8,7 +8,7 @@ import SideNavbar from "../components/SideNavbar";
 import MobileWrapper from "../components/MobileWrapper";
 import { fetchProjects, createProject, deleteProject, completeProject, updateProject } from "../services/projects";
 import { getUserById, syncCognitoUser } from "../services/auth";
-import { getCognitoIdToken, isCognitoAuthenticated } from "../services/cognitoAuth";
+import { clearAuthStorage, getCognitoIdToken, isCognitoAuthenticated } from "../services/cognitoAuth";
 import defaultHome from "../../src/assets/default-home.png";
 import { ReactComponent as Filter } from '../../src/assets/Frame.svg';
 
@@ -133,6 +133,12 @@ export default function Home() {
         } catch (err) {
           console.error("Home auth sync failed:", err);
         }
+      }
+
+      if (!isCognitoAuthenticated()) {
+        clearAuthStorage();
+        navigate("/login", { replace: true });
+        return;
       }
 
       if (!activeToken) {
@@ -386,11 +392,11 @@ export default function Home() {
         )}
 
         {/* Content Area - Takes remaining space with max height */}
-        <div className="mx-auto flex-1 w-full max-w-6xl overflow-hidden px-4 py-6 lg:px-8 lg:py-8">
+        <div className="mx-auto flex-1 w-full max-w-6xl overflow-hidden px-4 py-4 lg:px-8 lg:py-8">
           {/* Project Category Tabs */}
-          <div className="mb-4 flex flex-col gap-4 lg:mb-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="mb-3 flex flex-col gap-3 lg:mb-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="lg:max-w-md lg:flex-1">
-              <div className="flex mb-4">
+              <div className="flex mb-3 lg:mb-4">
                 <button
                   onClick={() => setActiveTab("ongoing")}
                   className={`flex-1 py-1 px-4 rounded-l-[21.63px] text-[16px] font transition-colors border ${
@@ -432,7 +438,7 @@ export default function Home() {
                 <div className="filter-menu-container relative">
                   <button
                     onClick={() => setShowFilterMenu(!showFilterMenu)}
-                    className="p-4 hover:bg-gray-100 transition-colors rounded-[15px] flex items-center justify-center"
+                    className="p-2.5 hover:bg-gray-100 transition-colors rounded-[15px] flex items-center justify-center lg:p-4"
                   >
                     <Filter className="h-5 w-5 text-gray-600" />
                   </button>
@@ -525,7 +531,7 @@ export default function Home() {
               </p>
             </div>
           ) : (
-            <div className="grid h-full items-start gap-4 overflow-y-auto pr-2 xl:content-start xl:grid-cols-2 xl:gap-x-6 xl:gap-y-4">
+            <div className="grid h-full items-start gap-2.5 overflow-y-auto pr-1 lg:gap-4 lg:pr-2 xl:content-start xl:grid-cols-2 xl:gap-x-6 xl:gap-y-4">
               {filteredProjects.map((p) => {
                 console.log('Home: Rendering ProjectCard with data:', {
                   id: p._id,

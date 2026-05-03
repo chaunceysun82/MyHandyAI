@@ -17,7 +17,11 @@ import ToolsPage from "./pages/ToolsPage.jsx";
 import ProjectCompleted from "./pages/ProjectCompleted.jsx";
 import Feedback from "./pages/Feedback.jsx";
 import { trackMetricOnce } from "./services/metrics";
-import { isCognitoAuthenticated } from "./services/cognitoAuth";
+import {
+	clearAuthStorage,
+	getCognitoTokenExpiration,
+	isCognitoAuthenticated,
+} from "./services/cognitoAuth";
 
 function App() {
 	const navigate = useNavigate();
@@ -26,9 +30,16 @@ function App() {
 	useEffect(() => {
 		trackMetricOnce("app_entered", "app_entered");
 
-		const token =
-			localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
-		const isAuthenticated = token || isCognitoAuthenticated();
+		const publicPaths = ["/login", "/signup", "/auth/callback"];
+		const isPublicPath = publicPaths.includes(location.pathname);
+		const isAuthenticated = isCognitoAuthenticated();
+
+		if (!isAuthenticated && !isPublicPath) {
+			clearAuthStorage();
+			navigate("/login", { replace: true });
+			return;
+		}
+
 		if (
 			isAuthenticated &&
 			(location.pathname === "/login" || location.pathname === "/signup")
@@ -36,9 +47,17 @@ function App() {
 			navigate("/home");
 		}
 
-		if (!isAuthenticated && location.pathname === "/") {
-			navigate("/login");
+		const expiresAt = getCognitoTokenExpiration();
+		if (!expiresAt) {
+			return;
 		}
+
+		const timeout = window.setTimeout(() => {
+			clearAuthStorage();
+			navigate("/login", { replace: true });
+		}, Math.max(expiresAt - Date.now(), 0));
+
+		return () => window.clearTimeout(timeout);
 	}, [navigate, location.pathname]);
 
 	return (
@@ -47,8 +66,6 @@ function App() {
 				<Route
 					path="/"
 					element={
-						localStorage.getItem("authToken") ||
-						sessionStorage.getItem("authToken") ||
 						isCognitoAuthenticated() ? (
 							<Navigate to="/home" replace />
 						) : (
