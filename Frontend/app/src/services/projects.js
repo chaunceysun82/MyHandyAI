@@ -1,5 +1,5 @@
 // src/services/projects.js
-import axios from "axios";
+import { authHeaders, jsonAuthHeaders } from "./api";
 const API_BASE = process.env.REACT_APP_BASE_URL ;
 
 // Log the API base URL for debugging
@@ -11,7 +11,9 @@ console.log('🔍 projects.js: Environment check:', {
 
 /** GET /projects?user_id=... -> { message, projects: [...] } */
 export async function fetchProjects(userId) {
-  const res = await fetch(`${API_BASE}/projects?user_id=${encodeURIComponent(userId)}`);
+  const res = await fetch(`${API_BASE}/projects?user_id=${encodeURIComponent(userId)}`, {
+    headers: authHeaders(),
+  });
 
   
   if (res.status === 405) return [];
@@ -105,7 +107,7 @@ export async function completeProject(projectId) {
   try {
     const res = await fetch(`${API_BASE}/project/${encodeURIComponent(projectId)}/complete`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' }
+      headers: jsonAuthHeaders()
     });
     
     if (!res.ok) {
@@ -127,7 +129,7 @@ export async function completeProject(projectId) {
 export async function createProject(userId, projectTitle) {
   const res = await fetch(`${API_BASE}/projects`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: jsonAuthHeaders(),
     body: JSON.stringify({ projectTitle, userId }),
   });
 
@@ -143,7 +145,10 @@ export async function createProject(userId, projectTitle) {
 
 
 export async function deleteProject(id) {
-  const res = await fetch(`${API_BASE}/projects/${id}`, { method: "DELETE" });
+  const res = await fetch(`${API_BASE}/projects/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
   if (!res.ok) {
     let msg = res.statusText;
     try { msg = (await res.json()).detail || msg; } catch {}
@@ -156,7 +161,7 @@ export async function updateProject(projectId, updateData) {
   try {
     const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: jsonAuthHeaders(),
       body: JSON.stringify(updateData)
     });
     
@@ -180,7 +185,9 @@ export async function fetchProjectProgress(projectId) {
   try {
     console.log(`🔍 fetchProjectProgress: Starting API call for project ${projectId}`);
     
-    const res = await fetch(`${API_BASE}/project/${encodeURIComponent(projectId)}/progress`);
+    const res = await fetch(`${API_BASE}/project/${encodeURIComponent(projectId)}/progress`, {
+      headers: authHeaders(),
+    });
     
     if (!res.ok) {
       throw new Error(`API error: ${res.status}`);

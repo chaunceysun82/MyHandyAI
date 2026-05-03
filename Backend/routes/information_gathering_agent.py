@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 from loguru import logger
 
 from agents.information_gathering_agent.dependencies import InformationGatheringAgentServiceDependency
@@ -8,6 +8,7 @@ from routes.schemas.request.information_gathering_agent import ChatMessageReques
 from routes.schemas.request.information_gathering_agent import InitializeConversationRequest
 from routes.schemas.response.information_gathering_agent import InitializeConversationResponse, \
     ChatMessageResponse, ConversationHistoryResponse, HistoryMessage
+from security.current_user import get_current_app_user
 
 router = APIRouter(prefix="/information-gathering-agent")
 
@@ -15,7 +16,8 @@ router = APIRouter(prefix="/information-gathering-agent")
 @router.post("/initialize", response_model=InitializeConversationResponse, status_code=status.HTTP_200_OK)
 async def initialize_conversation(
         request: InitializeConversationRequest,
-        orchestrator: InformationGatheringAgentServiceDependency
+        orchestrator: InformationGatheringAgentServiceDependency,
+        current_user: dict = Depends(get_current_app_user),
 ) -> InitializeConversationResponse:
     """Initialize a new conversation with the information gathering agent."""
     logger.info(f"initialize_conversation called for project_id: {request.project_id}")
@@ -34,7 +36,8 @@ async def initialize_conversation(
 async def chat(
         thread_id: UUID,
         request: ChatMessageRequest,
-        orchestrator: InformationGatheringAgentServiceDependency
+        orchestrator: InformationGatheringAgentServiceDependency,
+        current_user: dict = Depends(get_current_app_user),
 ) -> ChatMessageResponse:
     """Send a chat message to the information gathering agent."""
     logger.info(f"chat called with thread_id: {thread_id}, project_id: {request.project_id}")
@@ -59,7 +62,8 @@ async def chat(
             status_code=status.HTTP_200_OK)
 async def get_conversation_history(
         thread_id: UUID,
-        orchestrator: InformationGatheringAgentServiceDependency
+        orchestrator: InformationGatheringAgentServiceDependency,
+        current_user: dict = Depends(get_current_app_user),
 ) -> ConversationHistoryResponse:
     """
     Return full conversation history for a given thread_id.
@@ -80,7 +84,8 @@ async def get_conversation_history(
             status_code=status.HTTP_200_OK)
 async def get_thread_id(
         project_id: str,
-        orchestrator: InformationGatheringAgentServiceDependency
+        orchestrator: InformationGatheringAgentServiceDependency,
+        current_user: dict = Depends(get_current_app_user),
 ) -> dict:
     """
     Return existing thread_id and conversation_status for a given project_id, if any.

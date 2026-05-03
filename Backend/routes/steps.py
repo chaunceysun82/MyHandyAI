@@ -2,16 +2,25 @@ from datetime import datetime
 from typing import List, Optional, Annotated
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from pymongo.collection import Collection
 from pymongo.database import Database
 
 from database.mongodb import mongodb
+from security.current_user import get_current_app_user, require_user_match
 
 router = APIRouter()
 database: Database = mongodb.get_database()
 steps_collection: Collection = database.get_collection("ProjectSteps")
+project_collection: Collection = database.get_collection("Project")
+
+
+def require_project_access(project_id: str, current_user: dict) -> None:
+    project = project_collection.find_one({"_id": ObjectId(project_id)}, {"userId": 1})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    require_user_match(str(project.get("userId")), current_user)
 
 
 class Tool(BaseModel):
@@ -52,7 +61,8 @@ class ProgressUpdate(BaseModel):
 
 
 @router.post("/steps")
-def create_step(step: Step):
+def create_step(step: Step, current_user: dict = Depends(get_current_app_user)):
+    require_project_access(step.projectId, current_user)
     step_dict = step.dict()
     step_dict["projectId"] = ObjectId(step.projectId)
 
@@ -71,7 +81,8 @@ def create_step(step: Step):
 
 
 @router.get("/projects/{project_id}/steps")
-def get_steps_by_project(project_id: str):
+def get_steps_by_project(project_id: str, current_user: dict = Depends(get_current_app_user)):
+    require_project_access(project_id, current_user)
     steps = list(
         steps_collection.find({"projectId": ObjectId(project_id)})
         .sort("order", 1)
@@ -83,7 +94,12 @@ def get_steps_by_project(project_id: str):
 
 
 @router.put("/steps/{step_id}")
-def update_step(step_id: str, update_data: dict):
+def update_step(step_id: str, update_data: dict, current_user: dict = Depends(get_current_app_user)):
+    step = steps_collection.find_one({"_id": ObjectId(step_id)}, {"projectId": 1})
+    if not step:
+        raise HTTPException(status_code=404, detail="Step not found")
+    require_project_access(str(step.get("projectId")), current_user)
+
     update_data["updatedAt"] = datetime.utcnow()
     result = steps_collection.update_one(
         {"_id": ObjectId(step_id)},
@@ -95,7 +111,12 @@ def update_step(step_id: str, update_data: dict):
 
 
 @router.put("/steps/{step_id}/progress")
-def update_step_progress(step_id: str, body: ProgressUpdate):
+def update_step_progress(step_id: str, body: ProgressUpdate, current_user: dict = Depends(get_current_app_user)):
+    step = steps_collection.find_one({"_id": ObjectId(step_id)}, {"projectId": 1})
+    if not step:
+        raise HTTPException(status_code=404, detail="Step not found")
+    require_project_access(str(step.get("projectId")), current_user)
+
     # compute new flags
     new_progress = int(body.progress)
     update = {
@@ -125,7 +146,8 @@ def update_step_progress(step_id: str, body: ProgressUpdate):
 
 
 @router.get("/projects/{project_id}/progress")
-def get_project_progress(project_id: str):
+def get_project_progress(project_id: str, current_user: dict = Depends(get_current_app_user)):
+    require_project_access(project_id, current_user)
     cur = steps_collection.find(
         {"projectId": ObjectId(project_id)},
         {"order": 1, "title": 1, "status": 1, "progress": 1}
@@ -171,7 +193,8 @@ def get_project_progress(project_id: str):
 
 
 @router.put("/projects/{project_id}/complete-all")
-def complete_all_steps(project_id: str):
+def complete_all_steps(project_id: str, current_user: dict = Depends(get_current_app_user)):
+    require_project_access(project_id, current_user)
     result = steps_collection.update_many(
         {"projectId": ObjectId(project_id)},
         {

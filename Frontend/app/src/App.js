@@ -2,6 +2,7 @@ import "./App.css";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
+import AuthCallback from "./pages/auth/AuthCallback";
 import Home from "./pages/Home.jsx";
 import Chat from "./pages/Chat.jsx";
 import MobileWrapper from "./components/MobileWrapper";
@@ -16,6 +17,7 @@ import ToolsPage from "./pages/ToolsPage.jsx";
 import ProjectCompleted from "./pages/ProjectCompleted.jsx";
 import Feedback from "./pages/Feedback.jsx";
 import { trackMetricOnce } from "./services/metrics";
+import { isCognitoAuthenticated } from "./services/cognitoAuth";
 
 function App() {
 	const navigate = useNavigate();
@@ -26,14 +28,15 @@ function App() {
 
 		const token =
 			localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
+		const isAuthenticated = token || isCognitoAuthenticated();
 		if (
-			token &&
+			isAuthenticated &&
 			(location.pathname === "/login" || location.pathname === "/signup")
 		) {
 			navigate("/home");
 		}
 
-		if (!token && location.pathname === "/") {
+		if (!isAuthenticated && location.pathname === "/") {
 			navigate("/login");
 		}
 	}, [navigate, location.pathname]);
@@ -45,7 +48,8 @@ function App() {
 					path="/"
 					element={
 						localStorage.getItem("authToken") ||
-						sessionStorage.getItem("authToken") ? (
+						sessionStorage.getItem("authToken") ||
+						isCognitoAuthenticated() ? (
 							<Navigate to="/home" replace />
 						) : (
 							<Navigate to="/login" replace />
@@ -56,6 +60,7 @@ function App() {
 				<Route path="/home" element={<Home />} />
 				<Route path="/login" element={<Login key={location.pathname} />} />
 				<Route path="/signup" element={<Signup key={location.pathname} />} />
+				<Route path="/auth/callback" element={<AuthCallback />} />
 				<Route path="/chat" element={<Chat />} />
 				<Route path="/onboarding/" element={<OnboardingWelcome />} />
 				<Route path="/onboarding/complete" element={<OnboardingComplete />} />

@@ -2,13 +2,14 @@ from datetime import datetime
 from typing import Optional
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from pymongo.collection import Collection
 from pymongo.database import Database
 
 from database.mongodb import mongodb
 from routes.logs import insert_log_event
+from security.current_user import get_current_app_user, require_user_match
 
 router = APIRouter()
 database: Database = mongodb.get_database()
@@ -69,7 +70,8 @@ def create_user(user: User):
 
 
 @router.get("/users/{user_id}")
-def get_user(user_id: str):
+def get_user(user_id: str, current_user: dict = Depends(get_current_app_user)):
+    require_user_match(user_id, current_user)
     user = users_collection.find_one({"_id": ObjectId(user_id)})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -88,7 +90,8 @@ def get_onbording():
 
 
 @router.delete("/users/{user_id}")
-def delete_user(user_id: str):
+def delete_user(user_id: str, current_user: dict = Depends(get_current_app_user)):
+    require_user_match(user_id, current_user)
     result = users_collection.delete_one({"_id": ObjectId(user_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
@@ -118,7 +121,8 @@ def login(data: LoginData):
 
 
 @router.put("/users/{user_id}")
-def update_user(user_id: str, update_data: dict):
+def update_user(user_id: str, update_data: dict, current_user: dict = Depends(get_current_app_user)):
+    require_user_match(user_id, current_user)
     result = users_collection.update_one(
         {"_id": ObjectId(user_id)},
         {"$set": update_data}

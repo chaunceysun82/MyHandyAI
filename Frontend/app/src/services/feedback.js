@@ -1,4 +1,6 @@
 // src/services/feedback.js
+import { authHeaders, jsonAuthHeaders } from "./api";
+
 const API = process.env.REACT_APP_BASE_URL;
 
 async function readErr(res) {
@@ -11,7 +13,9 @@ async function readErr(res) {
 }
 
 export async function getCompletionMessage(projectId) {
-  const res = await fetch(`${API}/projects/${encodeURIComponent(projectId)}/completion-message`);
+  const res = await fetch(`${API}/projects/${encodeURIComponent(projectId)}/completion-message`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error(await readErr(res));
   return res.json(); // { message: "..." }
 }
@@ -19,7 +23,7 @@ export async function getCompletionMessage(projectId) {
 export async function submitFeedback(projectId, { rating, comments, tags = [] }) {
   const res = await fetch(`${API}/projects/${encodeURIComponent(projectId)}/feedback`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: jsonAuthHeaders(),
     body: JSON.stringify({ rating, comments, tags }),
   });
   if (!res.ok) throw new Error(await readErr(res));

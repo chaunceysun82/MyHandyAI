@@ -1,13 +1,14 @@
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from pymongo import DESCENDING
 from pymongo.collection import Collection
 from pymongo.database import Database
 
 from database.mongodb import mongodb
+from security.current_user import get_current_app_user
 
 router = APIRouter()
 database: Database = mongodb.get_database()
@@ -105,6 +106,7 @@ def list_log_events(
     user_id: Optional[str] = Query(default=None),
     project_id: Optional[str] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
+    current_user: dict = Depends(get_current_app_user),
 ):
     if event_type and event_type not in LOG_EVENT_TYPES:
         raise HTTPException(status_code=400, detail="Invalid event_type")
@@ -128,7 +130,7 @@ def list_log_events(
 
 
 @router.get("/logs/summary")
-def get_logs_summary():
+def get_logs_summary(current_user: dict = Depends(get_current_app_user)):
     pipeline = [
         {
             "$group": {

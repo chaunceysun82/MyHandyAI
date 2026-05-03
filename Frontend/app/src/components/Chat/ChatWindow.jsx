@@ -6,6 +6,7 @@ import ChatInput from "./ChatInput";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { RotatingLines } from "react-loader-spinner";
+import { axiosAuthConfig } from "../../services/api";
 
 export default function ChatWindow({
   isOpen,
@@ -149,7 +150,11 @@ export default function ChatWindow({
     const getStatus = async () => {
       if (status === true) {
         try {
-          const response = await axios.post(`${URL}/generation/all/${projectId}`);
+          const response = await axios.post(
+            `${URL}/generation/all/${projectId}`,
+            null,
+            axiosAuthConfig()
+          );
           if (response) setStatus2(true);
         } catch (err) {
           console.log("Err: ", err);
@@ -163,7 +168,10 @@ export default function ChatWindow({
     if (status2 === true) {
       const interval = setInterval(async () => {
         try {
-          const response = await axios.get(`${URL}/generation/status/${projectId}`);
+          const response = await axios.get(
+            `${URL}/generation/status/${projectId}`,
+            axiosAuthConfig()
+          );
           if (response) {
             const message = response.data.message;
             if (message === "generation completed") {
@@ -218,7 +226,7 @@ export default function ChatWindow({
   // Load or start session
   useEffect(() => {
     async function loadOrStartSession() {
-      const sessionRes= await axios.get(`${URL}/${api}/thread/${projectId}`);
+      const sessionRes= await axios.get(`${URL}/${api}/thread/${projectId}`, axiosAuthConfig());
       const conversationStatus = sessionRes.data?.conversation_status;
       
       // Don't initialize if conversation is already COMPLETED
@@ -230,7 +238,8 @@ export default function ChatWindow({
           try {
             setLoading(true);
             const historyRes = await axios.get(
-              `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`
+              `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`,
+              axiosAuthConfig()
             );
             const formattedMessages = historyRes.data.messages.map(
               ({ role, content }) => {
@@ -283,7 +292,7 @@ export default function ChatWindow({
             `${URL}/${api}/initialize`,
             // chatbot expects {user, project}; step-guidance ignores user.
             { project_id: projectId },
-            { headers: { "Content-Type": "application/json" } }
+            axiosAuthConfig({ headers: { "Content-Type": "application/json" } })
           );
            console.log("🆕 New Chat: ", res);
           setSessionId(res.data.thread_id);
@@ -322,7 +331,8 @@ export default function ChatWindow({
         try {
           // fetch history from the right API family
           const historyRes = await axios.get(
-            `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`
+            `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`,
+            axiosAuthConfig()
           );
           const formattedMessages = historyRes.data.messages.map(
             ({ role, content }) => {
@@ -517,9 +527,11 @@ export default function ChatWindow({
 
       // 5) Send
       setLoading(true);
-      const res = await axios.post(endpoint, payload, {
-        headers: { "Content-Type": "application/json" },
-      });
+      const res = await axios.post(
+        endpoint,
+        payload,
+        axiosAuthConfig({ headers: { "Content-Type": "application/json" } })
+      );
 
       const botMsg = { sender: "bot", content: res.data.agent_response };
       setLoading(false);

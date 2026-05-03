@@ -1,3 +1,5 @@
+import { authHeaders, jsonAuthHeaders } from "./api";
+
 const BASE_URL = process.env.REACT_APP_BASE_URL;
 
 if (!BASE_URL) {
@@ -9,9 +11,7 @@ export const toggleStepCompletion = async (projectId, stepNumber) => {
 	try {
 		const response = await fetch(`${BASE_URL}/complete-step/${projectId}/${stepNumber}`, {
 			method: 'PUT',
-			headers: {
-				'Content-Type': 'application/json',
-			},
+			headers: jsonAuthHeaders(),
 			body: JSON.stringify({
 				project_id: projectId,
 				step_number: stepNumber
@@ -37,9 +37,7 @@ export const resetStepCompletion = async (projectId, stepNumber) => {
 	try {
 		const response = await fetch(`${BASE_URL}/reset-step/${projectId}/${stepNumber}`, {
 			method: 'PUT',
-			headers: {
-				'Content-Type': 'application/json',
-			}
+			headers: jsonAuthHeaders()
 		});
 
 		if (!response.ok) {
@@ -59,7 +57,9 @@ export const resetStepCompletion = async (projectId, stepNumber) => {
 // Get step details by project ID and step number
 export const getStepDetails = async (projectId, stepNumber) => {
 	try {
-		const response = await fetch(`${BASE_URL}/steps/${projectId}/${stepNumber}`);
+		const response = await fetch(`${BASE_URL}/steps/${projectId}/${stepNumber}`, {
+			headers: authHeaders(),
+		});
 		
 		if (!response.ok) {
 			throw new Error(`HTTP error! status: ${response.status}`);
@@ -78,9 +78,7 @@ export const updateStepProgress = async (projectId, stepNumber, progressData) =>
 	try {
 		const response = await fetch(`${BASE_URL}/steps/${projectId}/${stepNumber}/progress`, {
 			method: 'PUT',
-			headers: {
-				'Content-Type': 'application/json',
-			},
+			headers: jsonAuthHeaders(),
 			body: JSON.stringify(progressData)
 		});
 
@@ -101,9 +99,7 @@ export const submitStepFeedback = async (projectId, stepNumber, feedback) => {
 	try {
 		const response = await fetch(`${BASE_URL}/step-feedback/${projectId}/${stepNumber}/${feedback}`, {
 			method: 'PUT',
-			headers: {
-				'Content-Type': 'application/json',
-			}
+			headers: jsonAuthHeaders()
 		});
 
 		if (!response.ok) {

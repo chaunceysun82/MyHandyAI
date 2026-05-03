@@ -8,6 +8,7 @@ openai
 email-validator==2.1.0.post1
 python-dateutil==2.9.0.post0
 requests==2.31.0
+PyJWT[crypto]==2.10.1
 pillow==10.0.0
 python-multipart
 google-genai

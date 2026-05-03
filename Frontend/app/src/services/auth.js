@@ -1,4 +1,6 @@
 
+import { authHeaders, jsonAuthHeaders } from "./api";
+
 const BASE_URL = process.env.REACT_APP_BASE_URL;
 
 if (!BASE_URL) {
@@ -65,9 +67,7 @@ export async function updateUser(userId, userData) {
 	try {
 		const response = await fetch(`${BASE_URL}/users/${userId}`, {
 			method: "PUT",
-			headers: {
-				"Content-Type": "application/json",
-			},
+			headers: jsonAuthHeaders(),
 			body: JSON.stringify(userData),
 		});
 
@@ -176,13 +176,38 @@ export const handleStringAnswer = (answer, userData) => {
 };
 
 export async function getUserById(userId) {
-  const res = await fetch(`${BASE_URL}/users/${userId}`);
+  const res = await fetch(`${BASE_URL}/users/${userId}`, {
+	headers: authHeaders(),
+  });
   if (!res.ok) {
     let msg = res.statusText;
     try { msg = (await res.json()).detail || msg; } catch {}
     throw new Error(msg);
   }
   return res.json(); // { _id, firstname, lastname, ... }
+}
+
+export async function syncCognitoUser(idToken) {
+	if (!idToken) {
+		throw new Error("Missing Cognito ID token");
+	}
+
+	const res = await fetch(`${BASE_URL}/auth/me`, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${idToken}`,
+		},
+	});
+
+	if (!res.ok) {
+		let msg = res.statusText;
+		try {
+			msg = (await res.json()).detail || msg;
+		} catch {}
+		throw new Error(msg);
+	}
+
+	return res.json();
 }
 
 // Check if email already exists in database

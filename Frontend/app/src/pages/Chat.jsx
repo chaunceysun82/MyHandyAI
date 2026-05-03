@@ -4,6 +4,7 @@ import ChatWindow from "../components/Chat/ChatWindow";
 import axios from "axios";
 import { RotatingLines } from 'react-loader-spinner';
 import MobileWrapper from "../components/MobileWrapper";
+import { axiosAuthConfig } from "../services/api";
 
 const Chat = () => {
   const location = useLocation();
@@ -51,7 +52,10 @@ const Chat = () => {
 
     const pollGenerationStatus = async () => {
       try {
-        const generationRes = await axios.get(`${URL}/generation/status/${projectId}`);
+        const generationRes = await axios.get(
+          `${URL}/generation/status/${projectId}`,
+          axiosAuthConfig()
+        );
         const generationMessage = generationRes.data?.message;
         
         if (generationMessage === "generation completed") {
@@ -73,7 +77,10 @@ const Chat = () => {
     const fetchStatus = async () => {
       try {
         // Check conversation status first
-        const conversationRes = await axios.get(`${URL}/api/v1/information-gathering-agent/thread/${projectId}`);
+        const conversationRes = await axios.get(
+          `${URL}/api/v1/information-gathering-agent/thread/${projectId}`,
+          axiosAuthConfig()
+        );
         const conversationStatus = conversationRes.data?.conversation_status;
         
         console.log("Chat: Conversation status:", conversationStatus);
@@ -81,7 +88,10 @@ const Chat = () => {
         // If conversation is COMPLETED, check generation status
         if (conversationStatus === "COMPLETED") {
           try {
-            const generationRes = await axios.get(`${URL}/generation/status/${projectId}`);
+            const generationRes = await axios.get(
+              `${URL}/generation/status/${projectId}`,
+              axiosAuthConfig()
+            );
             const generationMessage = generationRes.data?.message;
             console.log("Chat: Generation status:", generationMessage);
             
@@ -113,7 +123,10 @@ const Chat = () => {
         console.log("Error checking conversation status:", convErr);
         // If conversation check fails, check generation status as fallback
         try {
-          const generationRes = await axios.get(`${URL}/generation/status/${projectId}`);
+          const generationRes = await axios.get(
+            `${URL}/generation/status/${projectId}`,
+            axiosAuthConfig()
+          );
           const generationMessage = generationRes.data?.message;
           
           if (generationMessage === "generation completed") {

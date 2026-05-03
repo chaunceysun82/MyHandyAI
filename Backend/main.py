@@ -15,6 +15,7 @@ settings = get_settings()
 
 # Routers
 from routes import (
+    auth,
     user,
     project,
     steps,
@@ -57,6 +58,7 @@ def root():
 
 # Register routes
 app.include_router(user.router, tags=["User"])
+app.include_router(auth.router, tags=["Auth"])
 app.include_router(project.router, tags=["Project"])
 app.include_router(steps.router, tags=["Steps"])
 app.include_router(generation.router, tags=["Generation"])

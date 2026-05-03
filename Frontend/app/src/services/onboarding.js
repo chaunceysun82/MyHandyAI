@@ -1,5 +1,6 @@
 import axios from "axios";
 import { signupUserWithOnboarding, updateUser, transformOnboardingAnswers } from "./auth";
+import { authHeaders } from "./api";
 
 const BASE_URL = process.env.REACT_APP_BASE_URL;
 
@@ -68,7 +69,9 @@ export const submitOnboardingAnswers = async (answers) => {
 		// This is an existing user (email or Google) updating their onboarding data
 		try {
 			// First, check if user exists in backend
-			const userResponse = await fetch(`${BASE_URL}/users/${userId}`);
+			const userResponse = await fetch(`${BASE_URL}/users/${userId}`, {
+				headers: authHeaders(),
+			});
 			
 			if (userResponse.ok) {
 				// User exists, update with onboarding data
