@@ -7,7 +7,7 @@ import ChatWindow from "../components/Chat/ChatWindow";
 import LoadingPlaceholder from "../components/LoadingPlaceholder";
 import SideNavbar from "../components/SideNavbar";
 import MobileWrapper from "../components/MobileWrapper";
-import { fetchProjects, createProject, deleteProject, completeProject, updateProject } from "../services/projects";
+import { fetchProjects, createProject, deleteProject, completeProject, updateProject, fetchGenerationStatus } from "../services/projects";
 import { getUserById, syncCognitoUser } from "../services/auth";
 import { clearAuthStorage, getCognitoIdToken, isCognitoAuthenticated } from "../services/cognitoAuth";
 import defaultHome from "../../src/assets/default-home.png";
@@ -73,11 +73,23 @@ export default function Home() {
   const openSidebar = () => setIsSidebarOpen(true);
   const closeSidebar = () => setIsSidebarOpen(false);
 
-  const openProject = (project) => {
+  const openProject = async (project) => {
     const progress = Number(project.percentComplete) || 0;
-    const hasGeneratedSolution = progress > 0 || progress >= 100;
+    const isCompleted = progress >= 100;
 
-    if (hasGeneratedSolution) {
+    try {
+      const generationStatus = await fetchGenerationStatus(project._id);
+      if (generationStatus?.message === "generation completed") {
+        navigate(`/projects/${project._id}/overview`, {
+          state: { userId: token, userName },
+        });
+        return;
+      }
+    } catch (err) {
+      console.log("Generation status not ready:", err);
+    }
+
+    if (isCompleted) {
       navigate(`/projects/${project._id}/overview`, {
         state: { userId: token, userName },
       });

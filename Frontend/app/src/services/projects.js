@@ -102,6 +102,21 @@ export async function refreshProjectProgress(projectId) {
   }
 }
 
+/** GET /generation/status/{project_id} -> { message: string } */
+export async function fetchGenerationStatus(projectId) {
+  const res = await fetch(`${API_BASE}/generation/status/${encodeURIComponent(projectId)}`, {
+    headers: authHeaders(),
+  });
+
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { msg = (await res.json()).detail || msg; } catch {}
+    throw new Error(msg);
+  }
+
+  return res.json();
+}
+
 /** PUT /project/{project_id}/complete -> Mark entire project as complete */
 export async function completeProject(projectId) {
   try {
