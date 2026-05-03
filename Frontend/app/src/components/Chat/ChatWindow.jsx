@@ -627,13 +627,14 @@ export default function ChatWindow({
   return createPortal(
     <div className="fixed inset-0 z-[1000]">
       <div
-        className={`absolute inset-0 bg-gray-200 transition-opacity duration-300 ${
+        className={`absolute inset-0 bg-black/30 transition-opacity duration-300 ${
           closing ? "opacity-0" : "opacity-100"
         }`}
+        onClick={onClose}
       />
 
       <div
-        className={`absolute bottom-0 h-screen left-1/2 w-full max-w-[420px] -translate-x-1/2 px-4 pb-0 ${
+        className={`absolute bottom-0 left-1/2 h-[90svh] w-full max-w-[420px] -translate-x-1/2 px-4 pt-4 pb-0 md:h-[95vh] ${
           isDragging ? "transition-none" : "transition-[transform,opacity] duration-300 ease-out"
         }`}
         style={{
@@ -649,7 +650,7 @@ export default function ChatWindow({
           }
         }}
       >
-        <div className="mx-auto max-w-[380px] bg-[#fffef6] shadow-md flex flex-col h-full overflow-hidden">
+        <div className="mx-auto max-w-[380px] rounded-t-3xl bg-[#fffef6] shadow-2xl flex flex-col h-full overflow-hidden">
           <ChatHeader onClose={onClose} dragHandleProps={{ onPointerDown: startDrag }} />
 
           {status === false ? (
@@ -674,7 +675,7 @@ export default function ChatWindow({
               )}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-screen w-full px-4">
+            <div className="flex flex-col items-center justify-center h-full w-full px-4">
               <RotatingLines
                 strokeColor="blue"
                 strokeWidth="2"

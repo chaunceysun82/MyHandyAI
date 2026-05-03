@@ -531,7 +531,7 @@ export default function Home() {
               </p>
             </div>
           ) : (
-            <div className="grid h-full items-start gap-2.5 overflow-y-auto pr-1 lg:gap-4 lg:pr-2 xl:content-start xl:grid-cols-2 xl:gap-x-6 xl:gap-y-4">
+            <div className="flex h-full flex-col gap-2.5 overflow-y-auto pr-1 lg:gap-4 lg:pr-2 xl:grid xl:content-start xl:grid-cols-2 xl:gap-x-6 xl:gap-y-4">
               {filteredProjects.map((p) => {
                 console.log('Home: Rendering ProjectCard with data:', {
                   id: p._id,
