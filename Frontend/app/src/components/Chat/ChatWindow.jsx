@@ -627,7 +627,7 @@ export default function ChatWindow({
   return createPortal(
     <div className="fixed inset-0 z-[1000]">
       <div
-        className={`absolute inset-0 bg-black/30 transition-opacity duration-300 ${
+        className={`absolute inset-0 bg-[#07313d]/15 backdrop-blur-[1px] transition-opacity duration-300 ${
           closing ? "opacity-0" : "opacity-100"
         }`}
         onClick={onClose}

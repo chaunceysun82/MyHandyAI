@@ -1,8 +1,9 @@
 // src/pages/Home.jsx
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import ProjectCard from "../components/ProjectCard";
+import ChatWindow from "../components/Chat/ChatWindow";
 import LoadingPlaceholder from "../components/LoadingPlaceholder";
 import SideNavbar from "../components/SideNavbar";
 import MobileWrapper from "../components/MobileWrapper";
@@ -15,6 +16,7 @@ import { ReactComponent as Filter } from '../../src/assets/Frame.svg';
 
 export default function Home() {
   const navigate = useNavigate();
+  const location = useLocation();
   const storedToken =
     localStorage.getItem("authToken") ||
     sessionStorage.getItem("authToken");
@@ -50,6 +52,7 @@ export default function Home() {
   const [projectToRename, setProjectToRename] = useState(null);
   const [newProjectName, setNewProjectName] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
+  const [activeChatProject, setActiveChatProject] = useState(null);
 
   // Function to get first name with first letter capitalized
   // Extracts first name from "First Last" format and capitalizes first letter
@@ -69,6 +72,14 @@ export default function Home() {
 
   const openSidebar = () => setIsSidebarOpen(true);
   const closeSidebar = () => setIsSidebarOpen(false);
+
+  useEffect(() => {
+    const pendingChatProject = location.state?.openChatProject;
+    if (!pendingChatProject?.projectId) return;
+
+    setActiveChatProject(pendingChatProject);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
 
   // Get project counts for tabs
   const ongoingCount = projects.filter(p => p.percentComplete < 100).length;
@@ -227,8 +238,10 @@ export default function Home() {
 
       setShowModal(false);
 
-      /*Navigate to chat page with new project*/
-      navigate("/chat", {state: {projectId: newProject._id, projectName: newProject.projectTitle, userId: token, userName: userName}});
+      setActiveChatProject({
+        projectId: newProject._id,
+        projectName: newProject.projectTitle,
+      });
 
     } catch (err) {
       console.error("createProject:", err);
@@ -548,7 +561,12 @@ export default function Home() {
                     projectTitle={p.projectTitle}
                     lastActivity={p.lastActivity}
                     percentComplete={p.percentComplete}
-                    							onStartChat={() => navigate("/chat", {state: {projectId: p._id, projectName: p.projectTitle, userId: token, userName: userName}})}
+                    onStartChat={() =>
+                      setActiveChatProject({
+                        projectId: p._id,
+                        projectName: p.projectTitle,
+                      })
+                    }
                     onRemove={handleRemoveProject}
                     onComplete={() => showCompletionConfirmation(p)}
                     onRename={() => showRenameConfirmation(p)}
@@ -590,6 +608,18 @@ export default function Home() {
           onClose={closeSidebar} 
           onStartNewProject={openModal}
         />
+
+        {activeChatProject && (
+          <ChatWindow
+            isOpen={!!activeChatProject}
+            onClose={() => setActiveChatProject(null)}
+            projectId={activeChatProject.projectId}
+            projectName={activeChatProject.projectName}
+            userId={token}
+            userName={userName}
+            URL={process.env.REACT_APP_BASE_URL}
+          />
+        )}
       </div>
 
       {/* New Project Modal */}
