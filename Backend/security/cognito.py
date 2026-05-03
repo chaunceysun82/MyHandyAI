@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from jose import jwk, jwt
+from jose import jwt
 from jose.exceptions import JOSEError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -54,10 +54,9 @@ def verify_cognito_token(token: str) -> dict:
             if key["kid"] == headers["kid"]
         )
 
-        public_key = jwk.construct(key)
         claims = jwt.decode(
             token,
-            public_key.to_pem().decode("utf-8"),
+            key,
             algorithms=["RS256"],
             audience=settings.COGNITO_APP_CLIENT_ID,
             issuer=get_cognito_issuer(),
@@ -65,13 +64,13 @@ def verify_cognito_token(token: str) -> dict:
     except (JOSEError, KeyError, StopIteration, requests.RequestException) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired Cognito token",
+            detail=f"Invalid Cognito token: {type(exc).__name__}",
         ) from exc
 
     if claims.get("token_use") != "id":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Expected Cognito ID token",
+            detail=f"Expected Cognito ID token, got {claims.get('token_use', 'unknown')}",
         )
 
     return claims

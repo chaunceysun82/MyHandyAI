@@ -7,16 +7,18 @@ import LoadingPlaceholder from "../components/LoadingPlaceholder";
 import SideNavbar from "../components/SideNavbar";
 import MobileWrapper from "../components/MobileWrapper";
 import { fetchProjects, createProject, deleteProject, completeProject, updateProject } from "../services/projects";
-import { getUserById } from "../services/auth";
+import { getUserById, syncCognitoUser } from "../services/auth";
+import { getCognitoIdToken, isCognitoAuthenticated } from "../services/cognitoAuth";
 import defaultHome from "../../src/assets/default-home.png";
 import { ReactComponent as Filter } from '../../src/assets/Frame.svg';
 
 
 export default function Home() {
   const navigate = useNavigate();
-  const token =
+  const storedToken =
     localStorage.getItem("authToken") ||
     sessionStorage.getItem("authToken");
+  const [token, setToken] = useState(storedToken);
   
   const [userName, setUserName] = useState(
     localStorage.getItem("displayName") ||
@@ -112,10 +114,31 @@ export default function Home() {
   }, [showFilterMenu]);
 
   useEffect(() => {
-    if (!token) {
-      navigate("/login", { replace: true });
-      return;
-    }
+    async function loadHome() {
+      let activeToken = token;
+
+      if (!activeToken && isCognitoAuthenticated()) {
+        try {
+          const syncedUser = await syncCognitoUser(getCognitoIdToken());
+          activeToken = syncedUser.id;
+          localStorage.setItem("authToken", syncedUser.id);
+          localStorage.setItem(
+            "displayName",
+            [syncedUser.firstname, syncedUser.lastname].filter(Boolean).join(" ") ||
+              syncedUser.email ||
+              "User"
+          );
+          localStorage.setItem("userEmail", syncedUser.email || "");
+          setToken(syncedUser.id);
+        } catch (err) {
+          console.error("Home auth sync failed:", err);
+        }
+      }
+
+      if (!activeToken) {
+        navigate("/login", { replace: true });
+        return;
+      }
 
     // Check where user is coming from
     const isFromOnboarding = localStorage.getItem("fromOnboarding") === "true";
@@ -134,7 +157,7 @@ export default function Home() {
 
     if (!localStorage.getItem("displayName") &&
        !sessionStorage.getItem("displayName")) {
-     getUserById(token).then(u => {
+     getUserById(activeToken).then(u => {
        const full = [u.firstname, u.lastname].filter(Boolean).join(" ") || (u.email ?? "User");
        setUserName(full);
        const store = localStorage.getItem("authToken") ? localStorage : sessionStorage;
@@ -142,7 +165,7 @@ export default function Home() {
      }).catch(() => {}); // ignore for Google-only ids
     }
 
-    fetchProjects(token)
+    fetchProjects(activeToken)
       .then(data => {
         console.log('Home: fetchProjects result:', data);
         console.log('Home: First project data:', data[0]);
@@ -154,6 +177,9 @@ export default function Home() {
         setError(err.message);
         setLoading(false);
       });
+    }
+
+    loadHome();
   }, [token, navigate]);
 
   function openModal() {
