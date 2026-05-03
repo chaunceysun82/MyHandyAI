@@ -2,7 +2,7 @@
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 
@@ -57,6 +57,11 @@ app.add_middleware(
 @app.get("/")
 def root():
     return {"message": "Hello, FastAPI!"}
+
+
+@app.options("/{full_path:path}")
+def preflight_handler(full_path: str):
+    return Response(status_code=204)
 
 
 # Register routes
