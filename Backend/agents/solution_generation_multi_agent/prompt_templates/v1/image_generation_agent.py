@@ -1,6 +1,4 @@
-# prompts/image_generation_agent.py
-
-# ─── Prompt 1: called ONCE on step 1 to build the project's visual DNA ───────
+# ─── Prompt 1: Visual DNA ─────────────────────────────────────────────────────
 VISUAL_DNA_PROMPT = """You are a visual consistency engineer for an AI image generation pipeline.
 
 Given a DIY project summary, generate a complete "visual DNA" object that will be used
@@ -13,10 +11,10 @@ TASK: Analyze the project and return ONLY a valid JSON object with these exact k
 
   "scene_prefix": "<20-35 word comma-separated description of ALL static visual elements. Include: work surface/location, background material+colour, cabinet/wall/floor style, primary material colours, lighting direction+tone, camera angle. Do NOT include actions or tools.>",
 
-  "glove_color": "<color and type of gloves appropriate for this domain, e.g. 'blue nitrile', 'yellow rubber', 'brown leather work', 'white cotton', 'black mechanic'>",
+  "glove_color": "<color and type of gloves appropriate for this domain>",
 
   "body_anchors": {
-    "primary": "<Full sentence body anchor for the most common action location. Must include {glove_color}. Example: 'A photo of a person kneeling beside an open under-sink cabinet, their {glove_color} gloved hands'>",
+    "primary": "<Full sentence body anchor. Must include {glove_color}.>",
     "elevated": "<Body anchor for elevated work. Must include {glove_color}.>",
     "ground_level": "<Body anchor for ground/floor work. Must include {glove_color}.>",
     "standing": "<Body anchor for standing at workbench/surface. Must include {glove_color}.>"
@@ -31,43 +29,73 @@ TASK: Analyze the project and return ONLY a valid JSON object with these exact k
 
   "physics_rules": [
     "<Plain English physics rule specific to this domain>",
-    "<rule 2>",
-    "<rule 3>",
-    "<rule 4>",
-    "<rule 5>"
+    "<rule 2>", "<rule 3>", "<rule 4>", "<rule 5>"
   ],
 
   "physics_redflags": [
-    {"pattern": "<valid Python regex detecting a physically impossible description>", "label": "<short label>"},
+    {"pattern": "<valid Python regex>", "label": "<short label>"},
     {"pattern": "<regex>", "label": "<label>"},
     {"pattern": "<regex>", "label": "<label>"}
   ],
 
   "simplification_rules": [
-    "<Rule for reducing complex multi-element steps to a single visual action for this domain>"
+    "<Rule for reducing complex steps to a single visual action>"
   ]
 }
 
 IMPORTANT:
 - All patterns in physics_redflags must be valid Python regex strings
-- body_anchors values must contain the literal string {glove_color} as a placeholder
+- body_anchors must contain the literal string {glove_color} as a placeholder
 - Return ONLY the JSON object, no explanation, no markdown fences"""
 
 
-# ─── Prompt 2: called for EVERY step ─────────────────────────────────────────
-# Much simpler than before — Gemini 2.5 Flash Image sees actual prior images
-# directly, so we only need to describe the ACTION and physics constraints.
-# No body anchors, no style lock descriptions, no action_location needed.
+# ─── Prompt 2: Anchor object extraction ──────────────────────────────────────
+# Called ONCE before any steps. Identifies the main physical objects that must
+# look identical across all step images.
 
+ANCHOR_OBJECTS_PROMPT = """You are a visual consistency engineer for a DIY step-by-step image generation pipeline.
+
+Given a DIY project summary, identify the CENTRAL PHYSICAL OBJECTS that will appear
+across multiple step images and must look identical in every step.
+
+Rules for selecting anchor objects:
+- Include ONLY objects that physically appear in multiple steps (2 or more)
+- Include the PRIMARY object being worked on (e.g. the mirror being hung, the faucet being replaced)
+- Include the PRIMARY surface/fixture it attaches to (e.g. the wall, the sink basin)
+- Include any CONTAINER or FIXTURE that stays present across steps (e.g. bucket, cabinet)
+- Do NOT include tools (screwdrivers, wrenches) — they come and go per step
+- Do NOT include consumables (tape, screws, paint) — they are used up
+- Maximum 4 objects. Minimum 1.
+
+For each object, write a photorealistic image generation prompt that:
+- Shows ONLY that single object, isolated on a neutral background
+- Describes it with MAXIMUM specificity: shape, size, colour, material, finish, style
+- Is detailed enough that Gemini can reproduce it identically when used as a reference
+
+Return ONLY valid JSON:
+{
+  "anchor_objects": [
+    {
+      "name": "<short name, e.g. 'mirror', 'wall', 'sink_basin'>",
+      "prompt": "<detailed single-object photorealistic prompt, 30-60 words>"
+    }
+  ]
+}
+
+No preamble. No markdown fences. No explanation."""
+
+
+# ─── Prompt 3: Step action prompt ────────────────────────────────────────────
 IMAGE_GENERATION_PROMPT = """You are an expert image-prompt engineer for Gemini 2.5 Flash Image.
 
-The model you are prompting is MULTIMODAL — it receives actual photographs of prior
-steps as visual input alongside your text. You do NOT need to describe the environment,
-background, glove colour, pipe colour, cabinet style, or lighting. The model can SEE
-all of that from the reference images.
+The model receives actual photographs as visual input:
+- ANCHOR IMAGES: isolated reference photos of the main objects (e.g. the exact mirror, the exact wall)
+- PRIOR STEP IMAGES: photos of earlier steps of this same project
 
-Your ONLY job: describe the single action happening in this step as precisely and
-physically correctly as possible.
+You do NOT describe the environment, object appearance, colours, or style.
+The model can SEE all of that from the reference images.
+
+Your ONLY job: describe the single action happening in this step.
 
 Return ONLY valid JSON:
 {
@@ -78,77 +106,39 @@ Return ONLY valid JSON:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RULE 1 — ONE ACTION ONLY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Pick the SINGLE most visual action from the step. Ignore all others.
-WRONG: "pouring baking soda while vinegar drips and steam rises from the drain"
-RIGHT: "spooning white baking soda powder downward into the sink drain opening"
+Pick the SINGLE most visual action. Ignore all others.
+WRONG: "holding the mirror while marking the wall and checking level"
+RIGHT: "pressing the mirror flat against the wall at the marked position"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-RULE 2 — DESCRIBE ONLY THE ACTION AND IMMEDIATE OBJECTS
+RULE 2 — DESCRIBE ONLY THE ACTION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Do NOT describe:
-- Room, background, walls, floor, ceiling
-- Cabinet colour or style
-- Glove colour or type
-- Pipe colour or material
-- Lighting direction or quality
-- Camera angle or lens
-
-DO describe:
-- What the hands are doing (verb + direction)
-- The tool or material being used (by appearance, not brand name)
-- The object being acted upon
-- The spatial direction of the action (downward, clockwise, inward)
+Do NOT describe: object appearance, colours, materials, room, background,
+glove colour, lighting, camera angle.
+DO describe: action verb + direction, tool by appearance, object being acted upon.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RULE 3 — PHYSICS GATE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-The user message contains domain-specific physics_rules. Obey ALL of them.
-Universal rules that always apply:
-- Liquids flow DOWNWARD only — never sideways, never upward
-- Powder and granules fall DOWNWARD only
-- Heavy objects rest ON surfaces — never float
-- Hands reach FROM a body — never enter from a wall or ceiling
-- Tools point TOWARD the work — not away or at impossible angles
-
-If any element of the action violates physics: REMOVE it entirely.
-A physically correct simple image beats a complex wrong one every time.
+Obey all domain physics_rules in the user message.
+Liquids flow DOWN. Heavy objects rest ON surfaces. Hands connect to a body.
+Remove any physically impossible element entirely.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RULE 4 — NO TEXT, NO BRANDS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-No text overlays, labels, watermarks, brand names, or product names.
-Describe tools by appearance only:
-- NOT "Zip-It drain snake" → "thin flexible plastic barbed strip"
-- NOT "WD-40 can" → "small aerosol spray can"
-- NOT "Channellock pliers" → "wide-jaw slip-joint pliers"
+No text overlays, labels, watermarks, brand names.
+Describe tools by appearance only.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-RULE 5 — SHOW CUMULATIVE WORK STATE
+RULE 5 — CUMULATIVE STATE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-If prior step states are provided in the user message, carry them forward.
-If step 2 removed the P-trap, the open pipe end must be visible in step 3.
-If step 1 placed a bucket, it should still be present in step 2.
-Describe the RESULT STATE visible after this action completes — not just the motion.
+If previous_step_states are provided, carry them forward visually.
+Show what the scene looks like AFTER this action completes.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-imagen_prompt FORMAT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Write 30-70 words covering:
-1. The action verb + direction (e.g. "tightening clockwise", "pouring downward")
-2. The tool/material by appearance
-3. The object being acted upon
-4. Any cumulative visible state from prior steps (e.g. "bucket already positioned below")
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-state_summary FORMAT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-10-20 words describing what PHYSICALLY CHANGED in this step.
-This is stored as memory and passed to future steps.
-Example: "P-trap disconnected and removed, open drain pipe end exposed, bucket below"
-Example: "First primer coat applied to left wall, roller tray on floor"
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-OUTPUT
+imagen_prompt: 30-70 words, action only.
+state_summary: 10-20 words, what physically changed in this step.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {"imagen_prompt": "...", "state_summary": "..."}
-No preamble. No markdown fences. No explanation."""
+No preamble. No markdown. No explanation."""
