@@ -332,15 +332,15 @@ def upsert_embeddings_to_qdrant(
     qdrant_api_key = os.getenv("QDRANT_API_KEY")
     collection_name = collection_name or "projects"
 
-    if not qdrant_url or not qdrant_api_key:
-        raise RuntimeError("QDRANT_URL and QDRANT_API_KEY must be set in env")
+#     if not qdrant_url or not qdrant_api_key:
+#         raise RuntimeError("QDRANT_URL and QDRANT_API_KEY must be set in env")
 
-    qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
+#     qclient = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=False)
 
-    if not embeddings:
-        return {"status": "no_embeddings"}
+#     if not embeddings:
+#         return {"status": "no_embeddings"}
 
-    vector_size = len(embeddings[0])
+#     vector_size = len(embeddings[0])
 
     try:
         qclient.get_collection(collection_name=collection_name)
@@ -359,19 +359,19 @@ def upsert_embeddings_to_qdrant(
         unique_str = f"{mongo_hex_id}-{idx}"
         point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, unique_str))
 
-        payload = {
-            "mongo_id": mongo_hex_id,
-            "chunk_index": idx,
-            "text_preview": txt,
-        }
-        print(payload)
-        if extra_payload:
-            payload.update(extra_payload)
+#         payload = {
+#             "mongo_id": mongo_hex_id,
+#             "chunk_index": idx,
+#             "text_preview": txt,
+#         }
+#         print(payload)
+#         if extra_payload:
+#             payload.update(extra_payload)
 
-        points.append(PointStruct(id=point_id, vector=vec, payload=payload))
+#         points.append(PointStruct(id=point_id, vector=vec, payload=payload))
 
-    qclient.upsert(collection_name=collection_name, points=points)
-    return {"status": "ok", "num_points": len(points), "collection": collection_name}
+#     qclient.upsert(collection_name=collection_name, points=points)
+#     return {"status": "ok", "num_points": len(points), "collection": collection_name}
 
 
 def create_and_store_summary_embeddings_for_project(summary: str, mongo_project_id,
@@ -383,10 +383,10 @@ def create_and_store_summary_embeddings_for_project(summary: str, mongo_project_
     if not summary:
         return {"status": "no_summary"}
 
-    if isinstance(mongo_project_id, ObjectId):
-        mongo_hex = str(mongo_project_id)
-    else:
-        mongo_hex = str(mongo_project_id)
+#     if isinstance(mongo_project_id, ObjectId):
+#         mongo_hex = str(mongo_project_id)
+#     else:
+#         mongo_hex = str(mongo_project_id)
 
     chunks = chunk_text(summary, max_chars=len(summary))
     embeddings = create_embeddings_for_texts(chunks,
@@ -607,7 +607,7 @@ async def chat_with_bot(chat_message: ChatMessage):
 
         if getattr(chatbot, "current_state", None) == "complete":
             await save_information(session_id=session_id)
-            await qdrant_function(project_id=chat_message.project)
+            #await qdrant_function(project_id=chat_message.project)
 
         # Generate suggested messages based on current state
         current_state = getattr(chatbot, "current_state", None)
@@ -781,11 +781,11 @@ async def qdrant_function(project_id: str):
         extra_payload={"project": str(project["_id"])}
     )
 
-    return {
-        "message": "Embeddings upserted successfully",
-        "project_id": str(project["_id"]),
-        "result": qresult
-    }
+#     return {
+#         "message": "Embeddings upserted successfully",
+#         "project_id": str(project["_id"]),
+#         "result": qresult
+#     }
 
 
 @router.get("/debug/projects")
