@@ -1,10 +1,22 @@
-"""Schemas for Image Generation Agent."""
-
 from typing import Optional, List
-
 from pydantic import BaseModel
 
 
+class AnchorObject(BaseModel):
+    """A single anchor object image generated from the project summary."""
+    name: str                        # e.g. "mirror", "wall", "sink"
+    description: str                 # what was prompted
+    s3_key: str
+    url: Optional[str] = None
+    status: str = "complete"
+
+
+class AnchorObjectsResult(BaseModel):
+    """All anchor object images for a project."""
+    objects: List[AnchorObject] = []
+    status: str = "complete"
+
+    
 class VisualContextFrame(BaseModel):
     """A single frame of visual context from a previously generated step image."""
     step_id: str
