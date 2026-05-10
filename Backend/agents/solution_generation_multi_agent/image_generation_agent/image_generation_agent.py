@@ -1,6 +1,5 @@
-"""Image Generation Agent — Gemini 2.5 Flash Image with native visual reference input."""
-
 import io
+import time
 import urllib.request
 from typing import Optional
 
@@ -12,11 +11,10 @@ from loguru import logger
 from config.settings import get_settings
 
 # Model that accepts image inputs AND generates images natively
-GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image"
+GEMINI_IMAGE_MODEL = "gemini-3-pro-image-preview"
 
 
 class ImageGenerationAgent:
-    """Agent using Gemini 2.5 Flash Image for visually consistent step generation."""
 
     def __init__(self, model: Optional[str] = None):
         self.settings = get_settings()
@@ -66,31 +64,45 @@ class ImageGenerationAgent:
                     config=config,
                 )
 
-                candidate = response.candidates[0] if response.candidates else None
-                if candidate is None:
-                    logger.warning(f"Attempt {attempt}: no candidates — retrying")
+                if not response:
+                    logger.warning(f"Attempt {attempt}: null response")
                     continue
 
-                if candidate.content is None:
-                    finish_reason = getattr(candidate, "finish_reason", "unknown")
-                    logger.warning(f"Attempt {attempt}: content is None (finish_reason={finish_reason}) — retrying")
+                candidates = getattr(response, "candidates", None)
+                if not candidates:
+                    # Try response.parts directly (some SDK versions)
+                    parts = getattr(response, "parts", None)
+                    if parts:
+                        for part in parts:
+                            inline = getattr(part, "inline_data", None)
+                            if inline and getattr(inline, "data", None):
+                                logger.info("Image extracted from response.parts")
+                                return inline.data
+                    logger.warning(f"Attempt {attempt}: no candidates or parts in response")
                     continue
 
-                for part in candidate.content.parts:
-                    if part.inline_data is not None:
-                        logger.info("Image generated successfully")
-                        return part.inline_data.data
+                # Standard path: candidates[0].content.parts
+                content = getattr(candidates[0], "content", None)
+                if not content:
+                    logger.warning(f"Attempt {attempt}: candidate has no content")
+                    continue
 
-                logger.warning(f"Attempt {attempt}: no image part in response — retrying")
+                parts = getattr(content, "parts", None) or []
+                for part in parts:
+                    inline = getattr(part, "inline_data", None)
+                    if inline and getattr(inline, "data", None):
+                        logger.info(f"Image generated successfully ({len(inline.data):,} bytes)")
+                        return inline.data
+
+                logger.warning(f"Attempt {attempt}: no image part found in response")
 
             except Exception as e:
-                if attempt < max_attempts:
-                    logger.warning(f"Attempt {attempt} failed: {e} — retrying")
-                else:
-                    logger.error(f"All {max_attempts} attempts failed: {e}")
-                    raise
+                logger.warning(f"Attempt {attempt} failed: {e}")
 
-        raise ValueError("Image generation failed after all retries")
+            if attempt <= max_retries:
+                time.sleep(2 ** attempt)
+
+        raise ValueError(f"Image generation failed after {max_retries + 1} attempts")
 
     @staticmethod
     def _pil_to_part(img: PIL.Image.Image):
