@@ -3,6 +3,7 @@ import json
 import re
 import traceback
 from datetime import datetime
+import time
 
 import boto3
 import requests
@@ -36,90 +37,141 @@ project_collection: Collection = database.get_collection("Project")
 steps_collection: Collection = database.get_collection("ProjectSteps")
 tools_collection: Collection = database.get_collection("Tools")
 
+def _get_image_service() -> ImageGenerationAgentService:
+    """Create a fresh ImageGenerationAgentService. Called per-invocation."""
+    return ImageGenerationAgentService(
+        image_generation_agent=ImageGenerationAgent(),
+        s3_client=s3,
+        project_collection=project_collection,
+    )
 
-def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x1024", summary: str = "", user_id: str | None = None) -> None:
-    """Send one SQS message per step (no batch API)."""
 
-    # LOCAL TESTING: Process images synchronously instead of sending to SQS
-    # Uncomment the block below for local testing
-    # for i, step in enumerate(steps, start=1):
-    #     sum_text = "Overall summary: " + summary + "\n"
-    #     step_text = "CURRENT STEP: " + ", ".join(s for s in step.get("instructions", []) if s and s.strip())
-    #     body = {
-    #         "task": "image_step",
-    #         "project": project_id,
-    #         "step_id": str(i),
-    #         "step_text": step_text,
-    #         "summary_text": sum_text,
-    #         "size": size
-    #     }
-    #     project_collection.update_one({"_id": ObjectId(project_id)},
-    #                                   {"$set": {f"step_generation.steps.{int(i) - 1}.image.status": "in-progress"}})
-    #     handle_image_step(body)
-    # return
+def preflight_image_setup(project_id: str, summary: str) -> None:
+    """
+    Generate Visual DNA + Anchor Objects SYNCHRONOUSLY before any step
+    SQS messages are sent. Blocks until both are written to MongoDB.
 
-    # PRODUCTION: Use SQS
+    This is the fix for:
+      - "Anchor images loaded: 0"
+      - "Visual DNA generated on step 2"
+      - No reference context on step 1
+    """
+    service = _get_image_service()
+
+    # 1. Visual DNA — needed by every step for physics rules + domain
+    existing_dna = service.get_visual_dna(project_id)
+    if existing_dna:
+        print(f"✅ Visual DNA already exists — domain: {existing_dna.get('domain')}")
+    else:
+        print(f"🔍 Generating Visual DNA for project {project_id}")
+        dna = service.generate_visual_dna(summary)
+        service.save_visual_dna(project_id, dna)
+        print(f"✅ Visual DNA saved — domain: {dna.get('domain')}")
+
+    # 2. Anchor objects — needed by every step for object consistency
+    existing_anchors = service.get_anchor_objects(project_id)
+    if existing_anchors and existing_anchors.objects:
+        print(f"✅ Anchor objects already exist: {[o.name for o in existing_anchors.objects]}")
+    else:
+        print(f"🔍 Generating anchor objects for project {project_id}")
+        try:
+            anchor_result = service.generate_anchor_objects(
+                project_id=project_id,
+                summary_text=summary,
+            )
+            print(f"✅ Anchor objects ready: {[o.name for o in anchor_result.objects]}")
+        except Exception as e:
+            # Non-fatal — steps will still generate without anchors
+            print(f"⚠️ Anchor generation failed (non-fatal): {e}")
+
+
+def enqueue_image_tasks(
+        project_id: str,
+        steps: list[dict],
+        size: str = "1536x1024",
+        summary: str = "",
+) -> None:
+    """
+    1. Run preflight (DNA + anchors) synchronously — blocks until complete.
+    2. Enqueue one SQS message per step, staggered so earlier steps
+       complete before later ones start fetching their references.
+    """
     images_sqs_url = settings.AWS_SQS_URL
     if not images_sqs_url:
         print("⚠️ AWS_SQS_URL not set; skipping enqueue")
         return
+
+    # ── PREFLIGHT: must complete before ANY SQS message is sent ─────────────
+    if summary:
+        preflight_image_setup(project_id, summary)
+
+    # ── ENQUEUE: staggered so step N-1 likely finishes before step N starts ──
     for i, step in enumerate(steps, start=1):
         sum_text = "Overall summary: " + summary + "\n"
-        step_text = "CURRENT STEP: " + ", ".join(s for s in step.get("instructions", []) if s and s.strip())
+        step_text = "CURRENT STEP: " + ", ".join(
+            s for s in step.get("instructions", []) if s and s.strip()
+        )
         body = {
             "task": "image_step",
             "project": project_id,
-            "user_id": user_id,
             "step_id": str(i),
             "step_text": step_text,
             "summary_text": sum_text,
-            "size": size
+            "size": size,
         }
-        project_collection.update_one({"_id": ObjectId(project_id)},
-                                      {"$set": {f"step_generation.steps.{int(i) - 1}.image.status": "in-progress"}})
-
-        sqs.send_message(QueueUrl=images_sqs_url, MessageBody=json.dumps(body), DelaySeconds=min((i - 1) * 8, 900))
-
+        project_collection.update_one(
+            {"_id": ObjectId(project_id)},
+            {"$set": {f"step_generation.steps.{i - 1}.image.status": "in-progress"}}
+        )
+        sqs.send_message(
+            QueueUrl=images_sqs_url,
+            MessageBody=json.dumps(body),
+            # Stagger: step1=0s, step2=15s, step3=30s...
+            # 15s gives each step time to generate + upload before next reads it
+            DelaySeconds=min((i - 1) * 15, 900),
+        )
+        print(f"📤 Enqueued step {i} with {(i-1)*15}s delay")
 
 def handle_image_step(msg: dict) -> None:
-    """Generate+upload image for a single step and persist result."""
+    """Generate + upload image for a single step and persist result."""
     project_id = msg["project"]
     step_id = msg["step_id"]
     step_text = msg["step_text"]
     summary_text = msg.get("summary_text")
     size = msg.get("size", "1536x1024")
 
-    image_generation_agent = ImageGenerationAgent()
-    image_generation_service = ImageGenerationAgentService(
-        image_generation_agent=image_generation_agent,
-        s3_client=s3,
-        project_collection=project_collection,   # ← NEW: needed for reference image fetching + visual DNA
-    )
-    result = image_generation_service.generate_step_image(
+    service = _get_image_service()
+
+    # ── Readiness check: wait for DNA + anchors if preflight is still running ─
+    # This handles edge cases where preflight and step1 overlap
+    max_wait_secs = 60
+    waited = 0
+    while waited < max_wait_secs:
+        dna = service.get_visual_dna(project_id)
+        if dna:
+            break
+        print(f"⏳ Step {step_id} waiting for Visual DNA... ({waited}s)")
+        time.sleep(5)
+        waited += 5
+
+    if not dna:
+        print(f"⚠️ Step {step_id}: Visual DNA not ready after {max_wait_secs}s — generating fallback")
+
+    result = service.generate_step_image(
         step_id=step_id,
         step_text=step_text,
         summary_text=summary_text,
         size=size,
         project_id=project_id,
     )
-    res = result.model_dump()
 
-    # Persist the full result so future steps can fetch this image as a reference
+    # Single write — model_dump() includes all fields: url, state_summary, etc.
     project_collection.update_one(
         {"_id": ObjectId(project_id)},
-        {"$set": {f"step_generation.steps.{int(step_id) - 1}.image": res}},
+        {"$set": {f"step_generation.steps.{int(step_id) - 1}.image": result.model_dump()}},
     )
+    print(f"✅ Step {step_id} image complete: {result.url}")
 
-    # ← NEW: persist state_summary separately so fetch_step_states() can read it
-    # (model_dump() includes it if present, but this makes it explicit and
-    #  ensures it's written even if the result schema evolves)
-    if hasattr(result, "state_summary") and result.state_summary:
-        project_collection.update_one(
-            {"_id": ObjectId(project_id)},
-            {"$set": {
-                f"step_generation.steps.{int(step_id) - 1}.image.state_summary": result.state_summary
-            }},
-        )
 
 def reset_all_steps(project_id):
     cursor = project_collection.find_one({"_id": ObjectId(project_id)})
