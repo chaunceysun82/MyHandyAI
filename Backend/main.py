@@ -2,7 +2,7 @@
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 
@@ -15,6 +15,7 @@ settings = get_settings()
 
 # Routers
 from routes import (
+    auth,
     user,
     project,
     steps,
@@ -43,8 +44,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=[
+        "http://localhost:3000",
+        "https://my-handy-ai-amc9.vercel.app",
+    ],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -55,8 +59,14 @@ def root():
     return {"message": "Hello, FastAPI!"}
 
 
+@app.options("/{full_path:path}")
+def preflight_handler(full_path: str):
+    return Response(status_code=204)
+
+
 # Register routes
 app.include_router(user.router, tags=["User"])
+app.include_router(auth.router, tags=["Auth"])
 app.include_router(project.router, tags=["Project"])
 app.include_router(steps.router, tags=["Steps"])
 app.include_router(generation.router, tags=["Generation"])

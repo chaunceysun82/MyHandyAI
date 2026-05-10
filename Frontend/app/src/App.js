@@ -2,6 +2,7 @@ import "./App.css";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
+import AuthCallback from "./pages/auth/AuthCallback";
 import Home from "./pages/Home.jsx";
 import Chat from "./pages/Chat.jsx";
 import MobileWrapper from "./components/MobileWrapper";
@@ -16,6 +17,11 @@ import ToolsPage from "./pages/ToolsPage.jsx";
 import ProjectCompleted from "./pages/ProjectCompleted.jsx";
 import Feedback from "./pages/Feedback.jsx";
 import { trackMetricOnce } from "./services/metrics";
+import {
+	clearAuthStorage,
+	getCognitoTokenExpiration,
+	isCognitoAuthenticated,
+} from "./services/cognitoAuth";
 
 function App() {
 	const navigate = useNavigate();
@@ -24,18 +30,34 @@ function App() {
 	useEffect(() => {
 		trackMetricOnce("app_entered", "app_entered");
 
-		const token =
-			localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
+		const publicPaths = ["/login", "/signup", "/auth/callback"];
+		const isPublicPath = publicPaths.includes(location.pathname);
+		const isAuthenticated = isCognitoAuthenticated();
+
+		if (!isAuthenticated && !isPublicPath) {
+			clearAuthStorage();
+			navigate("/login", { replace: true });
+			return;
+		}
+
 		if (
-			token &&
+			isAuthenticated &&
 			(location.pathname === "/login" || location.pathname === "/signup")
 		) {
 			navigate("/home");
 		}
 
-		if (!token && location.pathname === "/") {
-			navigate("/login");
+		const expiresAt = getCognitoTokenExpiration();
+		if (!expiresAt) {
+			return;
 		}
+
+		const timeout = window.setTimeout(() => {
+			clearAuthStorage();
+			navigate("/login", { replace: true });
+		}, Math.max(expiresAt - Date.now(), 0));
+
+		return () => window.clearTimeout(timeout);
 	}, [navigate, location.pathname]);
 
 	return (
@@ -44,8 +66,7 @@ function App() {
 				<Route
 					path="/"
 					element={
-						localStorage.getItem("authToken") ||
-						sessionStorage.getItem("authToken") ? (
+						isCognitoAuthenticated() ? (
 							<Navigate to="/home" replace />
 						) : (
 							<Navigate to="/login" replace />
@@ -56,6 +77,7 @@ function App() {
 				<Route path="/home" element={<Home />} />
 				<Route path="/login" element={<Login key={location.pathname} />} />
 				<Route path="/signup" element={<Signup key={location.pathname} />} />
+				<Route path="/auth/callback" element={<AuthCallback />} />
 				<Route path="/chat" element={<Chat />} />
 				<Route path="/onboarding/" element={<OnboardingWelcome />} />
 				<Route path="/onboarding/complete" element={<OnboardingComplete />} />

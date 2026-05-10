@@ -1,4 +1,6 @@
 // src/services/overview.js
+import { authHeaders } from "./api";
+
 const API = process.env.REACT_APP_BASE_URL;
 const log = (...args) => console.log("[Overview]", ...args);
 
@@ -18,7 +20,9 @@ function errMsg(res, body) {
 
 export async function fetchEstimations(projectId) {
 	const url = `${API}/generation/estimation/${encodeURIComponent(projectId)}`;
-	const res = await fetch(url);
+	const res = await fetch(url, {
+		headers: authHeaders(),
+	});
 	const body = await safeJson(res);
 
 	log("fetchEstimations:response", { url, status: res.status });
@@ -42,7 +46,9 @@ export async function fetchSteps(projectId) {
 	// }
 
 	let url = `${API}/generation/steps/${encodeURIComponent(projectId)}`;
-	let res = await fetch(url);
+	let res = await fetch(url, {
+		headers: authHeaders(),
+	});
 	let body = await safeJson(res);
 
 	log("fetchSteps:response(generated)", { url, status: res.status });

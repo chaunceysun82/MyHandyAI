@@ -23,12 +23,11 @@ class StepsGenerationAgentService:
             questions: Optional[List[str]] = None,
             matched_summary: Optional[str] = None,
             matched_steps: Optional[Any] = None,
-            project_id: Optional[str] = None,
-            user_id: Optional[str] = None
+            kb_knowledge: Optional[str] = None,          # NEW — KB reference context
     ) -> Dict[str, Any]:
         """
         Generate step-by-step plan with context building and prompt augmentation.
-        
+
         Args:
             tools: Generated tools from ToolsAgent (format: {"tools": [...]})
             summary: Project summary from information gathering
@@ -36,14 +35,22 @@ class StepsGenerationAgentService:
             questions: Questions that were asked (optional)
             matched_summary: Similar project summary for adaptation (optional)
             matched_steps: Similar project steps for adaptation (optional)
-            
+            kb_knowledge: Knowledge-base reference string with similar job's
+                          summary, tools, materials, and warnings (optional).
+                          When supplied, the agent uses this as additional
+                          domain context to improve step accuracy and safety.
+
         Returns:
             Dictionary with steps array and metadata in the format expected by worker_lambda
         """
         logger.info("Starting steps generation with context building")
 
         # Build system prompt with adaptation instructions if needed
-        system_prompt = self._build_system_prompt(matched_summary, matched_steps)
+        system_prompt = self._build_system_prompt(
+            matched_summary=matched_summary,
+            matched_steps=matched_steps,
+            kb_knowledge=kb_knowledge,
+        )
 
         print("system_prompt:", system_prompt)  # Debug print
 
@@ -60,9 +67,7 @@ class StepsGenerationAgentService:
         # Generate steps using agent
         steps_plan: StepsPlan = self.steps_generation_agent.generate_project_steps(
             system_prompt=system_prompt,
-            user_instruction=user_instruction,
-            project_id=project_id,
-            user_id=user_id
+            user_instruction=user_instruction
         )
 
         # Convert to expected format
@@ -71,12 +76,26 @@ class StepsGenerationAgentService:
     def _build_system_prompt(
             self,
             matched_summary: Optional[str] = None,
-            matched_steps: Optional[Any] = None
+            matched_steps: Optional[Any] = None,
+            kb_knowledge: Optional[str] = None,
     ) -> str:
-        """Build augmented system prompt with adaptation instructions if needed."""
-        # Use v1 prompt as base (already adapted for structured output)
+        """Build augmented system prompt with adaptation and KB instructions if needed."""
         prompt = GENERATION_STEPS_PROMPT
 
+        # --- KB knowledge block (injected first so agent has domain context
+        #     before it sees the adaptation instructions) ---
+        if kb_knowledge:
+            prompt += (
+                "\n\nKNOWLEDGE BASE CONTEXT:\n"
+                "The following information comes from a verified knowledge base article "
+                "about a similar type of job. Use it as domain reference to improve the "
+                "accuracy, safety warnings, and tool usage in the steps you generate. "
+                "Do NOT copy steps verbatim — adapt them to the specific project summary "
+                "and user context provided below.\n\n"
+                f"{kb_knowledge}\n"
+            )
+
+        # --- Matched-project adaptation block (unchanged from original) ---
         if matched_steps:
             try:
                 matched_steps_text = json.dumps(matched_steps, indent=2)
@@ -168,7 +187,6 @@ class StepsGenerationAgentService:
                 "completed": False
             })
 
-        # Generate project summary card
         project_summary = {
             "step_count": f"Step {1}/{steps_plan.total_steps}",
             "estimated_duration": minutes_to_human(steps_plan.estimated_time_minutes),

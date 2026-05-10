@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from bson import ObjectId
 from fastapi import HTTPException
@@ -17,6 +17,12 @@ settings = get_settings()
 database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
 tools_collection: Collection = database.get_collection("Tools")
+
+# KB collection (populated by the scraping/ingestion pipeline)
+kb_collection: Collection = database.get_collection("kb_documents")
+
+KB_COLLECTION_NAME = "kb_summaries"
+KB_SIMILARITY_THRESHOLD = 0.7
 
 
 def store_tool_in_database(tool_data: Dict[str, Any]) -> str:
@@ -47,17 +53,14 @@ def create_and_store_tool_embeddings(tool_data: Dict[str, Any], tool_id: str):
     """
     Create embeddings for a tool and store them in Qdrant tools collection.
     """
-    # Create text representation for embedding
     tool_text = f"{tool_data['name']} {tool_data['description']} {tool_data.get('category', '')} {' '.join(tool_data.get('tags', []))}"
 
-    # Generate embedding
     embedding = create_embeddings_for_texts([tool_text],
                                             model=settings.OPENAI_EMBEDDING_MODEL)
 
     if not embedding:
         return {"status": "embedding_failed"}
 
-    # Store in Qdrant tools collection
     qresult = upsert_embeddings_to_qdrant(
         mongo_hex_id=tool_id,
         embeddings=embedding,
@@ -73,15 +76,10 @@ def create_and_store_tool_embeddings(tool_data: Dict[str, Any], tool_id: str):
     return qresult
 
 
-# Qdrant operations are now centralized in database/qdrant.py
-
-
 def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
     """
     Find similar tools in Qdrant based on semantic similarity.
-    Uses centralized Qdrant operations from database/qdrant.py
     """
-    # Generate embedding for the query
     query_embedding = create_embeddings_for_texts([query],
                                                   model=settings.OPENAI_EMBEDDING_MODEL)
 
@@ -89,7 +87,6 @@ def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float =
         return []
 
     try:
-        # Search in tools collection using centralized function
         search_result = search_similar_vectors(
             query_vector=query_embedding[0],
             collection_name="tools",
@@ -99,10 +96,8 @@ def find_similar_tools(query: str, limit: int = 5, similarity_threshold: float =
 
         similar_tools = []
         for result in search_result:
-            # Note: search_similar_vectors already filters by score_threshold, but we check again for safety
             score = getattr(result, "score", 0.0)
             if score >= similarity_threshold:
-                # Get tool details from MongoDB
                 tool_id = result.payload.get("tool_id")
                 if tool_id:
                     tool_doc = tools_collection.find_one({"_id": ObjectId(tool_id)})
@@ -142,8 +137,111 @@ def update_tool_usage(tool_id: str):
     )
 
 
-# Qdrant operations are now centralized in database/qdrant.py
+# ---------------------------------------------------------------------------
+# KB (Knowledge Base) similarity search
+# ---------------------------------------------------------------------------
 
+def search_kb_by_summary(summary: str, top_k: int = 1) -> Optional[Dict[str, Any]]:
+    """
+    Search the Qdrant kb_summaries collection for the most similar KB document
+    to the given summary text.
+
+    Returns a dict with:
+        score       : float  — cosine similarity (0–1)
+        kb_mongo_id : str    — MongoDB _id of the kb_document
+        summary     : str    — stored summary text
+        tools       : list   — extracted tools from kb_document
+        materials   : list   — extracted materials from kb_document
+        warnings    : list   — extracted warnings from kb_document
+        url         : str    — source URL
+
+    Returns None if no match is found or on any error.
+    """
+    if not summary or not summary.strip():
+        return None
+
+    try:
+        embeddings = create_embeddings_for_texts([summary], model=settings.OPENAI_EMBEDDING_MODEL)
+    except Exception as e:
+        print(f"⚠️ KB search: embedding creation failed: {e}")
+        return None
+
+    if not embeddings:
+        return None
+
+    query_vec = embeddings[0]
+
+    try:
+        qclient = get_qdrant_client()
+    except RuntimeError as e:
+        print(f"⚠️ KB search: Qdrant client unavailable: {e}")
+        return None
+
+    # Verify the collection exists
+    try:
+        qclient.get_collection(collection_name=KB_COLLECTION_NAME)
+    except UnexpectedResponse as ex:
+        if getattr(ex, "status_code", None) == 404:
+            print(f"⚠️ KB search: collection '{KB_COLLECTION_NAME}' does not exist yet")
+            return None
+        print(f"⚠️ KB search: Qdrant error: {ex}")
+        return None
+
+    try:
+        response = qclient.query_points(
+            collection_name=KB_COLLECTION_NAME,
+            query=query_vec,
+            limit=top_k,
+            with_payload=True,
+        )
+        hits = response.points
+    except Exception as e:
+        print(f"⚠️ KB search: query failed: {e}")
+        return None
+
+    if not hits:
+        return None
+
+    best = hits[0]
+    score = float(getattr(best, "score", 0.0))
+    payload = best.payload or {}
+    kb_mongo_id = payload.get("mongo_id")
+
+    # Fetch full KB document from MongoDB to get tools / materials / warnings
+    tools, materials, warnings = [], [], []
+    kb_summary_text = payload.get("summary", "")
+    url = payload.get("url", "")
+
+    if kb_mongo_id:
+        try:
+            kb_doc = kb_collection.find_one({"_id": ObjectId(kb_mongo_id)})
+            if kb_doc:
+                extracted = kb_doc.get("extracted", {})
+                tools = extracted.get("tools", []) or []
+                materials = extracted.get("materials", []) or []
+                warnings = extracted.get("warnings", []) or []
+                # Prefer the stored summary text from Mongo if available
+                kb_summary_text = extracted.get("summary", kb_summary_text)
+                url = kb_doc.get("url", url)
+        except Exception as e:
+            print(f"⚠️ KB search: MongoDB fetch failed for {kb_mongo_id}: {e}")
+
+    print(f"🔍 KB search: best score={score:.4f} url={url}")
+
+    return {
+        "score": score,
+        "kb_mongo_id": kb_mongo_id,
+        "summary": kb_summary_text,
+        "tools": tools,
+        "materials": materials,
+        "warnings": warnings,
+        "url": url,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Project similarity search (unchanged)
+# ---------------------------------------------------------------------------
 
 def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "project_summaries"):
     """
@@ -196,14 +294,12 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
             print(f"❌ Qdrant error: {str(ex)}")
             raise HTTPException(status_code=500, detail=f"Qdrant error: {str(ex)}")
 
-    # search (request a few extra to allow skipping self-matches)
     limit = top_k + 5
     try:
-        # FIXED: Upgraded to use query_points() for Qdrant client 1.10+
         response = qclient.query_points(
-            collection_name=collection_name, 
-            query=query_vec, 
-            limit=limit, 
+            collection_name=collection_name,
+            query=query_vec,
+            limit=limit,
             with_payload=True
         )
         hits = response.points
@@ -224,7 +320,6 @@ def similar_by_project(project_id: str, top_k: int = 2, collection_name: str = "
         chunk_index = payload.get("chunk_index")
         score = getattr(hit, "score", None)
 
-        # skip exact self-match
         if mongo_id_str and mongo_id_str == str(project.get("_id")):
             continue
 

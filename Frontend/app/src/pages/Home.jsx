@@ -1,22 +1,26 @@
 // src/pages/Home.jsx
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import ProjectCard from "../components/ProjectCard";
+import ChatWindow from "../components/Chat/ChatWindow";
 import LoadingPlaceholder from "../components/LoadingPlaceholder";
 import SideNavbar from "../components/SideNavbar";
 import MobileWrapper from "../components/MobileWrapper";
-import { fetchProjects, createProject, deleteProject, completeProject, updateProject } from "../services/projects";
-import { getUserById } from "../services/auth";
+import { fetchProjects, createProject, deleteProject, completeProject, updateProject, fetchGenerationStatus } from "../services/projects";
+import { getUserById, syncCognitoUser } from "../services/auth";
+import { clearAuthStorage, getCognitoIdToken, isCognitoAuthenticated } from "../services/cognitoAuth";
 import defaultHome from "../../src/assets/default-home.png";
 import { ReactComponent as Filter } from '../../src/assets/Frame.svg';
 
 
 export default function Home() {
   const navigate = useNavigate();
-  const token =
+  const location = useLocation();
+  const storedToken =
     localStorage.getItem("authToken") ||
     sessionStorage.getItem("authToken");
+  const [token, setToken] = useState(storedToken);
   
   const [userName, setUserName] = useState(
     localStorage.getItem("displayName") ||
@@ -48,6 +52,7 @@ export default function Home() {
   const [projectToRename, setProjectToRename] = useState(null);
   const [newProjectName, setNewProjectName] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
+  const [activeChatProject, setActiveChatProject] = useState(null);
 
   // Function to get first name with first letter capitalized
   // Extracts first name from "First Last" format and capitalizes first letter
@@ -67,6 +72,43 @@ export default function Home() {
 
   const openSidebar = () => setIsSidebarOpen(true);
   const closeSidebar = () => setIsSidebarOpen(false);
+
+  const openProject = async (project) => {
+    const progress = Number(project.percentComplete) || 0;
+    const isCompleted = progress >= 100;
+
+    try {
+      const generationStatus = await fetchGenerationStatus(project._id);
+      if (generationStatus?.message === "generation completed") {
+        navigate(`/projects/${project._id}/overview`, {
+          state: { userId: token, userName },
+        });
+        return;
+      }
+    } catch (err) {
+      console.log("Generation status not ready:", err);
+    }
+
+    if (isCompleted) {
+      navigate(`/projects/${project._id}/overview`, {
+        state: { userId: token, userName },
+      });
+      return;
+    }
+
+    setActiveChatProject({
+      projectId: project._id,
+      projectName: project.projectTitle,
+    });
+  };
+
+  useEffect(() => {
+    const pendingChatProject = location.state?.openChatProject;
+    if (!pendingChatProject?.projectId) return;
+
+    setActiveChatProject(pendingChatProject);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
 
   // Get project counts for tabs
   const ongoingCount = projects.filter(p => p.percentComplete < 100).length;
@@ -112,10 +154,37 @@ export default function Home() {
   }, [showFilterMenu]);
 
   useEffect(() => {
-    if (!token) {
-      navigate("/login", { replace: true });
-      return;
-    }
+    async function loadHome() {
+      let activeToken = token;
+
+      if (!activeToken && isCognitoAuthenticated()) {
+        try {
+          const syncedUser = await syncCognitoUser(getCognitoIdToken());
+          activeToken = syncedUser.id;
+          localStorage.setItem("authToken", syncedUser.id);
+          localStorage.setItem(
+            "displayName",
+            [syncedUser.firstname, syncedUser.lastname].filter(Boolean).join(" ") ||
+              syncedUser.email ||
+              "User"
+          );
+          localStorage.setItem("userEmail", syncedUser.email || "");
+          setToken(syncedUser.id);
+        } catch (err) {
+          console.error("Home auth sync failed:", err);
+        }
+      }
+
+      if (!isCognitoAuthenticated()) {
+        clearAuthStorage();
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      if (!activeToken) {
+        navigate("/login", { replace: true });
+        return;
+      }
 
     // Check where user is coming from
     const isFromOnboarding = localStorage.getItem("fromOnboarding") === "true";
@@ -134,7 +203,7 @@ export default function Home() {
 
     if (!localStorage.getItem("displayName") &&
        !sessionStorage.getItem("displayName")) {
-     getUserById(token).then(u => {
+     getUserById(activeToken).then(u => {
        const full = [u.firstname, u.lastname].filter(Boolean).join(" ") || (u.email ?? "User");
        setUserName(full);
        const store = localStorage.getItem("authToken") ? localStorage : sessionStorage;
@@ -142,7 +211,7 @@ export default function Home() {
      }).catch(() => {}); // ignore for Google-only ids
     }
 
-    fetchProjects(token)
+    fetchProjects(activeToken)
       .then(data => {
         console.log('Home: fetchProjects result:', data);
         console.log('Home: First project data:', data[0]);
@@ -154,6 +223,9 @@ export default function Home() {
         setError(err.message);
         setLoading(false);
       });
+    }
+
+    loadHome();
   }, [token, navigate]);
 
   function openModal() {
@@ -195,8 +267,10 @@ export default function Home() {
 
       setShowModal(false);
 
-      /*Navigate to chat page with new project*/
-      navigate("/chat", {state: {projectId: newProject._id, projectName: newProject.projectTitle, userId: token, userName: userName}});
+      setActiveChatProject({
+        projectId: newProject._id,
+        projectName: newProject.projectTitle,
+      });
 
     } catch (err) {
       console.error("createProject:", err);
@@ -334,14 +408,14 @@ export default function Home() {
       {/* Main Content Container */}
       <div className="flex-1 flex flex-col bg-[#fffef6] h-screen overflow-hidden relative">
         {/* Header */}
-        <div className="p-4 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <h1 className="text-[20px] font-regular text-[#000000]">
-              {welcomeType === "welcome" ? "Welcome" : "Welcome back"}, <span className="text-black font-bold text-[20px]">{getFirstName(userName)}</span>
+        <div className="border-b border-gray-100 flex-shrink-0">
+          <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-4 lg:px-8 lg:py-6">
+            <h1 className="text-[20px] font-regular text-[#000000] lg:text-[28px]">
+              {welcomeType === "welcome" ? "Welcome" : "Welcome back"}, <span className="text-black font-bold text-[20px] lg:text-[28px]">{getFirstName(userName)}</span>
             </h1>
             <button 
               onClick={openSidebar}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="rounded-lg p-2 transition-colors hover:bg-gray-100 lg:p-3"
             >
               <svg className="w-6 h-6 text-[#000000]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -352,110 +426,123 @@ export default function Home() {
 
         {/* Error Message */}
         {error && (
-          <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex-shrink-0">
-            <p className="text-sm text-red-700">{error}</p>
+          <div className="mx-auto mt-4 w-full max-w-6xl px-4 lg:px-8">
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 flex-shrink-0">
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
           </div>
         )}
 
         {/* Content Area - Takes remaining space with max height */}
-        <div className="flex-1 px-6 py-6 overflow-hidden">
+        <div className="mx-auto flex-1 w-full max-w-6xl overflow-hidden px-4 py-4 lg:px-8 lg:py-8">
           {/* Project Category Tabs */}
-          <div className="flex mb-4">
-            <button
-              onClick={() => setActiveTab("ongoing")}
-              className={`flex-1 py-1 px-4 rounded-l-[21.63px] text-[16px] font transition-colors border ${
-                activeTab === "ongoing"
-                  ? "bg-[#1484A3] text-white border-[#1484A3] font-medium"
-                  : "bg-[#FFFFFF] text-[#000000] border-[#1484A3] font-regular"
-              }`}
-            >
-              Ongoing 
-            </button>
-            <button
-              onClick={() => setActiveTab("completed")}
-              className={`flex-1 py-1 px-4 rounded-r-[21.63px] text-[16px] font transition-colors border ${
-                activeTab === "completed"
-                  ? "bg-[#1484A3] text-white border-[#1484A3] font-medium"
-                  : "bg-[#FFFFFF] text-[#000000] border-[#1484A3] font-regular"
-              }`}
-            >
-              Completed 
-            </button>
-          </div>
-
-          {/* Search and Filter Bar */}
-          <div className="flex items-center gap-3 mb-1">
-            <div className="flex-1 relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-[#000000]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+          <div className="mb-3 flex flex-col gap-3 lg:mb-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="lg:max-w-md lg:flex-1">
+              <div className="flex mb-3 lg:mb-4">
+                <button
+                  onClick={() => setActiveTab("ongoing")}
+                  className={`flex-1 py-1 px-4 rounded-l-[21.63px] text-[16px] font transition-colors border ${
+                    activeTab === "ongoing"
+                      ? "bg-[#1484A3] text-white border-[#1484A3] font-medium"
+                      : "bg-[#FFFFFF] text-[#000000] border-[#1484A3] font-regular"
+                  }`}
+                >
+                  Ongoing 
+                </button>
+                <button
+                  onClick={() => setActiveTab("completed")}
+                  className={`flex-1 py-1 px-4 rounded-r-[21.63px] text-[16px] font transition-colors border ${
+                    activeTab === "completed"
+                      ? "bg-[#1484A3] text-white border-[#1484A3] font-medium"
+                      : "bg-[#FFFFFF] text-[#000000] border-[#1484A3] font-regular"
+                  }`}
+                >
+                  Completed 
+                </button>
               </div>
-              <input
-                type="text"
-                placeholder="Search for projects"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-1.5 bg-[#FFFFFF] border border-[#000000] rounded-[15px] font-light text-[12px] text-[#000000] placeholder-[#000000]"
-              />
-            </div>
-            
-            {/* Filter Button */}
-            <div className="filter-menu-container relative">
-              <button
-                onClick={() => setShowFilterMenu(!showFilterMenu)}
-                className="p-4 hover:bg-gray-100 transition-colors rounded-[15px] flex items-center justify-center"
-              >
-                {/* <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.707A1 1 0 013 7V4z" />
-                </svg> */}
-                <Filter className="h-5 w-5 text-gray-600" />
-              </button>
-              
-              {/* Filter Menu Dropdown */}
-              {showFilterMenu && (
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
-                  <div className="py-2">
-                    <button
-                      onClick={() => {
-                        setSearchQuery("");
-                        setShowFilterMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                    >
-                      Clear Search
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActiveTab("ongoing");
-                        setShowFilterMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                    >
-                      Show Ongoing Only
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActiveTab("completed");
-                        setShowFilterMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                    >
-                      Show Completed Only
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActiveTab("ongoing");
-                        setSearchQuery("");
-                        setShowFilterMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                    >
-                      Reset All Filters
-                    </button>
+
+              <div className="flex items-center gap-3 mb-1">
+                <div className="flex-1 relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="h-5 w-5 text-[#000000]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
                   </div>
+                  <input
+                    type="text"
+                    placeholder="Search for projects"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-1.5 bg-[#FFFFFF] border border-[#000000] rounded-[15px] font-light text-[12px] text-[#000000] placeholder-[#000000]"
+                  />
                 </div>
-              )}
+
+                <div className="filter-menu-container relative">
+                  <button
+                    onClick={() => setShowFilterMenu(!showFilterMenu)}
+                    className="p-2.5 hover:bg-gray-100 transition-colors rounded-[15px] flex items-center justify-center lg:p-4"
+                  >
+                    <Filter className="h-5 w-5 text-gray-600" />
+                  </button>
+                  
+                  {showFilterMenu && (
+                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                      <div className="py-2">
+                        <button
+                          onClick={() => {
+                            setSearchQuery("");
+                            setShowFilterMenu(false);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                        >
+                          Clear Search
+                        </button>
+                        <button
+                          onClick={() => {
+                            setActiveTab("ongoing");
+                            setShowFilterMenu(false);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                        >
+                          Show Ongoing Only
+                        </button>
+                        <button
+                          onClick={() => {
+                            setActiveTab("completed");
+                            setShowFilterMenu(false);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                        >
+                          Show Completed Only
+                        </button>
+                        <button
+                          onClick={() => {
+                            setActiveTab("ongoing");
+                            setSearchQuery("");
+                            setShowFilterMenu(false);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                        >
+                          Reset All Filters
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="hidden lg:grid lg:min-w-[320px] lg:grid-cols-2 lg:gap-4">
+              <div className="rounded-2xl border border-[#d7e8ed] bg-white px-4 py-3 shadow-sm">
+                <p className="text-xs uppercase tracking-[0.16em] text-[#6b7a80]">Active view</p>
+                <p className="mt-2 text-2xl font-semibold text-[#12252d]">
+                  {activeTab === "ongoing" ? ongoingCount : completedCount}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-[#d7e8ed] bg-white px-4 py-3 shadow-sm">
+                <p className="text-xs uppercase tracking-[0.16em] text-[#6b7a80]">Total projects</p>
+                <p className="mt-2 text-2xl font-semibold text-[#12252d]">{projects.length}</p>
+              </div>
             </div>
           </div>
 
@@ -486,7 +573,7 @@ export default function Home() {
               </p>
             </div>
           ) : (
-            <div className="space-y-4 overflow-y-auto h-full pr-2">
+            <div className="flex h-full flex-col gap-2.5 overflow-y-auto pr-1 lg:gap-4 lg:pr-2 xl:grid xl:content-start xl:grid-cols-2 xl:gap-x-6 xl:gap-y-4">
               {filteredProjects.map((p) => {
                 console.log('Home: Rendering ProjectCard with data:', {
                   id: p._id,
@@ -503,7 +590,7 @@ export default function Home() {
                     projectTitle={p.projectTitle}
                     lastActivity={p.lastActivity}
                     percentComplete={p.percentComplete}
-                    							onStartChat={() => navigate("/chat", {state: {projectId: p._id, projectName: p.projectTitle, userId: token, userName: userName}})}
+                    onStartChat={() => openProject(p)}
                     onRemove={handleRemoveProject}
                     onComplete={() => showCompletionConfirmation(p)}
                     onRename={() => showRenameConfirmation(p)}
@@ -517,14 +604,14 @@ export default function Home() {
 
         {/* Footer - Always at bottom */}
         <div className="flex-shrink-0 border-gray-100 bg-[#fffef6]">
-          <div className="p-4">
-            <div className="text-left">
+          <div className="mx-auto w-full max-w-6xl p-4 lg:px-8 lg:py-6">
+            <div className="text-left lg:flex lg:items-center lg:justify-between lg:gap-6">
               <p className="text-base ml-1 font-medium text-[#000000] mb-4">
                 Need help solving household problem!
               </p>
               <button
                 onClick={openModal}
-                className="w-full bg-[#1484A3] hover:bg-[#066580] px-4 py-1.5 rounded-[21.63px] text-[#FFFFFF] transition-colors flex items-center justify-center space-x-2"
+                className="w-full bg-[#1484A3] hover:bg-[#066580] px-4 py-1.5 rounded-[21.63px] text-[#FFFFFF] transition-colors flex items-center justify-center space-x-2 lg:w-auto lg:min-w-[260px]"
                 style={{
                   boxShadow: '0px 6px 12px 0px rgba(0, 0, 0, 0.1)',
                 }}
@@ -545,6 +632,18 @@ export default function Home() {
           onClose={closeSidebar} 
           onStartNewProject={openModal}
         />
+
+        {activeChatProject && (
+          <ChatWindow
+            isOpen={!!activeChatProject}
+            onClose={() => setActiveChatProject(null)}
+            projectId={activeChatProject.projectId}
+            projectName={activeChatProject.projectName}
+            userId={token}
+            userName={userName}
+            URL={process.env.REACT_APP_BASE_URL}
+          />
+        )}
       </div>
 
       {/* New Project Modal */}

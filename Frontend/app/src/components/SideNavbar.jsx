@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import defaultNavLogo from '../assets/default_nav_logo.png';
+import { redirectToCognitoLogout } from "../services/cognitoAuth";
 
 export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
   const navigate = useNavigate();
@@ -15,16 +16,7 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
   };
 
   const confirmSignOut = () => {
-    // Clear all stored data
-    localStorage.removeItem("authToken");
-    sessionStorage.removeItem("authToken");
-    localStorage.removeItem("chatMessages");
-    localStorage.removeItem("introShown");
-    localStorage.removeItem("displayName");
-    sessionStorage.removeItem("displayName");
-    
-    // Navigate to login
-    navigate("/login", { replace: true });
+    redirectToCognitoLogout();
   };
 
   const cancelSignOut = () => {

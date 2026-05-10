@@ -82,9 +82,7 @@ export async function trackMetricOnce(key, eventType, payload = {}) {
 		return null;
 	}
 
+	markMetricTracked(key);
 	const result = await trackMetric(eventType, payload);
-	if (result) {
-		markMetricTracked(key);
-	}
 	return result;
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import ChatHeader from "./ChatHeader";
 import MessageList from "./MessageList";
@@ -6,6 +6,7 @@ import ChatInput from "./ChatInput";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { RotatingLines } from "react-loader-spinner";
+import { axiosAuthConfig } from "../../services/api";
 
 export default function ChatWindow({
   isOpen,
@@ -20,8 +21,9 @@ export default function ChatWindow({
 }) {
   const [render, setRender] = useState(isOpen);
   const [closing, setClosing] = useState(false);
-  const [opening, setOpening] = useState(false);
+  const [opening, setOpening] = useState(isOpen);
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(false);
   const [status, setStatus] = useState(false);
   const [status2, setStatus2] = useState(false);
 
@@ -55,6 +57,17 @@ export default function ChatWindow({
   const STORAGE_TOOLS_KEY   = `owned_tools_${userId}_${projectId}`;
 
   const navigate = useNavigate();
+
+  const requestClose = useCallback(() => {
+    if (closing) return;
+
+    setClosing(true);
+    window.setTimeout(() => {
+      onClose?.();
+      setClosing(false);
+      setRender(false);
+    }, 300);
+  }, [closing, onClose]);
 
   const [messages, setMessages] = useState(() => {
     const saved = localStorage.getItem(STORAGE_MESSAGES_KEY);
@@ -105,7 +118,7 @@ export default function ChatWindow({
     const up = () => {
       const shouldClose = drag.dy > THRESHOLD;
       setDrag({ active: false, startY: 0, dy: 0 });
-      if (shouldClose) onClose?.();
+      if (shouldClose) requestClose();
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -115,7 +128,7 @@ export default function ChatWindow({
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
     };
-  }, [drag.active, drag.dy, drag.startY, onClose]);
+  }, [drag.active, drag.dy, drag.startY, requestClose]);
 
   // Mount/unmount animation
   useEffect(() => {
@@ -136,20 +149,24 @@ export default function ChatWindow({
     if (!render) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const onKey = (e) => e.key === "Escape" && onClose?.();
+    const onKey = (e) => e.key === "Escape" && requestClose();
     window.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener("keydown", onKey);
     };
-  }, [render, onClose]);
+  }, [render, requestClose]);
 
   // Generation status poll (step flow)
   useEffect(() => {
     const getStatus = async () => {
       if (status === true) {
         try {
-          const response = await axios.post(`${URL}/generation/all/${projectId}`);
+          const response = await axios.post(
+            `${URL}/generation/all/${projectId}`,
+            null,
+            axiosAuthConfig()
+          );
           if (response) setStatus2(true);
         } catch (err) {
           console.log("Err: ", err);
@@ -163,7 +180,10 @@ export default function ChatWindow({
     if (status2 === true) {
       const interval = setInterval(async () => {
         try {
-          const response = await axios.get(`${URL}/generation/status/${projectId}`);
+          const response = await axios.get(
+            `${URL}/generation/status/${projectId}`,
+            axiosAuthConfig()
+          );
           if (response) {
             const message = response.data.message;
             if (message === "generation completed") {
@@ -218,7 +238,10 @@ export default function ChatWindow({
   // Load or start session
   useEffect(() => {
     async function loadOrStartSession() {
-      const sessionRes= await axios.get(`${URL}/${api}/thread/${projectId}`);
+      setInitializing(true);
+
+      try {
+      const sessionRes= await axios.get(`${URL}/${api}/thread/${projectId}`, axiosAuthConfig());
       const conversationStatus = sessionRes.data?.conversation_status;
       
       // Don't initialize if conversation is already COMPLETED
@@ -230,7 +253,8 @@ export default function ChatWindow({
           try {
             setLoading(true);
             const historyRes = await axios.get(
-              `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`
+              `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`,
+              axiosAuthConfig()
             );
             const formattedMessages = historyRes.data.messages.map(
               ({ role, content }) => {
@@ -283,7 +307,7 @@ export default function ChatWindow({
             `${URL}/${api}/initialize`,
             // chatbot expects {user, project}; step-guidance ignores user.
             { project_id: projectId },
-            { headers: { "Content-Type": "application/json" } }
+            axiosAuthConfig({ headers: { "Content-Type": "application/json" } })
           );
            console.log("🆕 New Chat: ", res);
           setSessionId(res.data.thread_id);
@@ -308,10 +332,14 @@ export default function ChatWindow({
           });
         } catch (err) {
           console.error("Intro message error", err);
+          setMessages([{ sender: "bot", content: "Failed to start chat. Please close and try again." }]);
+          setLoading(false);
         }
       } else {
         // Console log the existing session ID
         setLoading(true);
+        setSessionId(sessionRes.data.thread_id);
+        localStorage.setItem(STORAGE_SESSION_KEY, sessionRes.data.thread_id);
         console.log("🔄 Existing Chat Session Loaded:", {
           sessionId: sessionRes.data.thread_id,
           api: api,
@@ -322,7 +350,8 @@ export default function ChatWindow({
         try {
           // fetch history from the right API family
           const historyRes = await axios.get(
-            `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`
+            `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`,
+            axiosAuthConfig()
           );
           const formattedMessages = historyRes.data.messages.map(
             ({ role, content }) => {
@@ -367,7 +396,15 @@ export default function ChatWindow({
 
         } catch (err) {
           setMessages([{ sender: "bot", content: "Failed to load chat history." }]);
+          setLoading(false);
         }
+      }
+      } catch (err) {
+        console.error("Chat session setup error:", err);
+        setMessages([{ sender: "bot", content: "Failed to get chat ready. Please close and try again." }]);
+        setLoading(false);
+      } finally {
+        setInitializing(false);
       }
     }
     loadOrStartSession();
@@ -377,6 +414,13 @@ export default function ChatWindow({
   // Send message handler (merged behavior)
   const handleSend = async (text, files = []) => {
     if (!text.trim() && files.length === 0) return;
+    if (!sessionId) {
+      setMessages((prev) => [
+        ...prev,
+        { sender: "bot", content: "I am still getting this chat ready. Please try again in a moment." },
+      ]);
+      return;
+    }
 
     try {
       // Validate files before processing
@@ -517,9 +561,11 @@ export default function ChatWindow({
 
       // 5) Send
       setLoading(true);
-      const res = await axios.post(endpoint, payload, {
-        headers: { "Content-Type": "application/json" },
-      });
+      const res = await axios.post(
+        endpoint,
+        payload,
+        axiosAuthConfig({ headers: { "Content-Type": "application/json" } })
+      );
 
       const botMsg = { sender: "bot", content: res.data.agent_response };
       setLoading(false);
@@ -615,30 +661,33 @@ export default function ChatWindow({
   return createPortal(
     <div className="fixed inset-0 z-[1000]">
       <div
-        className={`absolute inset-0 bg-gray-200 transition-opacity duration-300 ${
-          closing ? "opacity-0" : "opacity-100"
+        className={`absolute inset-0 bg-[#07313d]/15 backdrop-blur-[1px] transition-opacity duration-500 ease-out ${
+          closing || opening ? "opacity-0" : "opacity-100"
         }`}
+        onClick={requestClose}
       />
 
       <div
-        className={`absolute bottom-0 h-screen left-1/2 w-full max-w-[420px] -translate-x-1/2 px-4 pb-0 ${
-          isDragging ? "transition-none" : "transition-[transform,opacity] duration-300 ease-out"
+        className={`absolute bottom-0 left-1/2 h-[90svh] w-full max-w-[420px] -translate-x-1/2 px-4 pt-4 pb-0 md:h-[95vh] ${
+          isDragging ? "transition-none" : "transition-[transform,opacity,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
         }`}
         style={{
-          transform: `translate(-50%, ${translateY}) ${closing ? "scale(0.98)" : "scale(1)"}`,
-          opacity: closing ? 0.98 : 1,
-          willChange: "transform, opacity",
+          transform: `translate(-50%, ${translateY}) ${
+            closing || opening ? "scale(0.96)" : "scale(1)"
+          }`,
+          opacity: closing || opening ? 0 : 1,
+          filter: closing || opening ? "blur(2px)" : "blur(0)",
+          willChange: "transform, opacity, filter",
         }}
         onClick={(e) => e.stopPropagation()}
         onTransitionEnd={(e) => {
           if (closing && e.target === e.currentTarget) {
             setRender(false);
-            setClosing(false);
           }
         }}
       >
-        <div className="mx-auto max-w-[380px] bg-[#fffef6] shadow-md flex flex-col h-full overflow-hidden">
-          <ChatHeader onClose={onClose} dragHandleProps={{ onPointerDown: startDrag }} />
+        <div className="mx-auto max-w-[380px] rounded-t-3xl bg-[#fffef6] shadow-2xl flex flex-col h-full overflow-hidden">
+          <ChatHeader onClose={requestClose} dragHandleProps={{ onPointerDown: startDrag }} />
 
           {status === false ? (
             <div
@@ -662,7 +711,7 @@ export default function ChatWindow({
               )}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-screen w-full px-4">
+            <div className="flex flex-col items-center justify-center h-full w-full px-4">
               <RotatingLines
                 strokeColor="blue"
                 strokeWidth="2"
@@ -683,6 +732,7 @@ export default function ChatWindow({
               onDetected={handleDetectedTools}
               apiBase={URL}
               suggestedMessages={suggestedMessages}
+              disabled={initializing || loading || !sessionId}
             />
           </div>
 

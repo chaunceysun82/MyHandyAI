@@ -90,6 +90,7 @@ export default function ChatInput({ onSend, showQuickReplies = true, suggestedMe
   }, [selectedFiles]);
 
   const send = () => {
+    if (disabled) return;
     if (!input.trim() && selectedFiles.length === 0) return;
     onSend?.(input, selectedFiles);
     setInput("");
@@ -102,6 +103,7 @@ export default function ChatInput({ onSend, showQuickReplies = true, suggestedMe
   };
 
   const handleMicrophone = () => {
+    if (disabled) return;
     if (!browserSupportsSpeechRecognition) {
       alert("Browser does not support speech recognition.");
       return;
@@ -118,6 +120,7 @@ export default function ChatInput({ onSend, showQuickReplies = true, suggestedMe
   };
 
   const handleFileSelect = () => {
+    if (disabled) return;
     fileInputRef.current?.click();
   };
 
@@ -255,11 +258,12 @@ export default function ChatInput({ onSend, showQuickReplies = true, suggestedMe
         </button>
 
         <input
-          className="flex-1 bg-transparent px-2 py-2 text-[15px] placeholder:text-[#3A3A3A] focus:outline-none"
-          placeholder="Type or speak your message..."
+          className="flex-1 bg-transparent px-2 py-2 text-[15px] placeholder:text-[#3A3A3A] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          placeholder={disabled ? "Getting chat ready..." : "Type or speak your message..."}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
+          disabled={disabled}
         />
 
         {/* Show send button when there's content, microphone when empty */}
@@ -269,6 +273,7 @@ export default function ChatInput({ onSend, showQuickReplies = true, suggestedMe
             aria-label="Send message"
             onClick={send}
             type="button"
+            disabled={disabled}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />

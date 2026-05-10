@@ -6,13 +6,14 @@ import sys
 import boto3
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException
+from fastapi import Depends
 from pymongo.collection import Collection
 from pymongo.database import Database
 
 from config.settings import get_settings
 from database.mongodb import mongodb
 from routes.logs import insert_log_event
-from routes.project import update_project
+from security.current_user import get_current_app_user, require_user_match
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -28,20 +29,24 @@ steps_collection: Collection = database.get_collection("ProjectSteps")
 # Pydantic models for request/response
 
 @router.get("/tools/{project_id}")
-async def get_generated_tools(project_id: str):
+async def get_generated_tools(project_id: str, current_user: dict = Depends(get_current_app_user)):
     doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"tool_generation": 1})
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found")
+    full_doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"userId": 1})
+    require_user_match(str(full_doc.get("userId")), current_user)
     if "tool_generation" not in doc or doc["tool_generation"] is None:
         raise HTTPException(status_code=404, detail="Tools not generated yet")
     return {"project_id": project_id, "tools_data": doc["tool_generation"]}
 
 
 @router.get("/steps/{project_id}")
-async def get_generated_steps(project_id: str):
+async def get_generated_steps(project_id: str, current_user: dict = Depends(get_current_app_user)):
     doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"step_generation": 1})
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found")
+    full_doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"userId": 1})
+    require_user_match(str(full_doc.get("userId")), current_user)
     steps_payload = doc.get("step_generation")
     if not steps_payload:
         raise HTTPException(status_code=404, detail="Steps not generated yet")
@@ -49,27 +54,33 @@ async def get_generated_steps(project_id: str):
 
 
 @router.get("/estimation/{project_id}")
-async def get_generated_estimation(project_id: str):
+async def get_generated_estimation(project_id: str, current_user: dict = Depends(get_current_app_user)):
     doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"estimation_generation": 1})
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found")
+    full_doc = project_collection.find_one({"_id": ObjectId(project_id)}, {"userId": 1})
+    require_user_match(str(full_doc.get("userId")), current_user)
     if "estimation_generation" not in doc or doc["estimation_generation"] is None:
         raise HTTPException(status_code=404, detail="Estimation not generated yet")
     return {"project_id": project_id, "estimation_data": doc["estimation_generation"]}
 
 
 @router.post("/all/{project}")
-async def generate(project):
+async def generate(project, current_user: dict = Depends(get_current_app_user)):
     try:
         cursor = project_collection.find_one({"_id": ObjectId(project)})
         if not cursor:
             print("Project not found")
             return {"message": "Project not found"}
+        require_user_match(str(cursor.get("userId")), current_user)
         message = {
             "project": project
         }
 
-        update_project(str(cursor["_id"]), {"generation_status": "in-progress"})
+        project_collection.update_one(
+            {"_id": cursor["_id"]},
+            {"$set": {"generation_status": "in-progress"}}
+        )
         insert_log_event(
             "solution_generation_started",
             user_id=str(cursor.get("userId")) if cursor.get("userId") else None,
@@ -92,16 +103,19 @@ async def generate(project):
         )
         return {"message": "Request In progress"}
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
         print(f"Error triggering generation: {e}")
         return {"message": "Request could not be processed"}
 
 
 @router.get("/status/{project}")
-async def status(project):
+async def status(project, current_user: dict = Depends(get_current_app_user)):
     cursor = project_collection.find_one({"_id": ObjectId(project)})
     if not cursor:
         print("Project not found")
         return {"message": "Project not found"}
+    require_user_match(str(cursor.get("userId")), current_user)
 
     if not "generation_status" in cursor:
         return {"message": "Generation not started"}

@@ -3,6 +3,7 @@ import json
 import re
 import traceback
 from datetime import datetime
+import time
 
 import boto3
 import requests
@@ -16,10 +17,17 @@ from agents.solution_generation_multi_agent.services.image_generation_agent_serv
 from agents.solution_generation_multi_agent.services.steps_generation_agent_service import StepsGenerationAgentService
 from agents.solution_generation_multi_agent.steps_generation_agent.steps_generation_agent import StepsGenerationAgent
 from config.settings import get_settings
-from database.llm_consumption import record_openai_response_usage
 from database.mongodb import mongodb
-from helper import similar_by_project, store_tool_in_database, create_and_store_tool_embeddings, find_similar_tools, \
-    update_tool_usage
+from helper import (
+    similar_by_project,
+    store_tool_in_database,
+    create_and_store_tool_embeddings,
+    find_similar_tools,
+    update_tool_usage,
+    search_kb_by_summary,        # NEW — KB similarity search
+    KB_SIMILARITY_THRESHOLD,     # NEW — 0.7 constant
+)
+from database.llm_consumption import record_openai_response_usage
 
 settings = get_settings()
 s3 = boto3.client("s3", region_name=settings.AWS_REGION)
@@ -29,108 +37,194 @@ project_collection: Collection = database.get_collection("Project")
 steps_collection: Collection = database.get_collection("ProjectSteps")
 tools_collection: Collection = database.get_collection("Tools")
 
+def _get_image_service() -> ImageGenerationAgentService:
+    """Create a fresh ImageGenerationAgentService. Called per-invocation."""
+    return ImageGenerationAgentService(
+        image_generation_agent=ImageGenerationAgent(),
+        s3_client=s3,
+        project_collection=project_collection,
+    )
 
-def enqueue_image_tasks(project_id: str, steps: list[dict], size: str = "1536x1024", summary: str = "", user_id: str | None = None) -> None:
-    """Send one SQS message per step (no batch API)."""
 
-    # LOCAL TESTING: Process images synchronously instead of sending to SQS
-    # Uncomment the block below for local testing
-    # for i, step in enumerate(steps, start=1):
-    #     sum_text = "Overall summary: " + summary + "\n"
-    #     step_text = "CURRENT STEP: " + ", ".join(s for s in step.get("instructions", []) if s and s.strip())
-    #     body = {
-    #         "task": "image_step",
-    #         "project": project_id,
-    #         "step_id": str(i),
-    #         "step_text": step_text,
-    #         "summary_text": sum_text,
-    #         "size": size
-    #     }
-    #     project_collection.update_one({"_id": ObjectId(project_id)},
-    #                                   {"$set": {f"step_generation.steps.{int(i) - 1}.image.status": "in-progress"}})
-    #     handle_image_step(body)
-    # return
+def preflight_image_setup(project_id: str, summary: str) -> None:
+    """
+    Generate Visual DNA + Anchor Objects SYNCHRONOUSLY before any step
+    SQS messages are sent. Blocks until both are written to MongoDB.
 
-    # PRODUCTION: Use SQS
+    This is the fix for:
+      - "Anchor images loaded: 0"
+      - "Visual DNA generated on step 2"
+      - No reference context on step 1
+    """
+    service = _get_image_service()
+
+    # 1. Visual DNA — needed by every step for physics rules + domain
+    existing_dna = service.get_visual_dna(project_id)
+    if existing_dna:
+        print(f"✅ Visual DNA already exists — domain: {existing_dna.get('domain')}")
+    else:
+        print(f"🔍 Generating Visual DNA for project {project_id}")
+        dna = service.generate_visual_dna(summary)
+        service.save_visual_dna(project_id, dna)
+        print(f"✅ Visual DNA saved — domain: {dna.get('domain')}")
+
+    # 2. Anchor objects — needed by every step for object consistency
+    existing_anchors = service.get_anchor_objects(project_id)
+    if existing_anchors and existing_anchors.objects:
+        print(f"✅ Anchor objects already exist: {[o.name for o in existing_anchors.objects]}")
+    else:
+        print(f"🔍 Generating anchor objects for project {project_id}")
+        try:
+            anchor_result = service.generate_anchor_objects(
+                project_id=project_id,
+                summary_text=summary,
+            )
+            print(f"✅ Anchor objects ready: {[o.name for o in anchor_result.objects]}")
+        except Exception as e:
+            # Non-fatal — steps will still generate without anchors
+            print(f"⚠️ Anchor generation failed (non-fatal): {e}")
+
+
+def enqueue_image_tasks(
+        project_id: str,
+        steps: list[dict],
+        size: str = "1536x1024",
+        summary: str = "",
+) -> None:
+    """
+    1. Run preflight (DNA + anchors) synchronously — blocks until complete.
+    2. Enqueue one SQS message per step, staggered so earlier steps
+       complete before later ones start fetching their references.
+    """
     images_sqs_url = settings.AWS_SQS_URL
     if not images_sqs_url:
         print("⚠️ AWS_SQS_URL not set; skipping enqueue")
         return
+
+    # ── PREFLIGHT: must complete before ANY SQS message is sent ─────────────
+    if summary:
+        preflight_image_setup(project_id, summary)
+
+    # ── ENQUEUE: staggered so step N-1 likely finishes before step N starts ──
     for i, step in enumerate(steps, start=1):
         sum_text = "Overall summary: " + summary + "\n"
-        step_text = "CURRENT STEP: " + ", ".join(s for s in step.get("instructions", []) if s and s.strip())
+        step_text = "CURRENT STEP: " + ", ".join(
+            s for s in step.get("instructions", []) if s and s.strip()
+        )
         body = {
             "task": "image_step",
             "project": project_id,
-            "user_id": user_id,
             "step_id": str(i),
             "step_text": step_text,
             "summary_text": sum_text,
-            "size": size
+            "size": size,
         }
-        project_collection.update_one({"_id": ObjectId(project_id)},
-                                      {"$set": {f"step_generation.steps.{int(i) - 1}.image.status": "in-progress"}})
-
-        sqs.send_message(QueueUrl=images_sqs_url, MessageBody=json.dumps(body))
-
+        project_collection.update_one(
+            {"_id": ObjectId(project_id)},
+            {"$set": {f"step_generation.steps.{i - 1}.image.status": "in-progress"}}
+        )
+        sqs.send_message(
+            QueueUrl=images_sqs_url,
+            MessageBody=json.dumps(body),
+            # Stagger: step1=0s, step2=15s, step3=30s...
+            # 15s gives each step time to generate + upload before next reads it
+            DelaySeconds=min((i - 1) * 15, 900),
+        )
+        print(f"📤 Enqueued step {i} with {(i-1)*15}s delay")
 
 def handle_image_step(msg: dict) -> None:
-    """Generate+upload image for a single step and persist result."""
+    """Generate + upload image for a single step and persist result."""
     project_id = msg["project"]
-    user_id = msg.get("user_id")
     step_id = msg["step_id"]
     step_text = msg["step_text"]
     summary_text = msg.get("summary_text")
     size = msg.get("size", "1536x1024")
 
-    image_generation_agent = ImageGenerationAgent()
-    image_generation_service = ImageGenerationAgentService(
-        image_generation_agent=image_generation_agent,
-        s3_client=s3
-    )
-    # Use Image Generation Service
-    result = image_generation_service.generate_step_image(
+    service = _get_image_service()
+
+    # ── Readiness check: wait for DNA + anchors if preflight is still running ─
+    # This handles edge cases where preflight and step1 overlap
+    max_wait_secs = 60
+    waited = 0
+    while waited < max_wait_secs:
+        dna = service.get_visual_dna(project_id)
+        if dna:
+            break
+        print(f"⏳ Step {step_id} waiting for Visual DNA... ({waited}s)")
+        time.sleep(5)
+        waited += 5
+
+    if not dna:
+        print(f"⚠️ Step {step_id}: Visual DNA not ready after {max_wait_secs}s — generating fallback")
+
+    result = service.generate_step_image(
         step_id=step_id,
         step_text=step_text,
         summary_text=summary_text,
         size=size,
         project_id=project_id,
-        user_id=user_id
     )
 
-    # Convert Pydantic model to dict for MongoDB
-    res = result.model_dump()
-
-    project_collection.update_one({"_id": ObjectId(project_id)},
-                                  {"$set": {f"step_generation.steps.{int(step_id) - 1}.image": res}})
+    # Single write — model_dump() includes all fields: url, state_summary, etc.
+    project_collection.update_one(
+        {"_id": ObjectId(project_id)},
+        {"$set": {f"step_generation.steps.{int(step_id) - 1}.image": result.model_dump()}},
+    )
+    print(f"✅ Step {step_id} image complete: {result.url}")
 
 
 def reset_all_steps(project_id):
-    cursor = project_collection.find_one({
-        "_id": ObjectId(project_id)
-    })
+    cursor = project_collection.find_one({"_id": ObjectId(project_id)})
     if "step_generation" in cursor and "steps" in cursor["step_generation"]:
         print("there is steps")
-        print(cursor)
         project_collection.update_one(
             {"_id": ObjectId(project_id)},
             {"$set": {"step_generation.steps.$[].completed": False, "completed": False}}
         )
-
         return {"message": "Project/Steps updated"}
-
     return {"message": "No steps found"}
 
 
+# ---------------------------------------------------------------------------
+# KB knowledge helper
+# ---------------------------------------------------------------------------
+
+def _build_kb_knowledge_str(kb_result: dict) -> str:
+    """
+    Flatten a KB result dict into a structured string suitable for passing
+    to ToolsAgent / StepsGenerationAgent as additional context.
+    """
+    lines = [
+        "=== KNOWLEDGE BASE REFERENCE ===",
+        f"Source: {kb_result.get('url', 'N/A')}",
+        "",
+        "Summary:",
+        kb_result.get("summary", "N/A"),
+        "",
+        "Tools found in similar job:",
+        ", ".join(kb_result.get("tools", [])) or "None",
+        "",
+        "Materials found in similar job:",
+        ", ".join(kb_result.get("materials", [])) or "None",
+        "",
+        "Safety warnings found in similar job:",
+        "\n".join(f"- {w}" for w in kb_result.get("warnings", [])) or "None",
+        "=================================",
+    ]
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Lambda handler
+# ---------------------------------------------------------------------------
+
 def lambda_handler(event, context):
-    # Process each incoming message (SQS records etc.)
     for record in event.get("Records", []):
         try:
             payload = json.loads(record.get("body", "{}"))
             task = payload.get("task", "full")
 
             if task == "image_step":
-                # Image-only job (runs in parallel for each step)
                 try:
                     handle_image_step(payload)
                 except Exception as e:
@@ -144,27 +238,25 @@ def lambda_handler(event, context):
 
             print(f"📦 Received job for project {project_id_str}")
 
-            # Validate project exists in Mongo
             cursor = project_collection.find_one({"_id": ObjectId(project_id_str)})
             if not cursor:
                 print("⚠️ Project not found in Mongo -> skipping")
                 continue
 
-            # Avoid duplicate generation
             gen_status = cursor.get("generation_status")
             if gen_status == "complete":
                 print(f"⚠️ Project {project_id_str} already generated (status=complete) -> skipping")
                 continue
 
-            # Build or get summary
             summary = cursor.get("summary")
             if not summary or not isinstance(summary, str) or not summary.strip():
-                # Attempt to build from structured fields
                 print("⚠️ Project has no valid summary → skipping RAG and generation")
                 update_project(str(cursor["_id"]), {"generation_status": "failed", "error": "Missing summary"})
                 continue
 
-            # If we have a usable summary, try similarity; otherwise skip RAG
+            # ------------------------------------------------------------------
+            # STEP 1 — Project-level similarity (existing logic, unchanged)
+            # ------------------------------------------------------------------
             similar_result = None
             if summary and summary.strip():
                 print("🔍 Searching for similar projects")
@@ -175,12 +267,10 @@ def lambda_handler(event, context):
                     print(f"⚠️ similar_by_project failed: {e}")
                     similar_result = None
 
-            # Normalize similar_result shape: if it's the 'collection missing' form, treat as no match
             if similar_result and isinstance(similar_result, dict) and "matches" in similar_result:
                 print("🔍 Qdrant collection missing (or no data) -> treating as no match")
                 similar_result = None
 
-            # If a match was returned, ensure the matched project still exists in Mongo and has generated data if we plan to copy
             matched_project = None
             if similar_result and "project_id" in similar_result and similar_result.get("best_score") is not None:
                 matched_id = similar_result["project_id"]
@@ -194,9 +284,38 @@ def lambda_handler(event, context):
                     similar_result = None
                     matched_project = None
 
-            # COPY PATH: very high similarity -> copy tools/steps/estimation
+            # ------------------------------------------------------------------
+            # STEP 2 — KB similarity (new logic, runs for cases 2 & 3 only)
+            # We query once here so the result is available across both branches.
+            # ------------------------------------------------------------------
+            kb_result = None
+            project_score = similar_result["best_score"] if similar_result else -1.0
+
+            # Only bother querying KB when we are NOT in the copy path (score >= 0.95)
+            if project_score < 0.95:
+                print("🔍 Searching KB for similar summary")
+                try:
+                    kb_result = search_kb_by_summary(summary, top_k=1)
+                    if kb_result:
+                        print(f"🔍 KB best score={kb_result['score']:.4f} url={kb_result.get('url')}")
+                    else:
+                        print("🔍 No KB match returned")
+                except Exception as e:
+                    print(f"⚠️ search_kb_by_summary failed: {e}")
+                    kb_result = None
+
+            # Decide whether the KB result clears the threshold
+            kb_knowledge_str = None
+            if kb_result and kb_result["score"] >= KB_SIMILARITY_THRESHOLD:
+                kb_knowledge_str = _build_kb_knowledge_str(kb_result)
+                print(f"✅ KB knowledge will be injected (score={kb_result['score']:.4f})")
+            else:
+                print("ℹ️ KB score below threshold or no KB match — agents run without KB context")
+
+            # ------------------------------------------------------------------
+            # CASE 1 — Very high project similarity -> COPY (unchanged)
+            # ------------------------------------------------------------------
             if similar_result and similar_result["best_score"] >= 0.95 and matched_project:
-                # ensure matched project actually has generated content to copy
                 tools_result = matched_project.get("tool_generation")
                 steps_result = matched_project.get("step_generation")
                 estimation_result = matched_project.get("estimation_generation")
@@ -206,26 +325,26 @@ def lambda_handler(event, context):
                     similar_result = None
                     matched_project = None
                 else:
-                    print(f"🔗 Using similar project {matched_project['_id']} as reference (score: {similar_result['best_score']})")
-
+                    print(f"🔗 Copying from similar project {matched_project['_id']} "
+                          f"(score: {similar_result['best_score']})")
                     update_project(str(cursor["_id"]), {
                         "tool_generation": tools_result,
                         "step_generation": steps_result,
                         "estimation_generation": estimation_result
                     })
-
                     reset_all_steps(str(cursor["_id"]))
-
                     update_project(str(cursor["_id"]), {"generation_status": "complete"})
                     print("✅ project generation complete via RAG (copy)")
-                    # done with this record
                     continue
 
-            # MODIFY PATH: medium similarity -> use matched project as context for agents
+            # ------------------------------------------------------------------
+            # CASE 2 — Medium project similarity -> MODIFY using matched project
+            #          + optionally inject KB knowledge into agents
+            # ------------------------------------------------------------------
             tools_agent = None
             if similar_result and 0.7 <= similar_result["best_score"] < 0.95 and matched_project:
-                print(f"🔍 Found similar project: {similar_result['project_id']} with score: {similar_result['best_score']}")
-                # If matched project has generation data, pass matched tools/summary as context; otherwise proceed with plain agent
+                print(f"🔍 CASE 2 — Modify path. Project score={similar_result['best_score']:.4f}")
+
                 matched_tools = matched_project.get("tool_generation", {}).get("tools") if matched_project else None
                 matched_summary = matched_project.get("summary") if matched_project else None
 
@@ -234,23 +353,36 @@ def lambda_handler(event, context):
                         new_summary=summary,
                         matched_summary=matched_summary,
                         matched_tools=matched_tools,
-                        project_id=project_id_str,
-                        user_id=str(cursor.get("userId")) if cursor.get("userId") else None
+                        # NEW: pass KB knowledge if available
+                        kb_knowledge=kb_knowledge_str,
+                    )
+                    print(f"✅ ToolsAgent initialised with matched project context"
+                          + (" + KB knowledge" if kb_knowledge_str else ""))
+                except Exception:
+                    print("⚠️ ToolsAgent init with matched context failed, falling back")
+                    try:
+                        tools_agent = ToolsAgent(kb_knowledge=kb_knowledge_str)
+                    except Exception:
+                        tools_agent = ToolsAgent()
+
+            # ------------------------------------------------------------------
+            # CASE 3 — No project match (or low score) -> DEFAULT generation
+            #          + optionally inject KB knowledge into agents
+            # ------------------------------------------------------------------
+            else:
+                print(f"🔍 CASE 3 — No suitable project match (score={project_score:.4f}). "
+                      + ("Using KB knowledge." if kb_knowledge_str else "Running default agents."))
+                try:
+                    tools_agent = ToolsAgent(
+                        # NEW: pass KB knowledge if available; ToolsAgent handles None gracefully
+                        kb_knowledge=kb_knowledge_str,
                     )
                 except Exception:
-                    print("⚠️ ToolsAgent init with matched context failed, falling back to default ToolsAgent")
-                    tools_agent = ToolsAgent(
-                        project_id=project_id_str,
-                        user_id=str(cursor.get("userId")) if cursor.get("userId") else None
-                    )
-            else:
-                # no suitable match -> default agent
-                tools_agent = ToolsAgent(
-                    project_id=project_id_str,
-                    user_id=str(cursor.get("userId")) if cursor.get("userId") else None
-                )
+                    tools_agent = ToolsAgent()
 
+            # ------------------------------------------------------------------
             # Generate tools (LLM)
+            # ------------------------------------------------------------------
             try:
                 tools_result = tools_agent.recommend_tools(
                     summary=summary,
@@ -262,11 +394,12 @@ def lambda_handler(event, context):
 
             if tools_result is None:
                 print("❌ LLM Generation tools failed -> skipping this record")
-                # mark failure optionally
                 update_project(str(cursor["_id"]), {"generation_status": "failed"})
                 continue
 
-            # FLOW 2: Compare and enhance tools with existing tools collection (reuse images/amazon links)
+            # ------------------------------------------------------------------
+            # FLOW 2 — Compare and enhance tools with existing Tools collection
+            # ------------------------------------------------------------------
             if tools_result and "tools" in tools_result and tools_result["tools"]:
                 try:
                     enhanced_tools = []
@@ -274,7 +407,6 @@ def lambda_handler(event, context):
 
                     for tool in tools_result["tools"]:
                         try:
-                            # Use tool name as query for similarity
                             similar_tools = find_similar_tools(
                                 query=tool.get("name", ""),
                                 limit=3,
@@ -319,7 +451,9 @@ def lambda_handler(event, context):
             tools_result["status"] = "complete"
             update_project(str(cursor["_id"]), {"tool_generation": tools_result})
 
-            # FLOW 1: Extract and save new tools to tools_collection
+            # ------------------------------------------------------------------
+            # FLOW 1 — Extract and save new tools to tools_collection
+            # ------------------------------------------------------------------
             try:
                 print("🔄 FLOW 1: Extracting generated tools to tools_collection")
                 saved_tools = []
@@ -331,36 +465,33 @@ def lambda_handler(event, context):
                             if existing_tool:
                                 print(f"✅ Tool '{tool.get('name')}' already exists, skipping")
                                 continue
-
                             tool_id = store_tool_in_database(tool)
-                            # create embeddings and upsert into Qdrant tools collection
                             try:
-                                embedding_result = create_and_store_tool_embeddings(tool, tool_id)
+                                create_and_store_tool_embeddings(tool, tool_id)
                             except Exception as ee:
                                 print(f"⚠️ Failed creating/storing embeddings for tool {tool.get('name')}: {ee}")
-
                             saved_tools.append({"tool_id": tool_id, "name": tool.get("name"), "status": "saved"})
                             print(f"✅ FLOW 1: Saved tool '{tool.get('name')}'")
                         except Exception as e:
                             print(f"❌ FLOW 1: Failed to save tool {tool.get('name', 'unknown')}: {e}")
                             failed_tools.append({"tool": tool.get('name', 'unknown'), "error": str(e)})
-
                 print(f"✅ FLOW 1: Completed - saved {len(saved_tools)} tools")
             except Exception as e:
                 print(f"⚠️ FLOW 1: Failed to extract tools: {e}")
 
-            # Refresh cursor for steps generation
+            # ------------------------------------------------------------------
+            # Steps generation — carry KB + matched-project context through
+            # ------------------------------------------------------------------
             cursor = project_collection.find_one({"_id": ObjectId(project_id_str)})
             update_project(str(cursor["_id"]), {"step_generation": {"status": "in progress"}})
 
-            # Prepare matched data for steps if modify path
-            matched_summary = None
-            matched_steps = None
-            if similar_result and 0.7 <= similar_result["best_score"] < 0.95 and matched_project:
-                matched_summary = matched_project.get("summary")
-                matched_steps = matched_project.get("step_generation", {}).get("steps")
+            # Build matched-project context for steps (case 2 only)
+            matched_summary_for_steps = None
+            matched_steps_for_steps = None
+            if similar_result and 0.7 <= similar_result.get("best_score", -1) < 0.95 and matched_project:
+                matched_summary_for_steps = matched_project.get("summary")
+                matched_steps_for_steps = matched_project.get("step_generation", {}).get("steps")
 
-            # Generate steps
             try:
                 steps_agent = StepsGenerationAgent()
                 steps_service = StepsGenerationAgentService(steps_agent)
@@ -369,10 +500,10 @@ def lambda_handler(event, context):
                     summary=cursor.get("summary"),
                     user_answers=cursor.get("user_answers") or cursor.get("answers"),
                     questions=cursor.get("questions", []),
-                    matched_summary=matched_summary,
-                    matched_steps=matched_steps,
-                    project_id=project_id_str,
-                    user_id=str(cursor.get("userId")) if cursor.get("userId") else None
+                    matched_summary=matched_summary_for_steps,
+                    matched_steps=matched_steps_for_steps,
+                    # NEW: pass KB knowledge if available
+                    kb_knowledge=kb_knowledge_str,
                 )
             except Exception as e:
                 print(f"❌ Steps generation failed: {e}")
@@ -384,30 +515,17 @@ def lambda_handler(event, context):
                 update_project(str(cursor["_id"]), {"step_generation": {"status": "failed"}})
                 continue
 
-            # Add youtube link & persist steps
+            # Persist steps
             try:
-                youtube_url = get_youtube_link(
-                    cursor.get("summary", ""),
-                    project_id=project_id_str,
-                    user_id=str(cursor.get("userId")) if cursor.get("userId") else None
-                )
+                youtube_url = get_youtube_link(cursor.get("summary", ""))
                 steps_result["youtube"] = youtube_url
                 update_project(str(cursor["_id"]), {"step_generation": steps_result})
-                enqueue_image_tasks(
-                    project_id_str,
-                    steps_result.get("steps", []),
-                    size="1536x1024",
-                    summary=cursor.get("summary", ""),
-                    user_id=str(cursor.get("userId")) if cursor.get("userId") else None
-                )
+                enqueue_image_tasks(project_id_str, steps_result.get("steps", []),
+                                    size="1536x1024", summary=cursor.get("summary", ""))
             except Exception as e:
                 print(f"⚠️ Failed after steps generation: {e}")
 
-            # save individual step docs
             try:
-                step_meta = {k: v for k, v in steps_result.items() if k != "steps"}
-                step_meta["status"] = "complete"
-
                 for step in steps_result.get("steps", []):
                     step_doc = {
                         "projectId": ObjectId(project_id_str),
@@ -431,20 +549,18 @@ def lambda_handler(event, context):
                         "updatedAt": datetime.utcnow(),
                     }
                     steps_collection.insert_one(step_doc)
-
                 print("✅ Steps Generated and saved")
             except Exception as e:
                 print(f"⚠️ Saving steps to DB failed: {e}")
 
-            # Refresh cursor and generate estimation
+            # ------------------------------------------------------------------
+            # Estimation generation
+            # ------------------------------------------------------------------
             cursor = project_collection.find_one({"_id": ObjectId(project_id_str)})
             update_project(str(cursor["_id"]), {"estimation_generation": {"status": "in progress"}})
 
             try:
-                estimation_agent = EstimationAgent(
-                    project_id=project_id_str,
-                    user_id=str(cursor.get("userId")) if cursor.get("userId") else None
-                )
+                estimation_agent = EstimationAgent()
                 estimation_result = estimation_agent.generate_estimation(
                     tools_data=cursor.get("tool_generation"),
                     steps_data=cursor.get("step_generation"),
@@ -462,20 +578,13 @@ def lambda_handler(event, context):
 
             estimation_result["status"] = "complete"
             update_project(str(cursor["_id"]), {"estimation_generation": estimation_result})
-
-            # mark project complete
             update_project(str(cursor["_id"]), {"generation_status": "complete"})
             print(f"✅ project generation complete for {project_id_str}")
 
-            # continue to next record
-            continue
-
         except Exception as e:
             traceback.print_exc()
-            # Continue processing remaining records instead of returning early
             continue
 
-    # finished processing all records
     return None
 
 
@@ -490,15 +599,13 @@ def update_project(project_id: str, update_data: dict):
 
 
 def clean_and_parse_json(raw_str: str):
-    """
-    Cleans code fences (```json ... ```) from a string and parses it as JSON.
-    """
     if raw_str is None:
         raise ValueError("No input string")
     s = raw_str.strip()
-    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)  # strip fences
-    m = re.search(r"\{.*\}\s*$", s, flags=re.S)  # grab last JSON object
-    if m: s = m.group(0)
+    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)
+    m = re.search(r"\{.*\}\s*$", s, flags=re.S)
+    if m:
+        s = m.group(0)
     try:
         return json.loads(s)
     except json.JSONDecodeError as e:

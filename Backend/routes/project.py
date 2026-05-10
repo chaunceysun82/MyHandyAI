@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 from pymongo.collection import Collection
@@ -10,6 +10,7 @@ from agents.information_gathering_agent.agent.embeddings_generation import delet
 
 from database.mongodb import mongodb
 from routes.logs import insert_log_event
+from security.current_user import get_current_app_user, require_user_match
 
 router = APIRouter()
 database: Database = mongodb.get_database()
@@ -23,10 +24,12 @@ class Project(BaseModel):
     userId: str
 
 @router.post("/projects")
-def create_project(project: Project):
+def create_project(project: Project, current_user: dict = Depends(get_current_app_user)):
+    require_user_match(project.userId, current_user)
+
     project_dict = {
         "projectTitle": project.projectTitle,
-        "userId": project.userId,
+        "userId": current_user["id"],
         "createdAt": datetime.utcnow(),
     }
 
@@ -34,7 +37,7 @@ def create_project(project: Project):
     project_id = result.inserted_id
     insert_log_event(
         "project_started",
-        user_id=project.userId,
+        user_id=current_user["id"],
         project_id=str(project_id),
         metadata={"projectTitle": project.projectTitle},
     )
@@ -43,13 +46,15 @@ def create_project(project: Project):
 
 
 @router.get("/projects")
-def list_projects(user_id: str):
+def list_projects(user_id: str, current_user: dict = Depends(get_current_app_user)):
     """
     GET /projects?user_id=<mongo‐object‐id>
     returns all projects for that user.
     """
+    require_user_match(user_id, current_user)
+
     try:
-        docs = project_collection.find({"userId": user_id})
+        docs = project_collection.find({"userId": current_user["id"]})
 
         print(docs)
 
@@ -69,17 +74,23 @@ def list_projects(user_id: str):
 
 
 @router.get("/project/{project_id}")
-def get_project(project_id: str):
+def get_project(project_id: str, current_user: dict = Depends(get_current_app_user)):
     project = project_collection.find_one({"_id": ObjectId(project_id)})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    require_user_match(str(project.get("userId")), current_user)
     project["_id"] = str(project["_id"])
     project["userId"] = str(project["userId"])
     return project
 
 
 @router.put("/projects/{project_id}")
-def update_project(project_id: str, update_data: dict):
+def update_project(project_id: str, update_data: dict, current_user: dict = Depends(get_current_app_user)):
+    project = project_collection.find_one({"_id": ObjectId(project_id)})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    require_user_match(str(project.get("userId")), current_user)
+
     result = project_collection.update_one(
         {"_id": ObjectId(project_id)},
         {"$set": update_data}
@@ -90,8 +101,12 @@ def update_project(project_id: str, update_data: dict):
 
 
 @router.delete("/projects/{project_id}")
-def delete_project(project_id: str):
+def delete_project(project_id: str, current_user: dict = Depends(get_current_app_user)):
     project_obj_id = ObjectId(project_id)
+    project = project_collection.find_one({"_id": project_obj_id})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    require_user_match(str(project.get("userId")), current_user)
 
     result = project_collection.delete_one({"_id": project_obj_id})
     if result.deleted_count == 0:
@@ -108,7 +123,12 @@ def delete_project(project_id: str):
     }
 
 @router.put("/complete-step/{project_id}/{step}")
-def complete_step(project_id: str, step: int):
+def complete_step(project_id: str, step: int, current_user: dict = Depends(get_current_app_user)):
+    project = project_collection.find_one({"_id": ObjectId(project_id)})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    require_user_match(str(project.get("userId")), current_user)
+
     result = project_collection.update_one(
         {"_id": ObjectId(project_id), "step_generation.steps.order": step},
         {"$set": {"step_generation.steps.$.completed": True}}
@@ -138,7 +158,12 @@ def complete_step(project_id: str, step: int):
 
 
 @router.put("/reset-step/{project_id}/{step}")
-def reset_step(project_id: str, step: int):
+def reset_step(project_id: str, step: int, current_user: dict = Depends(get_current_app_user)):
+    project = project_collection.find_one({"_id": ObjectId(project_id)})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    require_user_match(str(project.get("userId")), current_user)
+
     result = project_collection.update_one(
         {"_id": ObjectId(project_id), "step_generation.steps.order": step},
         {"$set": {"step_generation.steps.$.completed": False}}
@@ -155,7 +180,12 @@ def reset_step(project_id: str, step: int):
 
 
 @router.put("/step-feedback/{project_id}/{step}/{feedback}")
-def step_feedback(project_id: str, step: int, feedback: int):
+def step_feedback(project_id: str, step: int, feedback: int, current_user: dict = Depends(get_current_app_user)):
+    project = project_collection.find_one({"_id": ObjectId(project_id)})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    require_user_match(str(project.get("userId")), current_user)
+
     result = project_collection.update_one(
         {"_id": ObjectId(project_id), "step_generation.steps.order": step},
         {"$set": {"step_generation.steps.$.feedback": feedback}}
@@ -166,10 +196,14 @@ def step_feedback(project_id: str, step: int, feedback: int):
 
 
 @router.put("/project/{project_id}/complete")
-def complete_all_steps(project_id):
+def complete_all_steps(project_id, current_user: dict = Depends(get_current_app_user)):
     cursor = project_collection.find_one({
         "_id": ObjectId(project_id)
     })
+    if not cursor:
+        raise HTTPException(status_code=404, detail="Project not found")
+    require_user_match(str(cursor.get("userId")), current_user)
+
     if "step_generation" in cursor and "steps" in cursor["step_generation"]:
         print("there is steps")
         print(cursor)
@@ -190,10 +224,13 @@ def complete_all_steps(project_id):
 
 
 @router.get("/project/{project_id}/progress")
-def steps_progress(project_id):
+def steps_progress(project_id, current_user: dict = Depends(get_current_app_user)):
     cursor = project_collection.find_one({
         "_id": ObjectId(project_id)
     })
+    if not cursor:
+        raise HTTPException(status_code=404, detail="Project not found")
+    require_user_match(str(cursor.get("userId")), current_user)
 
     if "step_generation" in cursor and "steps" in cursor["step_generation"]:
         steps = list(cursor["step_generation"]["steps"])

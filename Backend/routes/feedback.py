@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional, List
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from pymongo.collection import Collection
 from pymongo.database import Database
@@ -11,6 +11,7 @@ from pymongo.database import Database
 from config.settings import get_settings
 from database.mongodb import mongodb
 from routes.logs import insert_log_event
+from security.current_user import get_current_app_user, require_user_match
 
 settings = get_settings()
 
@@ -55,8 +56,9 @@ class CompletionMsg(BaseModel):
 
 # Generate completion message (LLM w/ fallback) ----
 @router.get("/projects/{project_id}/completion-message", response_model=CompletionMsg)
-def completion_message(project_id: str):
+def completion_message(project_id: str, current_user: dict = Depends(get_current_app_user)):
     doc = find_project_or_404(project_id)
+    require_user_match(str(doc.get("userId")), current_user)
 
     title = doc.get("projectTitle", "your project")
     finished = doc.get("completedAt")
@@ -95,8 +97,9 @@ def completion_message(project_id: str):
 
 # Store feedback & mark project complete ----
 @router.post("/projects/{project_id}/feedback", response_model=FeedbackOut)
-def add_feedback(project_id: str, fb: FeedbackIn):
+def add_feedback(project_id: str, fb: FeedbackIn, current_user: dict = Depends(get_current_app_user)):
     doc = find_project_or_404(project_id)
+    require_user_match(str(doc.get("userId")), current_user)
 
     entry = {
         "rating": fb.rating,

@@ -4,6 +4,7 @@ import ChatHeader from "./ChatHeader";
 import MessageList from "./MessageList";
 import ChatInput from "./ChatInput";
 import axios from "axios";
+import { axiosAuthConfig } from "../../services/api";
 
 export default function ChatWindow2({
   isOpen,
@@ -42,7 +43,10 @@ export default function ChatWindow2({
         setLoading(true);
         
         // Get thread ID from project assistant agent (same thread as information gathering agent)
-        const threadRes = await axios.get(`${URL}/api/v1/project-assistant-agent/thread/${projectId}`);
+        const threadRes = await axios.get(
+          `${URL}/api/v1/project-assistant-agent/thread/${projectId}`,
+          axiosAuthConfig()
+        );
         
         if (cancelled) return;
 
@@ -59,7 +63,8 @@ export default function ChatWindow2({
                 thread_id: threadIdValue,
                 project_id: projectId,
                 step_number: stepNumber !== undefined ? stepNumber : null
-              }
+              },
+              axiosAuthConfig({ headers: { "Content-Type": "application/json" } })
             );
             
             if (cancelled) return;
@@ -67,7 +72,8 @@ export default function ChatWindow2({
             // Load conversation history from project assistant agent
             // This will include the new initial exchange we just created
             const historyRes = await axios.get(
-              `${URL}/api/v1/project-assistant-agent/chat/${threadIdValue}/history`
+              `${URL}/api/v1/project-assistant-agent/chat/${threadIdValue}/history`,
+              axiosAuthConfig()
             );
             
             if (!cancelled) {
@@ -109,7 +115,8 @@ export default function ChatWindow2({
               // If initialization fails, try to load existing history as fallback
               try {
                 const historyRes = await axios.get(
-                  `${URL}/api/v1/project-assistant-agent/chat/${threadIdValue}/history`
+                  `${URL}/api/v1/project-assistant-agent/chat/${threadIdValue}/history`,
+                  axiosAuthConfig()
                 );
                 
                 if (!cancelled) {
@@ -343,9 +350,7 @@ export default function ChatWindow2({
       const res = await axios.post(
         `${URL}/api/v1/project-assistant-agent/chat/${threadId}`,
         payload,
-        {
-          headers: { "Content-Type": "application/json" }
-        }
+        axiosAuthConfig({ headers: { "Content-Type": "application/json" } })
       );
 
       const botMsg = { sender: "bot", content: res.data.agent_response };

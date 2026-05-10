@@ -1,9 +1,10 @@
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pymongo import DESCENDING
 
 from database.llm_consumption import llm_consumption_collection
+from security.current_user import get_current_app_user
 
 router = APIRouter()
 
@@ -14,6 +15,7 @@ def list_llm_consumption(
     user_id: Optional[str] = Query(default=None),
     model: Optional[str] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
+    current_user: dict = Depends(get_current_app_user),
 ):
     query: Dict[str, Any] = {}
     if project_id:
@@ -35,6 +37,7 @@ def list_llm_consumption(
 def llm_consumption_summary(
     project_id: Optional[str] = Query(default=None),
     user_id: Optional[str] = Query(default=None),
+    current_user: dict = Depends(get_current_app_user),
 ):
     match: Dict[str, Any] = {}
     if project_id:

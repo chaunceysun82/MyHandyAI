@@ -1,4 +1,6 @@
 // src/services/tools.js
+import { authHeaders } from "./api";
+
 const API = process.env.REACT_APP_BASE_URL;
 const log = (...args) => console.log("[Tools]", ...args);
 
@@ -36,7 +38,9 @@ export async function fetchProjectTools(projectId) {
 
 		// Fallback: try to get tools from generation endpoint
 		const genUrl = `${API}/generation/tools/${encodeURIComponent(projectId)}`;
-		const genRes = await fetch(genUrl);
+		const genRes = await fetch(genUrl, {
+			headers: authHeaders(),
+		});
 		const genBody = await safeJson(genRes);
 
 		log("fetchProjectTools:generation_response", { url: genUrl, status: genRes.status });

@@ -1,6 +1,8 @@
+# utils.py
 """Utility functions for Image Generation Agent."""
 
 import io
+import re
 import time
 from typing import Optional
 
@@ -9,73 +11,79 @@ from PIL import Image
 
 def map_size_to_aspect(size_str: str) -> str:
     """
-    Map "WxH" size string to Imagen aspect ratio.
-    
-    Args:
-        size_str: Size string in format "WxH" (e.g., "1536x1024")
-        
-    Returns:
-        Aspect ratio string (e.g., "16:9", "4:3", "1:1", "3:4", "9:16")
+    Map "WxH" size string to Gemini 2.5 Flash Image supported aspect ratios.
+
+    Gemini 2.5 Flash Image supported ratios:
+        "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"
+
+    Note: Imagen used a different set ("16:9", "4:3", "1:1", "3:4", "9:16").
+    Gemini adds "2:3", "4:5", "5:4", "21:9" and drops nothing from Imagen's set.
     """
     try:
         w, h = [int(x) for x in size_str.lower().split("x")]
         ar = w / h
-        if 1.66 <= ar <= 1.90:  # ~16:9
-            return "16:9"
-        if 1.25 <= ar < 1.66:  # ~4:3
-            return "4:3"
-        if 0.90 <= ar < 1.25:  # ~1:1
+
+        # Match to nearest supported ratio
+        if ar >= 1.8:        # ~21:9 (2.33) or ~16:9 (1.78)
+            return "21:9" if ar >= 2.0 else "16:9"
+        if ar >= 1.2:        # ~5:4 (1.25) or ~4:3 (1.33)
+            return "5:4" if ar < 1.29 else "4:3"
+        if 0.95 <= ar < 1.2: # ~1:1
             return "1:1"
-        if 0.75 <= ar < 0.90:  # ~3:4
-            return "3:4"
-        return "9:16"
+        if 0.78 <= ar < 0.95: # ~4:5 (0.80) or ~3:4 (0.75)
+            return "4:5" if ar >= 0.78 else "3:4"
+        if 0.6 <= ar < 0.78: # ~2:3 (0.67) or ~3:4 (0.75)
+            return "2:3" if ar < 0.72 else "3:4"
+        return "9:16"        # very tall
+
     except Exception:
         return "16:9"
 
 
-def png_to_bytes_ensure_rgba(png_bytes: bytes) -> bytes:
+def png_to_bytes_ensure_rgba(raw_bytes: bytes) -> bytes:
     """
-    Normalize PNG bytes to RGBA format.
-    
-    Args:
-        png_bytes: Raw PNG bytes
-        
-    Returns:
-        Normalized PNG bytes in RGBA format
+    Normalize raw image bytes (PNG or JPEG) to RGBA PNG format.
+    Gemini 2.5 Flash Image may return JPEG — this normalizes either format.
     """
-    im = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+    im = Image.open(io.BytesIO(raw_bytes)).convert("RGBA")
     out = io.BytesIO()
     im.save(out, format="PNG", optimize=True)
     return out.getvalue()
 
 
 def generate_s3_key(step_id: str, project_id: Optional[str]) -> str:
-    """
-    Generate S3 key for step image.
-    
-    Args:
-        step_id: Step identifier
-        project_id: Project identifier (optional)
-        
-    Returns:
-        S3 key string
-    """
     ts = int(time.time())
-    base = f"project_{project_id or 'na'}/steps/{step_id}"
-    return f"{base}/image_{ts}.png"
+    return f"project_{project_id or 'na'}/steps/{step_id}/image_{ts}.png"
 
 
 def get_public_url(key: str, public_base: Optional[str]) -> Optional[str]:
-    """
-    Generate public URL from S3 key.
-    
-    Args:
-        key: S3 key
-        public_base: Public base URL (e.g., CloudFront URL)
-        
-    Returns:
-        Public URL or None
-    """
     if public_base:
         return f"{public_base.rstrip('/')}/{key}"
     return None
+
+
+def apply_physics_filter(prompt: str, physics_redflags: list[dict]) -> tuple[str, list[str]]:
+    """
+    Strip clauses matching domain-specific physics red-flag patterns.
+    physics_redflags is a list of {"pattern": str, "label": str} from the Visual DNA.
+    Returns (cleaned_prompt, list_of_violation_labels_found).
+    """
+    violations = []
+    cleaned = prompt
+    for flag in physics_redflags:
+        pattern = flag.get("pattern", "")
+        label = flag.get("label", "unknown")
+        if not pattern:
+            continue
+        try:
+            if re.search(pattern, cleaned, flags=re.IGNORECASE):
+                violations.append(label)
+                cleaned = re.sub(
+                    r'[^.,]*' + pattern + r'[^.,]*[.,]?',
+                    '',
+                    cleaned,
+                    flags=re.IGNORECASE,
+                ).strip()
+        except re.error:
+            continue  # Malformed pattern from GPT — skip silently
+    return cleaned, violations

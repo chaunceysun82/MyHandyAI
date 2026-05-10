@@ -10,8 +10,8 @@ export default function EstimatedBreakdown({ stats }) {
 	];
 
 	return (
-		<section>
-			<div className="flex items-center text-[16px] font-medium text-[black]">
+		<section className="lg:-mt-[4.1rem] lg:mb-8">
+			<div className="flex items-center text-[16px] font-medium text-[black] lg:text-[20px]">
 				Estimated Breakdown
 
 				<span className="ml-3 text-gray-400 text-xs">

@@ -1,5 +1,6 @@
 import os
 from functools import lru_cache
+from typing import Optional
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
@@ -66,6 +67,11 @@ class Settings(BaseSettings):
     MYHANDYAI_AGENTS_CHECKPOINT_DATABASE: str
     MYHANDYAI_AGENTS_CHECKPOINT_COLLECTION_NAME: str
     MYHANDYAI_AGENTS_CHECKPOINT_WRITES_COLLECTION_NAME: str
+
+    # Cognito auth settings
+    COGNITO_REGION: Optional[str] = None
+    COGNITO_USER_POOL_ID: Optional[str] = None
+    COGNITO_APP_CLIENT_ID: Optional[str] = None
 
     class Config:
         env_file = get_env_filename()
