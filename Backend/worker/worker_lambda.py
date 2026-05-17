@@ -48,41 +48,39 @@ def _get_image_service() -> ImageGenerationAgentService:
 
 def preflight_image_setup(project_id: str, summary: str) -> None:
     """
-    Generate Visual DNA + Anchor Objects SYNCHRONOUSLY before any step
-    SQS messages are sent. Blocks until both are written to MongoDB.
-
-    This is the fix for:
-      - "Anchor images loaded: 0"
-      - "Visual DNA generated on step 2"
-      - No reference context on step 1
+    Run BEFORE any SQS step messages are sent.
+    Generates: Visual DNA → Context Images (establishing shots)
+    Both blocked synchronously so all step Lambdas find them ready.
     """
     service = _get_image_service()
 
-    # 1. Visual DNA — needed by every step for physics rules + domain
+    # 1. Visual DNA
     existing_dna = service.get_visual_dna(project_id)
     if existing_dna:
-        print(f"✅ Visual DNA already exists — domain: {existing_dna.get('domain')}")
+        print(f"✅ Visual DNA exists — domain: {existing_dna.get('domain')}")
+        dna = existing_dna
     else:
         print(f"🔍 Generating Visual DNA for project {project_id}")
         dna = service.generate_visual_dna(summary)
         service.save_visual_dna(project_id, dna)
-        print(f"✅ Visual DNA saved — domain: {dna.get('domain')}")
+        print(f"✅ Visual DNA saved — domain: {dna.get('domain')}, "
+              f"objects: {list(dna.get('object_colors', {}).keys())}")
 
-    # 2. Anchor objects — needed by every step for object consistency
-    existing_anchors = service.get_anchor_objects(project_id)
-    if existing_anchors and existing_anchors.objects:
-        print(f"✅ Anchor objects already exist: {[o.name for o in existing_anchors.objects]}")
+    # 2. Context images (establishing shots from summary)
+    existing_ctx = service.get_context_images(project_id)
+    if existing_ctx and existing_ctx.objects:
+        print(f"✅ Context images exist: {[o.name for o in existing_ctx.objects]}")
     else:
-        print(f"🔍 Generating anchor objects for project {project_id}")
+        print(f"🔍 Generating context images for project {project_id}")
         try:
-            anchor_result = service.generate_anchor_objects(
+            ctx_result = service.generate_context_images(
                 project_id=project_id,
                 summary_text=summary,
+                dna=dna,
             )
-            print(f"✅ Anchor objects ready: {[o.name for o in anchor_result.objects]}")
+            print(f"✅ Context images ready: {[o.name for o in ctx_result.objects]}")
         except Exception as e:
-            # Non-fatal — steps will still generate without anchors
-            print(f"⚠️ Anchor generation failed (non-fatal): {e}")
+            print(f"⚠️ Context image generation failed (non-fatal): {e}")
 
 
 def enqueue_image_tasks(
