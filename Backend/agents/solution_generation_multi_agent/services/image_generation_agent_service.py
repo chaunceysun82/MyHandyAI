@@ -1,4 +1,4 @@
-"""Service — Gemini 2.5 Flash Image with anchor objects + step reference images."""
+"""Service — Full pipeline: Visual DNA + Context Images + Step Planning + Generation."""
 
 import json
 import re
@@ -11,7 +11,10 @@ from bson.objectid import ObjectId
 from loguru import logger
 from pymongo.collection import Collection
 
-from agents.solution_generation_multi_agent.image_generation_agent.image_generation_agent import ImageGenerationAgent
+from agents.solution_generation_multi_agent.image_generation_agent.image_generation_agent import (
+    ImageGenerationAgent,
+    GEMINI_IMAGE_MODEL_FLASH,
+)
 from agents.solution_generation_multi_agent.image_generation_agent.schemas import (
     ImageGenerationResult,
     AnchorObject,
@@ -20,27 +23,31 @@ from agents.solution_generation_multi_agent.image_generation_agent.schemas impor
 from agents.solution_generation_multi_agent.image_generation_agent.utils import (
     map_size_to_aspect,
     png_to_bytes_ensure_rgba,
-    generate_anchor_s3_key,
     generate_s3_key,
     get_public_url,
-    apply_physics_filter,
 )
 from agents.solution_generation_multi_agent.prompt_templates.v1.image_generation_agent import (
     IMAGE_GENERATION_PROMPT,
     VISUAL_DNA_PROMPT,
-    ANCHOR_OBJECTS_PROMPT,
+    CONTEXT_IMAGE_PLANNER_PROMPT,
+    STEP_PLANNER_PROMPT,
+    DOMAIN_PHYSICS_LIBRARY,
+    CAMERA_ANGLE_GUIDE,
+    OBJECT_ALIGNMENT_RULES,
+    HAND_RULES,
 )
 from config.settings import get_settings
 from database.llm_consumption import record_google_image_generation, record_openai_response_usage
 
-REFERENCE_IMAGE_BUFFER = 2          # prior step images to pass (keep low — anchor images take slots)
-MAX_ANCHOR_IMAGES = 4               # Gemini 2.5 Flash Image supports up to 14 total refs
-TOTAL_REF_BUDGET = 6                # anchor + step refs combined (stay well under 14)
+REFERENCE_IMAGE_BUDGET = 6      # total refs passed to Gemini per step
+MAX_CONTEXT_IMAGES = 3          # establishing shots from summary
+MAX_PRIOR_STEP_REFS = 3         # prior step images passed as memory
 
 _NEGATIVE_SUFFIX = (
     " Photorealistic, 4K HDR, sharp focus, professional photography. "
-    "No text, no labels, no watermarks, no logos. "
-    "No cartoon styling. Physically accurate. No floating objects."
+    "No text, no labels, no watermarks, no logos, no brand names. "
+    "No cartoon or CGI styling. Physically accurate. "
+    "No floating objects. Maximum two hands — never three."
 )
 
 
@@ -135,20 +142,20 @@ class ImageGenerationAgentService:
             logger.warning(f"save_visual_dna failed: {e}")
 
     def generate_visual_dna(self, summary_text: str) -> dict:
-        logger.info("Generating visual DNA")
+        logger.info("Generating Visual DNA")
         content = _call_openai(
             api_key=self.settings.OPENAI_API_KEY,
             system=VISUAL_DNA_PROMPT,
             user=summary_text,
-            max_tokens=1200,
+            max_tokens=1000,
         )
         if content:
-            dna = _parse_json_safe(content, context="visual_dna")
+            dna = _parse_json_safe(content, "visual_dna")
             if dna:
-                logger.info(f"Visual DNA generated — domain: {dna.get('domain')}")
+                logger.info(f"Visual DNA — domain: {dna.get('domain')}")
                 return dna
 
-        logger.warning("generate_visual_dna failed — using fallback")
+        logger.warning("Visual DNA failed — using fallback")
         return {
             "domain": "general",
             "scene_prefix": "indoor home workspace, neutral background, natural lighting",
@@ -163,105 +170,104 @@ class ImageGenerationAgentService:
                 "primary": [], "elevated": ["ladder", "ceiling"],
                 "ground_level": ["floor"], "standing": ["workbench", "table"],
             },
-            "physics_rules": [
-                "Liquids flow downward only",
-                "Heavy objects rest on surfaces",
-                "Hands connect to visible arms and a body",
-            ],
-            "physics_redflags": [
-                {"pattern": r"\bfloating\b", "label": "floating object"},
-                {"pattern": r"\bupward\b.{0,20}\b(water|liquid)\b", "label": "upward liquid"},
-            ],
+            "object_colors": {},
             "simplification_rules": ["Pick the single most visual action from the step"],
         }
 
-    # ─── Anchor objects ───────────────────────────────────────────────────────
+    # ─── Context Images (replaces anchor objects) ─────────────────────────────
 
-    def get_anchor_objects(self, project_id: str) -> Optional[AnchorObjectsResult]:
-        """Read stored anchor objects from MongoDB."""
+    def get_context_images(self, project_id: str) -> Optional[AnchorObjectsResult]:
+        """Read stored context images from MongoDB."""
         try:
             doc = self.project_collection.find_one(
                 {"_id": ObjectId(project_id)},
-                {"image_anchor_objects": 1}
+                {"image_context_images": 1}
             )
-            if doc and doc.get("image_anchor_objects"):
-                return AnchorObjectsResult(**doc["image_anchor_objects"])
+            if doc and doc.get("image_context_images"):
+                return AnchorObjectsResult(**doc["image_context_images"])
             return None
         except Exception as e:
-            logger.warning(f"get_anchor_objects failed: {e}")
+            logger.warning(f"get_context_images failed: {e}")
             return None
 
-    def save_anchor_objects(self, project_id: str, result: AnchorObjectsResult) -> None:
+    def save_context_images(self, project_id: str, result: AnchorObjectsResult) -> None:
         try:
             self.project_collection.update_one(
                 {"_id": ObjectId(project_id)},
-                {"$set": {"image_anchor_objects": result.model_dump()}},
+                {"$set": {"image_context_images": result.model_dump()}},
             )
-            logger.info(f"Anchor objects saved: {[o.name for o in result.objects]}")
+            logger.info(f"Context images saved: {[o.name for o in result.objects]}")
         except Exception as e:
-            logger.warning(f"save_anchor_objects failed: {e}")
+            logger.warning(f"save_context_images failed: {e}")
 
-    def generate_anchor_objects(
+    def generate_context_images(
             self,
             project_id: str,
             summary_text: str,
-            size: str = "1:1",
+            dna: dict,
     ) -> AnchorObjectsResult:
         """
-        Extract central objects from summary, generate one isolated image per object,
-        upload to S3, and persist to MongoDB.
-        Called ONCE before any step images are generated.
+        Generate 2-3 establishing shots (front view, back view, wide room view)
+        from the project summary BEFORE any step images.
+        Uses Flash model for cost efficiency — these are static reference shots.
+        Stored in MongoDB as image_context_images.
         """
-        logger.info(f"Generating anchor objects for project {project_id}")
+        logger.info(f"Planning context images for project {project_id}")
 
-        # 1. Ask GPT which objects to generate
+        domain = dna.get("domain", "general")
+        object_colors = dna.get("object_colors", {})
+
         content = _call_openai(
             api_key=self.settings.OPENAI_API_KEY,
-            system=ANCHOR_OBJECTS_PROMPT,
-            user=summary_text,
-            max_tokens=600,
+            system=CONTEXT_IMAGE_PLANNER_PROMPT,
+            user=json.dumps({
+                "summary": summary_text,
+                "domain": domain,
+                "object_colors": object_colors,
+                "scene_prefix": dna.get("scene_prefix", ""),
+            }),
+            max_tokens=1000,
         )
 
-        anchor_defs = []
+        image_plans = []
         if content:
-            parsed = _parse_json_safe(content, context="anchor_objects")
+            parsed = _parse_json_safe(content, "context_image_planner")
             if parsed:
-                anchor_defs = parsed.get("anchor_objects", [])
+                image_plans = parsed.get("context_images", [])
 
-        if not anchor_defs:
-            logger.warning("No anchor objects extracted — skipping anchor generation")
+        if not image_plans:
+            logger.warning("Context image planning failed — skipping")
             return AnchorObjectsResult(objects=[], status="skipped")
 
-        logger.info(f"Anchor objects to generate: {[a['name'] for a in anchor_defs]}")
+        logger.info(f"Context image plans: {[p['name'] for p in image_plans]}")
 
-        # 2. Generate one image per anchor object
-        anchor_results: list[AnchorObject] = []
-        for anchor in anchor_defs[:MAX_ANCHOR_IMAGES]:
-            name = anchor.get("name", "object")
-            prompt = anchor.get("prompt", "")
+        # Flash agent for context images — cheaper, adequate for static reference shots
+        flash_agent = ImageGenerationAgent(model=GEMINI_IMAGE_MODEL_FLASH)
+        results: list[AnchorObject] = []
+
+        for plan in image_plans[:MAX_CONTEXT_IMAGES]:
+            name = plan.get("name", "context")
+            prompt = plan.get("prompt", "")
             if not prompt:
                 continue
 
-            # Wrap prompt to ensure isolated, clean reference image
             full_prompt = (
-                f"A photorealistic studio photograph of {prompt}. "
-                f"Single object only, centered, isolated on a clean neutral grey background. "
-                f"No hands, no people, no scene context. "
-                f"Sharp focus, 4K HDR, professional product photography. "
+                f"{prompt} "
+                f"No people, no hands. Static scene only. "
+                f"Photorealistic, 4K HDR, professional photography. "
                 f"No text, no labels, no watermarks."
             )
 
-            logger.info(f"Generating anchor image for: {name}")
+            logger.info(f"Generating context image: {name} ({plan.get('angle', '')} shot)")
             try:
-                raw_bytes = self.image_generation_agent.generate_image(
+                raw_bytes = flash_agent.generate_image(
                     prompt=full_prompt,
-                    reference_images=None,   # no references for anchor generation
-                    aspect_ratio="1:1",      # square for isolated object shots
+                    reference_images=None,
+                    aspect_ratio="16:9",
                     output_mime_type="image/png",
                 )
-
                 png_bytes = png_to_bytes_ensure_rgba(raw_bytes)
-                s3_key = generate_anchor_s3_key(project_id, name)
+                s3_key = f"project_{project_id}/context/{name}_{int(time.time())}.png"
                 self.s3_client.put_object(
                     Bucket=self.settings.AWS_S3_BUCKET,
                     Key=s3_key,
@@ -269,59 +275,53 @@ class ImageGenerationAgentService:
                     ContentType="image/png",
                     Metadata={
                         "project_id": project_id,
-                        "anchor_name": name,
-                        "type": "anchor_object",
+                        "context_name": name,
+                        "angle": plan.get("angle", ""),
+                        "type": "context_image",
                     },
                 )
                 url = get_public_url(s3_key, self.settings.AWS_S3_PUBLIC_BASE)
-                anchor_results.append(AnchorObject(
+                results.append(AnchorObject(
                     name=name,
-                    description=prompt,
+                    description=plan.get("purpose", prompt[:100]),
                     s3_key=s3_key,
                     url=url,
                     status="complete",
                 ))
-                logger.info(f"Anchor '{name}' generated and uploaded: {s3_key}")
-
+                logger.info(f"Context image '{name}' uploaded: {s3_key}")
             except Exception as e:
-                logger.error(f"Failed to generate anchor image for '{name}': {e}")
+                logger.error(f"Context image '{name}' failed: {e}")
                 continue
 
-        result = AnchorObjectsResult(objects=anchor_results, status="complete")
-        self.save_anchor_objects(project_id, result)
+        result = AnchorObjectsResult(objects=results, status="complete")
+        self.save_context_images(project_id, result)
         return result
 
-    def fetch_anchor_images(self, project_id: str) -> list[PIL.Image.Image]:
-        """
-        Load anchor object PIL images from their stored URLs.
-        These are passed as the FIRST reference images to every step generation.
-        """
-        anchor_result = self.get_anchor_objects(project_id)
-        if not anchor_result or not anchor_result.objects:
+    def fetch_context_pil_images(self, project_id: str) -> list[PIL.Image.Image]:
+        """Load context PIL images from stored URLs for passing to Gemini."""
+        ctx = self.get_context_images(project_id)
+        if not ctx or not ctx.objects:
             return []
-
         images = []
-        for obj in anchor_result.objects:
+        for obj in ctx.objects:
             if obj.url and obj.status == "complete":
-                pil_img = self.image_generation_agent.load_image_from_url(obj.url)
-                if pil_img:
-                    images.append(pil_img)
-                    logger.info(f"Loaded anchor image: {obj.name}")
+                pil = self.image_generation_agent.load_image_from_url(obj.url)
+                if pil:
+                    images.append(pil)
+                    logger.info(f"Loaded context image: {obj.name}")
         return images
 
-    # ─── Reference images (prior steps) ──────────────────────────────────────
+    # ─── Prior step memory ────────────────────────────────────────────────────
 
-    def fetch_reference_images(
+    def fetch_prior_step_states(
             self,
             project_id: str,
             current_step_id: str,
-            anchor_count: int = 0,
-    ) -> list[PIL.Image.Image]:
+    ) -> list[dict]:
         """
-        Load prior step images. Respects TOTAL_REF_BUDGET minus anchor images already loaded.
+        Fetch state_summary strings from completed prior steps.
+        Used as text memory in the step planner.
         """
-        step_budget = max(1, TOTAL_REF_BUDGET - anchor_count)
-
         try:
             doc = self.project_collection.find_one(
                 {"_id": ObjectId(project_id)},
@@ -329,11 +329,41 @@ class ImageGenerationAgentService:
             )
             if not doc:
                 return []
-
             steps = doc.get("step_generation", {}).get("steps", [])
             current_idx = int(current_step_id) - 1
+            states = []
+            for step in steps[:current_idx]:
+                img = step.get("image", {})
+                if isinstance(img, dict) and img.get("state_summary") and img.get("status") == "complete":
+                    states.append({
+                        "step_id": str(step.get("order", "")),
+                        "state_summary": img["state_summary"],
+                    })
+            return states[-MAX_PRIOR_STEP_REFS:]
+        except Exception as e:
+            logger.warning(f"fetch_prior_step_states failed: {e}")
+            return []
 
-            ref_images = []
+    def fetch_prior_step_images(
+            self,
+            project_id: str,
+            current_step_id: str,
+            budget: int,
+    ) -> list[PIL.Image.Image]:
+        """
+        Load actual PIL images from prior completed steps.
+        budget = REFERENCE_IMAGE_BUDGET minus context images already loaded.
+        """
+        try:
+            doc = self.project_collection.find_one(
+                {"_id": ObjectId(project_id)},
+                {"step_generation.steps": 1}
+            )
+            if not doc:
+                return []
+            steps = doc.get("step_generation", {}).get("steps", [])
+            current_idx = int(current_step_id) - 1
+            images = []
             for step in steps[:current_idx]:
                 img_meta = step.get("image", {})
                 if not isinstance(img_meta, dict):
@@ -341,20 +371,101 @@ class ImageGenerationAgentService:
                 url = img_meta.get("url")
                 status = img_meta.get("status")
                 if url and status == "complete":
-                    pil_img = self.image_generation_agent.load_image_from_url(url)
-                    if pil_img:
-                        ref_images.append(pil_img)
-
-            result = ref_images[-step_budget:]
-            logger.info(
-                f"Step refs: {len(result)} loaded "
-                f"(budget={step_budget}, anchors={anchor_count})"
-            )
+                    pil = self.image_generation_agent.load_image_from_url(url)
+                    if pil:
+                        images.append(pil)
+            result = images[-budget:]
+            logger.info(f"Prior step images: {len(result)} loaded (budget={budget})")
             return result
-
         except Exception as e:
-            logger.warning(f"fetch_reference_images failed: {e}")
+            logger.warning(f"fetch_prior_step_images failed: {e}")
             return []
+
+    # ─── Step planning ────────────────────────────────────────────────────────
+
+    def plan_step_image(
+            self,
+            step_id: str,
+            step_text: str,
+            summary_text: Optional[str],
+            dna: dict,
+            prior_states: list[dict],
+            project_id: Optional[str],
+            user_id: Optional[str],
+    ) -> tuple[str, str]:
+        """
+        Use GPT to fully PLAN the image before generating it.
+        Injects domain physics library, camera guide, alignment rules, hand rules.
+        Returns (structured_imagen_prompt, state_summary).
+        """
+        domain = dna.get("domain", "general")
+        domain_physics = DOMAIN_PHYSICS_LIBRARY.get(
+            domain, DOMAIN_PHYSICS_LIBRARY["general"]
+        )
+        object_colors = dna.get("object_colors", {})
+
+        user_content = json.dumps({
+            "project_summary": summary_text or "",
+            "domain": domain,
+            "step_description": step_text,
+            "previous_step_states": prior_states,
+            "object_color_registry": object_colors,
+            "domain_physics_rules": domain_physics["physics"],
+            "domain_hand_rules": domain_physics["hand_rules"],
+            "domain_camera_guide": domain_physics["camera"],
+            "domain_alignment_rules": domain_physics.get("alignment", []),
+            "domain_impossible_states": domain_physics["impossible_states"],
+            "universal_camera_guide": CAMERA_ANGLE_GUIDE,
+            "universal_alignment_rules": OBJECT_ALIGNMENT_RULES,
+            "universal_hand_rules": HAND_RULES,
+        }, indent=2)
+
+        content = _call_openai(
+            api_key=self.settings.OPENAI_API_KEY,
+            system=STEP_PLANNER_PROMPT,
+            user=user_content,
+            max_tokens=800,
+        )
+
+        if content:
+            record_openai_response_usage(
+                {"choices": [{"message": {"content": content}}]},
+                model="gpt-4o-mini",
+                operation="step_image_planning",
+                project_id=project_id,
+                user_id=user_id,
+                endpoint="/v1/chat/completions",
+                metadata={"step_id": step_id, "step_text": step_text[:100]},
+            )
+            parsed = _parse_json_safe(content, f"step_planner_{step_id}")
+            if parsed:
+                imagen_prompt = parsed.get("imagen_prompt", "")
+                state_summary = parsed.get("state_summary", "")
+                camera = parsed.get("camera_angle", "medium")
+                orientation = parsed.get("orientation_note", "")
+
+                final_prompt = (
+                    f"CAMERA: {camera} shot. "
+                    f"{imagen_prompt} "
+                    f"{'ORIENTATION: ' + orientation + '. ' if orientation else ''}"
+                    f"Reference images provided show exact object colors and scene — "
+                    f"match them precisely. "
+                    f"{_NEGATIVE_SUFFIX}"
+                )
+                logger.info(
+                    f"Step {step_id} plan — camera: {camera}, "
+                    f"action: {parsed.get('primary_action', '')[:60]}"
+                )
+                return final_prompt, state_summary
+
+        # Fallback — use step text directly, at least stays on topic
+        logger.warning(f"Step planning failed for step {step_id} — using fallback")
+        return (
+            f"CAMERA: medium shot. "
+            f"Photorealistic image of a person performing: {step_text}. "
+            f"Maximum two hands. Objects face toward viewer. "
+            f"{_NEGATIVE_SUFFIX}"
+        ), ""
 
     # ─── Main entry ───────────────────────────────────────────────────────────
 
@@ -370,7 +481,7 @@ class ImageGenerationAgentService:
         logger.info(f"Generating image for step {step_id}")
 
         try:
-            # 1. Visual DNA
+            # 1. Visual DNA (should already exist from preflight)
             dna: Optional[dict] = None
             if project_id:
                 dna = self.get_visual_dna(project_id)
@@ -379,43 +490,52 @@ class ImageGenerationAgentService:
                 if project_id:
                     self.save_visual_dna(project_id, dna)
 
-            # 2. Anchor images — always loaded first, always passed first to model
-            anchor_images: list[PIL.Image.Image] = []
+            # 2. Context images (should exist from preflight — front/back/wide shots)
+            context_images: list[PIL.Image.Image] = []
             if project_id:
-                anchor_images = self.fetch_anchor_images(project_id)
-                logger.info(f"Anchor images loaded: {len(anchor_images)}")
+                context_images = self.fetch_context_pil_images(project_id)
+                logger.info(f"Context images loaded: {len(context_images)}")
 
-            # 3. Prior step images — fill remaining reference budget
-            step_ref_images: list[PIL.Image.Image] = []
+            # 3. Prior step states — text memory for the step planner
+            prior_states: list[dict] = []
             if project_id:
-                step_ref_images = self.fetch_reference_images(
-                    project_id, step_id,
-                    anchor_count=len(anchor_images),
+                prior_states = self.fetch_prior_step_states(project_id, step_id)
+                logger.info(f"Prior step states: {len(prior_states)}")
+
+            # 4. Prior step images — visual memory, fills remaining ref budget
+            prior_image_budget = max(1, REFERENCE_IMAGE_BUDGET - len(context_images))
+            prior_step_images: list[PIL.Image.Image] = []
+            if project_id:
+                prior_step_images = self.fetch_prior_step_images(
+                    project_id, step_id, budget=prior_image_budget,
                 )
 
-            # 4. Combined reference list:
-            #    [anchor_1, anchor_2, ..., prior_step_N-1, prior_step_N]
-            #    Anchors first so model sees the canonical objects before the action context
-            all_references = anchor_images + step_ref_images
-
-            # 5. Build prompt
-            prompt, state_summary = self._build_prompt(
+            # 5. Plan the step image using full domain physics + camera guide
+            planned_prompt, state_summary = self.plan_step_image(
+                step_id=step_id,
                 step_text=step_text,
                 summary_text=summary_text,
                 dna=dna,
-                has_anchor_images=len(anchor_images) > 0,
-                has_step_refs=len(step_ref_images) > 0,
-                step_id=step_id,
+                prior_states=prior_states,
                 project_id=project_id,
                 user_id=user_id,
             )
 
-            logger.debug(f"Final prompt step {step_id}:\n{prompt}")
+            logger.debug(f"Planned prompt step {step_id}:\n{planned_prompt}")
 
-            # 6. Generate
+            # 6. Assemble references:
+            #    [context_images (scene/object ground truth)] + [prior step images (work state)]
+            #    Context first — model sees canonical objects before cumulative work state
+            all_references = context_images + prior_step_images
+            logger.info(
+                f"References: {len(context_images)} context + "
+                f"{len(prior_step_images)} prior steps = {len(all_references)} total"
+            )
+
+            # 7. Generate
             aspect_ratio = map_size_to_aspect(size)
             raw_bytes = self.image_generation_agent.generate_image(
-                prompt=prompt,
+                prompt=planned_prompt,
                 reference_images=all_references if all_references else None,
                 aspect_ratio=aspect_ratio,
                 output_mime_type="image/png",
@@ -431,13 +551,13 @@ class ImageGenerationAgentService:
                     "step_id": step_id,
                     "size": size,
                     "aspect_ratio": aspect_ratio,
-                    "anchor_images_count": len(anchor_images),
-                    "step_refs_count": len(step_ref_images),
+                    "context_images_count": len(context_images),
+                    "step_refs_count": len(prior_step_images),
                     "domain": dna.get("domain", "unknown"),
                 },
             )
 
-            # 7. Upload
+            # 8. Normalize and upload
             png_bytes = png_to_bytes_ensure_rgba(raw_bytes)
             s3_key = generate_s3_key(step_id, project_id)
             self.s3_client.put_object(
@@ -450,11 +570,11 @@ class ImageGenerationAgentService:
                     "project_id": project_id or "",
                     "size": size,
                     "model": self.image_generation_agent.model,
-                    "anchor_count": str(len(anchor_images)),
+                    "context_count": str(len(context_images)),
                 },
             )
             url = get_public_url(s3_key, self.settings.AWS_S3_PUBLIC_BASE)
-            logger.info(f"Image uploaded: {s3_key}")
+            logger.info(f"Step {step_id} uploaded: {s3_key}")
 
             return ImageGenerationResult(
                 message="ok",
@@ -464,93 +584,11 @@ class ImageGenerationAgentService:
                 url=url,
                 size=size,
                 model=self.image_generation_agent.model,
-                prompt_preview=prompt,
+                prompt_preview=planned_prompt,
                 state_summary=state_summary,
                 status="complete",
             )
 
         except Exception as e:
-            logger.error(f"Error generating step image: {e}")
+            logger.error(f"Error generating step {step_id}: {e}")
             raise
-
-    # ─── Prompt builder ───────────────────────────────────────────────────────
-
-    def _build_prompt(
-            self,
-            step_text: str,
-            summary_text: Optional[str],
-            dna: dict,
-            has_anchor_images: bool,
-            has_step_refs: bool,
-            step_id: str,
-            project_id: Optional[str] = None,
-            user_id: Optional[str] = None,
-    ) -> tuple[str, str]:
-
-        # Build reference instruction based on what images are being passed
-        if has_anchor_images and has_step_refs:
-            reference_instruction = (
-                "You are given two sets of reference images:\n"
-                "1. ANCHOR IMAGES (first images): isolated photos of the main objects "
-                "in this project (e.g. the exact mirror, the exact wall type). "
-                "Use these objects EXACTLY as shown — same shape, colour, size, finish.\n"
-                "2. PRIOR STEP IMAGES (remaining images): photos from earlier steps "
-                "showing the work in progress. Match the scene, environment, and "
-                "work state shown in these.\n"
-                "Combine both: use the anchor objects' exact appearance within the "
-                "scene established by the prior step images."
-            )
-        elif has_anchor_images:
-            reference_instruction = (
-                "You are given ANCHOR IMAGES: isolated reference photos of the main "
-                "objects in this project. Use these objects EXACTLY as shown — "
-                "same shape, colour, size, finish, style. "
-                "This is the first step, so establish a consistent scene around them."
-            )
-        elif has_step_refs:
-            reference_instruction = (
-                "You are given PRIOR STEP IMAGES from this project. "
-                "Match the visual style exactly: same environment, objects, colours, "
-                "lighting, and camera angle."
-            )
-        else:
-            reference_instruction = (
-                "No reference images provided. Establish a clear photorealistic style "
-                "that will be maintained across all subsequent steps."
-            )
-
-        user_content = json.dumps({
-            "project_summary": summary_text or "",
-            "domain": dna.get("domain", "general"),
-            "step_description": step_text,
-            "reference_image_instruction": reference_instruction,
-            "physics_rules": dna.get("physics_rules", []),
-            "simplification_rules": dna.get("simplification_rules", []),
-            "constraints": (
-                "No text, no watermarks, no brand names. "
-                "One primary action only. "
-                "Do NOT describe object appearance, colours, or environment — "
-                "those are visible in the reference images."
-            ),
-        }, indent=2)
-
-        content = _call_openai(
-            api_key=self.settings.OPENAI_API_KEY,
-            system=IMAGE_GENERATION_PROMPT,
-            user=user_content,
-            max_tokens=500,
-        )
-
-        if content:
-            parsed = _parse_json_safe(content, context=f"image_prompt_step_{step_id}")
-            if parsed:
-                return (
-                    f"{reference_instruction}\n\nACTION: {parsed.get('imagen_prompt', step_text)}{_NEGATIVE_SUFFIX}",
-                    parsed.get("state_summary", ""),
-                )
-
-        logger.warning(f"_build_prompt failed for step {step_id} — using fallback")
-        return (
-            f"{reference_instruction}\n\nACTION: Photorealistic image of: {step_text}{_NEGATIVE_SUFFIX}",
-            "",
-        )
