@@ -20,6 +20,7 @@ from agents.solution_generation_multi_agent.image_generation_agent.schemas impor
 from agents.solution_generation_multi_agent.image_generation_agent.utils import (
     map_size_to_aspect,
     png_to_bytes_ensure_rgba,
+    generate_anchor_s3_key,
     generate_s3_key,
     get_public_url,
     apply_physics_filter,
@@ -260,7 +261,7 @@ class ImageGenerationAgentService:
                 )
 
                 png_bytes = png_to_bytes_ensure_rgba(raw_bytes)
-                s3_key = f"project_{project_id}/anchors/{name}/anchor_{int(time.time())}.png"
+                s3_key = generate_anchor_s3_key(project_id, name)
                 self.s3_client.put_object(
                     Bucket=self.settings.AWS_S3_BUCKET,
                     Key=s3_key,

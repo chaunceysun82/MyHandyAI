@@ -5,6 +5,7 @@ import io
 import re
 import time
 from typing import Optional
+from uuid import uuid4
 
 from PIL import Image
 
@@ -53,7 +54,21 @@ def png_to_bytes_ensure_rgba(raw_bytes: bytes) -> bytes:
 
 def generate_s3_key(step_id: str, project_id: Optional[str]) -> str:
     ts = int(time.time())
-    return f"project_{project_id or 'na'}/steps/{step_id}/image_{ts}.png"
+    suffix = uuid4().hex
+    return (
+        f"project_{project_id or 'na'}/generated-images/"
+        f"steps/{step_id}/image_{ts}_{suffix}.png"
+    )
+
+
+def generate_anchor_s3_key(project_id: Optional[str], anchor_name: str) -> str:
+    ts = int(time.time())
+    safe_name = re.sub(r"[^a-zA-Z0-9_.=-]+", "-", anchor_name).strip("-") or "anchor"
+    suffix = uuid4().hex
+    return (
+        f"project_{project_id or 'na'}/generated-images/"
+        f"anchors/{safe_name}/anchor_{ts}_{suffix}.png"
+    )
 
 
 def get_public_url(key: str, public_base: Optional[str]) -> Optional[str]:
