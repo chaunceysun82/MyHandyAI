@@ -12,8 +12,7 @@ from loguru import logger
 from pymongo.collection import Collection
 
 from agents.solution_generation_multi_agent.image_generation_agent.image_generation_agent import (
-    ImageGenerationAgent,
-    GEMINI_IMAGE_MODEL_FLASH,
+    ImageGenerationAgent
 )
 from agents.solution_generation_multi_agent.image_generation_agent.schemas import (
     ImageGenerationResult,
@@ -38,6 +37,8 @@ from agents.solution_generation_multi_agent.prompt_templates.v1.image_generation
 )
 from config.settings import get_settings
 from database.llm_consumption import record_google_image_generation, record_openai_response_usage
+
+GEMINI_IMAGE_MODEL_FLASH="gemini-3-pro-image-preview"
 
 REFERENCE_IMAGE_BUDGET = 6      # total refs passed to Gemini per step
 MAX_CONTEXT_IMAGES = 3          # establishing shots from summary
