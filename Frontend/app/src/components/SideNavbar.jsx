@@ -6,6 +6,7 @@ import { redirectToCognitoLogout } from "../services/cognitoAuth";
 export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
   const navigate = useNavigate();
   const [showSignoutConfirm, setShowSignoutConfirm] = useState(false);
+  const [activeInfoModal, setActiveInfoModal] = useState(null);
 
   // Get user data from localStorage
   const userName = localStorage.getItem("displayName") || sessionStorage.getItem("displayName") || "User";
@@ -38,19 +39,12 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
     onClose();
   };
 
-  const handleSettings = () => {
-    console.log("Settings clicked");
-    onClose();
-  };
-
-  const handleBilling = () => {
-    console.log("Billing clicked");
-    onClose();
+  const handleMyProfile = () => {
+    setActiveInfoModal("profile");
   };
 
   const handleAbout = () => {
-    console.log("About clicked");
-    onClose();
+    setActiveInfoModal("about");
   };
 
   const handleAskAPro = () => {
@@ -59,8 +53,51 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
   };
 
   const handleTerms = () => {
-    console.log("Terms clicked");
-    onClose();
+    setActiveInfoModal("terms");
+  };
+
+  const closeInfoModal = () => {
+    setActiveInfoModal(null);
+  };
+
+  const modalContent = {
+    profile: {
+      title: "My Profile",
+      body: (
+        <>
+          <p className="text-sm text-gray-600">
+            Your profile is connected through your secure MyHandyAI account.
+          </p>
+          <div className="mt-4 rounded-xl bg-[#E9FAFF] p-3 text-left">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#1484A3]">Name</p>
+            <p className="text-sm font-medium text-gray-900">{userName}</p>
+            <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-[#1484A3]">Email</p>
+            <p className="text-sm font-medium text-gray-900">{userEmail}</p>
+          </div>
+        </>
+      ),
+    },
+    about: {
+      title: "About MyHandyAI",
+      body: (
+        <p className="text-sm leading-6 text-gray-600">
+          MyHandyAI helps homeowners break household problems into practical, step-by-step repair plans. It can collect details, suggest tools, estimate time and cost, and guide you through each step with an assistant.
+        </p>
+      ),
+    },
+    terms: {
+      title: "Terms & Conditions",
+      body: (
+        <div className="space-y-3 text-sm leading-6 text-gray-600">
+          <p>
+            MyHandyAI provides informational guidance only. Always verify important details before starting work, follow product instructions, and use proper safety equipment.
+          </p>
+          <p>
+            For electrical, gas, structural, roofing, plumbing emergencies, or any task that feels unsafe, stop and contact a qualified professional.
+          </p>
+        </div>
+      ),
+    },
   };
 
   return (
@@ -131,27 +168,15 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
               <span className="font-medium text-sm">My Projects</span>
             </button>
 
-            {/* Settings */}
+            {/* My Profile */}
             <button
-              onClick={handleSettings}
+              onClick={handleMyProfile}
               className="w-full flex items-center space-x-3 px-3 py-2.5 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
             >
               <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.75 7.5a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.25a7.5 7.5 0 0115 0" />
               </svg>
-              <span className="font-medium text-sm">Settings</span>
-            </button>
-
-            {/* Billing & Subscriptions */}
-            <button
-              onClick={handleBilling}
-              className="w-full flex items-center space-x-3 px-3 py-2.5 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-            >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-              </svg>
-              <span className="font-medium text-sm">Billing & Subscriptions</span>
+              <span className="font-medium text-sm">My Profile</span>
             </button>
 
             {/* About MyHandyAI */}
@@ -233,6 +258,36 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
                 Yes, Sign Out
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeInfoModal && (
+        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-[#fffef6] rounded-2xl p-5 max-w-xs w-full mx-4 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {modalContent[activeInfoModal].title}
+              </h3>
+              <button
+                onClick={closeInfoModal}
+                className="-mt-1 rounded-lg px-2 text-2xl leading-none text-gray-500 hover:bg-gray-100"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-4">
+              {modalContent[activeInfoModal].body}
+            </div>
+
+            <button
+              onClick={closeInfoModal}
+              className="mt-5 w-full rounded-xl bg-[#1484A3] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#066580]"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}

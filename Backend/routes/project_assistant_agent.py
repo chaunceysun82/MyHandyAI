@@ -7,6 +7,7 @@ from agents.project_assistant_agent.dependencies import ProjectAssistantAgentSer
 from routes.schemas.request.project_assistant_agent import ChatMessageRequest, InitializeConversationRequest
 from routes.schemas.response.project_assistant_agent import ChatMessageResponse, ConversationHistoryResponse, HistoryMessage, InitializeConversationResponse
 from security.current_user import get_current_app_user
+from services.user_upload_storage import store_user_uploaded_image
 
 router = APIRouter(prefix="/project-assistant-agent")
 
@@ -42,6 +43,18 @@ async def chat(
 ) -> ChatMessageResponse:
     """Send a chat message to the project assistant agent."""
     logger.info(f"chat called with thread_id: {thread_id}, project_id: {request.project_id}, step_number: {request.step_number}")
+
+    if request.image_base64:
+        upload = store_user_uploaded_image(
+            image_base64=request.image_base64,
+            image_mime_type=request.image_mime_type,
+            user_id=current_user.get("id") or current_user.get("sub"),
+            project_id=request.project_id,
+            thread_id=thread_id,
+            source="project-assistant-agent",
+            step_number=request.step_number,
+        )
+        logger.info(f"Stored project assistant upload: {upload['key']}")
 
     agent_response, _ = orchestrator.process_message(
         thread_id=thread_id,

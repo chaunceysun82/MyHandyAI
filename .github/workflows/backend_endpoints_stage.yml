@@ -19,6 +19,7 @@ jobs:
           cp Backend/*.py lambda_package/
           cp -r Backend/routes lambda_package/
           cp -r Backend/security lambda_package/
+          cp -r Backend/services lambda_package/
           cp -r Backend/agents lambda_package/
           cp -r Backend/database lambda_package/
           cp -r Backend/config lambda_package/

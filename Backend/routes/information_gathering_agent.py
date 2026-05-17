@@ -9,6 +9,7 @@ from routes.schemas.request.information_gathering_agent import InitializeConvers
 from routes.schemas.response.information_gathering_agent import InitializeConversationResponse, \
     ChatMessageResponse, ConversationHistoryResponse, HistoryMessage
 from security.current_user import get_current_app_user
+from services.user_upload_storage import store_user_uploaded_image
 
 router = APIRouter(prefix="/information-gathering-agent")
 
@@ -41,6 +42,17 @@ async def chat(
 ) -> ChatMessageResponse:
     """Send a chat message to the information gathering agent."""
     logger.info(f"chat called with thread_id: {thread_id}, project_id: {request.project_id}")
+
+    if request.image_base64:
+        upload = store_user_uploaded_image(
+            image_base64=request.image_base64,
+            image_mime_type=request.image_mime_type,
+            user_id=current_user.get("id") or current_user.get("sub"),
+            project_id=request.project_id,
+            thread_id=thread_id,
+            source="information-gathering-agent",
+        )
+        logger.info(f"Stored information gathering upload: {upload['key']}")
 
     agent_response, conversation_status = orchestrator.process_message(
         thread_id=thread_id,
