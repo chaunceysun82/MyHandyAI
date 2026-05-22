@@ -4,6 +4,7 @@ import re
 import traceback
 from datetime import datetime
 import time
+from typing import Any
 
 import boto3
 import requests
@@ -36,6 +37,7 @@ database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
 steps_collection: Collection = database.get_collection("ProjectSteps")
 tools_collection: Collection = database.get_collection("Tools")
+users_collection: Collection = database.get_collection("Users")
 
 def _get_image_service() -> ImageGenerationAgentService:
     """Create a fresh ImageGenerationAgentService. Called per-invocation."""
@@ -44,6 +46,69 @@ def _get_image_service() -> ImageGenerationAgentService:
         s3_client=s3,
         project_collection=project_collection,
     )
+
+
+def _format_profile_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        cleaned = value.strip()
+        return cleaned or None
+    if isinstance(value, list):
+        cleaned_items = [str(item).strip() for item in value if str(item).strip()]
+        return ", ".join(cleaned_items) if cleaned_items else None
+    return str(value)
+
+
+def _build_user_profile_context(project: dict) -> str:
+    """
+    Build concise, non-sensitive user profile context for generation prompts.
+    Avoid auth identifiers and email; only include details that can improve DIY guidance.
+    """
+    user_id = project.get("userId")
+    if not user_id:
+        return ""
+
+    try:
+        user_object_id = user_id if isinstance(user_id, ObjectId) else ObjectId(str(user_id))
+        user = users_collection.find_one({"_id": user_object_id})
+    except Exception as e:
+        print(f"Unable to load user profile context: {e}")
+        return ""
+
+    if not user:
+        return ""
+
+    profile_fields = [
+        ("Experience level", user.get("experienceLevel")),
+        ("DIY confidence", user.get("confidence")),
+        ("Tools available", user.get("tools")),
+        ("Interested project types", user.get("interestedProjects")),
+        ("Country", user.get("country")),
+        ("State", user.get("state")),
+        ("User notes", user.get("describe")),
+    ]
+
+    lines = ["## User Profile Context"]
+    for label, value in profile_fields:
+        formatted = _format_profile_value(value)
+        if formatted:
+            lines.append(f"- {label}: {formatted}")
+
+    if len(lines) == 1:
+        return ""
+
+    lines.append(
+        "Use this context to tailor difficulty, safety warnings, tool choices, and explanation detail. "
+        "Do not mention this profile unless it is directly helpful."
+    )
+    return "\n".join(lines)
+
+
+def _append_user_profile_context(summary: str, user_profile_context: str) -> str:
+    if not user_profile_context:
+        return summary
+    return f"{summary.strip()}\n\n{user_profile_context}"
 
 
 def preflight_image_setup(project_id: str, summary: str) -> None:
@@ -252,6 +317,11 @@ def lambda_handler(event, context):
                 update_project(str(cursor["_id"]), {"generation_status": "failed", "error": "Missing summary"})
                 continue
 
+            user_profile_context = _build_user_profile_context(cursor)
+            summary_with_user_context = _append_user_profile_context(summary, user_profile_context)
+            if user_profile_context:
+                print("User profile context will be included in generation prompts")
+
             # ------------------------------------------------------------------
             # STEP 1 — Project-level similarity (existing logic, unchanged)
             # ------------------------------------------------------------------
@@ -348,7 +418,7 @@ def lambda_handler(event, context):
 
                 try:
                     tools_agent = ToolsAgent(
-                        new_summary=summary,
+                        new_summary=summary_with_user_context,
                         matched_summary=matched_summary,
                         matched_tools=matched_tools,
                         # NEW: pass KB knowledge if available
@@ -383,7 +453,7 @@ def lambda_handler(event, context):
             # ------------------------------------------------------------------
             try:
                 tools_result = tools_agent.recommend_tools(
-                    summary=summary,
+                    summary=summary_with_user_context,
                     include_json=True
                 )
             except Exception as e:
@@ -495,7 +565,7 @@ def lambda_handler(event, context):
                 steps_service = StepsGenerationAgentService(steps_agent)
                 steps_result = steps_service.generate_steps(
                     tools=cursor.get("tool_generation"),
-                    summary=cursor.get("summary"),
+                    summary=summary_with_user_context,
                     user_answers=cursor.get("user_answers") or cursor.get("answers"),
                     questions=cursor.get("questions", []),
                     matched_summary=matched_summary_for_steps,
@@ -519,7 +589,7 @@ def lambda_handler(event, context):
                 steps_result["youtube"] = youtube_url
                 update_project(str(cursor["_id"]), {"step_generation": steps_result})
                 enqueue_image_tasks(project_id_str, steps_result.get("steps", []),
-                                    size="1536x1024", summary=cursor.get("summary", ""))
+                                    size="1536x1024", summary=summary_with_user_context)
             except Exception as e:
                 print(f"⚠️ Failed after steps generation: {e}")
 
@@ -562,7 +632,7 @@ def lambda_handler(event, context):
                 estimation_result = estimation_agent.generate_estimation(
                     tools_data=cursor.get("tool_generation"),
                     steps_data=cursor.get("step_generation"),
-                    summary=cursor.get("summary")
+                    summary=summary_with_user_context
                 )
             except Exception as e:
                 print(f"❌ Estimation generation failed: {e}")

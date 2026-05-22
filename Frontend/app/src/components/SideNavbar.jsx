@@ -2,11 +2,18 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import defaultNavLogo from '../assets/default_nav_logo.png';
 import { redirectToCognitoLogout } from "../services/cognitoAuth";
+import { getUserById, updateUser } from "../services/auth";
 
 export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
   const navigate = useNavigate();
   const [showSignoutConfirm, setShowSignoutConfirm] = useState(false);
   const [activeInfoModal, setActiveInfoModal] = useState(null);
+  const [profileUser, setProfileUser] = useState(null);
+  const [profileForm, setProfileForm] = useState({});
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [profileSuccess, setProfileSuccess] = useState("");
 
   // Get user data from localStorage
   const userName = localStorage.getItem("displayName") || sessionStorage.getItem("displayName") || "User";
@@ -39,8 +46,25 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
     onClose();
   };
 
-  const handleMyProfile = () => {
+  const handleMyProfile = async () => {
     setActiveInfoModal("profile");
+    setProfileError("");
+    setProfileSuccess("");
+
+    const userId = localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
+    if (!userId || profileUser) return;
+
+    setProfileLoading(true);
+    try {
+      const user = await getUserById(userId);
+      setProfileUser(user);
+      setProfileForm(createProfileForm(user));
+    } catch (err) {
+      console.error("Could not load profile:", err);
+      setProfileError("Could not load your profile answers right now.");
+    } finally {
+      setProfileLoading(false);
+    }
   };
 
   const handleAbout = () => {
@@ -60,6 +84,72 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
     setActiveInfoModal(null);
   };
 
+  const createProfileForm = (user = {}) => ({
+    experienceLevel: user.experienceLevel || "",
+    confidence: user.confidence || "",
+    tools: formatProfileValue(user.tools) || "",
+    interestedProjects: formatProfileValue(user.interestedProjects) || "",
+    country: user.country || "",
+    state: user.state || "",
+    describe: user.describe || "",
+  });
+
+  const formatProfileValue = (value) => {
+    if (Array.isArray(value)) return value.join(", ");
+    if (typeof value === "object" && value !== null) {
+      return [value.country, value.state].filter(Boolean).join(", ") || JSON.stringify(value);
+    }
+    return value;
+  };
+
+  const handleProfileFieldChange = (field, value) => {
+    setProfileForm((prev) => ({ ...prev, [field]: value }));
+    setProfileSuccess("");
+  };
+
+  const handleSaveProfile = async () => {
+    const userId = profileUser?.id || profileUser?._id || localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
+    if (!userId) {
+      setProfileError("Could not find your user profile.");
+      return;
+    }
+
+    setProfileSaving(true);
+    setProfileError("");
+    setProfileSuccess("");
+
+    try {
+      const payload = {
+        experienceLevel: profileForm.experienceLevel,
+        confidence: profileForm.confidence,
+        tools: profileForm.tools,
+        interestedProjects: profileForm.interestedProjects,
+        country: profileForm.country,
+        state: profileForm.state,
+        describe: profileForm.describe,
+      };
+      const updated = await updateUser(userId, payload);
+      const nextUser = { ...profileUser, ...payload, ...updated };
+      setProfileUser(nextUser);
+      setProfileForm(createProfileForm(nextUser));
+      setProfileSuccess("Profile updated.");
+    } catch (err) {
+      console.error("Could not save profile:", err);
+      setProfileError("Could not save your profile changes. Please try again.");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const profileFields = [
+    ["experienceLevel", "Experience level", "Example: Beginner, Intermediate, Advanced"],
+    ["confidence", "DIY confidence", "Example: Confident"],
+    ["tools", "Tools available", "Example: drill, screwdriver, level"],
+    ["interestedProjects", "Interested projects", "Example: plumbing, mounting, painting"],
+    ["country", "Country", "Example: United States"],
+    ["state", "State", "Example: Florida"],
+  ];
+
   const modalContent = {
     profile: {
       title: "My Profile",
@@ -73,6 +163,73 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
             <p className="text-sm font-medium text-gray-900">{userName}</p>
             <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-[#1484A3]">Email</p>
             <p className="text-sm font-medium text-gray-900">{userEmail}</p>
+          </div>
+
+          <div className="mt-4 text-left">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#1484A3]">
+              Onboarding answers
+            </p>
+
+            {profileLoading && (
+              <p className="mt-2 text-sm text-gray-500">Loading your answers...</p>
+            )}
+
+            {profileError && (
+              <p className="mt-2 rounded-lg bg-red-50 p-2 text-xs text-red-600">
+                {profileError}
+              </p>
+            )}
+
+            {!profileLoading && !profileError && !profileUser && (
+              <p className="mt-2 text-sm text-gray-500">
+                No onboarding answers saved yet.
+              </p>
+            )}
+
+            {!profileLoading && profileUser && (
+              <div className="mt-3 space-y-3">
+                {profileFields.map(([field, label, placeholder]) => (
+                  <label key={field} className="block">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                      {label}
+                    </span>
+                    <input
+                      className="mt-1 w-full rounded-xl border border-[#d8e8ee] bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#1484A3] focus:ring-2 focus:ring-[#1484A3]/20"
+                      value={profileForm[field] || ""}
+                      placeholder={placeholder}
+                      onChange={(e) => handleProfileFieldChange(field, e.target.value)}
+                    />
+                  </label>
+                ))}
+
+                <label className="block">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    About you
+                  </span>
+                  <textarea
+                    className="mt-1 min-h-[88px] w-full rounded-xl border border-[#d8e8ee] bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#1484A3] focus:ring-2 focus:ring-[#1484A3]/20"
+                    value={profileForm.describe || ""}
+                    placeholder="Tell MyHandyAI what helps personalize your project guidance."
+                    onChange={(e) => handleProfileFieldChange("describe", e.target.value)}
+                  />
+                </label>
+
+                {profileSuccess && (
+                  <p className="rounded-lg bg-green-50 p-2 text-xs text-green-700">
+                    {profileSuccess}
+                  </p>
+                )}
+
+                <button
+                  className="w-full rounded-xl bg-[#1484A3] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#066580] disabled:cursor-not-allowed disabled:opacity-60"
+                  type="button"
+                  onClick={handleSaveProfile}
+                  disabled={profileSaving}
+                >
+                  {profileSaving ? "Saving..." : "Save profile"}
+                </button>
+              </div>
+            )}
           </div>
         </>
       ),
@@ -264,7 +421,7 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
 
       {activeInfoModal && (
         <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
-          <div className="bg-[#fffef6] rounded-2xl p-5 max-w-xs w-full mx-4 shadow-2xl">
+          <div className="bg-[#fffef6] rounded-2xl p-5 max-h-[82vh] max-w-xs w-full mx-4 overflow-y-auto shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <h3 className="text-lg font-semibold text-gray-900">
                 {modalContent[activeInfoModal].title}
@@ -282,12 +439,14 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
               {modalContent[activeInfoModal].body}
             </div>
 
-            <button
-              onClick={closeInfoModal}
-              className="mt-5 w-full rounded-xl bg-[#1484A3] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#066580]"
-            >
-              Close
-            </button>
+            {activeInfoModal !== "profile" && (
+              <button
+                onClick={closeInfoModal}
+                className="mt-5 w-full rounded-xl bg-[#1484A3] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#066580]"
+              >
+                Close
+              </button>
+            )}
           </div>
         </div>
       )}

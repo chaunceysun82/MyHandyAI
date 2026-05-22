@@ -16,7 +16,7 @@ class InformationGatheringAgentService:
         self.information_gathering_agent = information_gathering_agent
         self.mongodb = mongodb
         self.project_collection: Collection = mongodb.get_collection("Project")
-        self.user_collection: Collection = mongodb.get_collection("User")
+        self.user_collection: Collection = mongodb.get_collection("Users")
 
     def initialize_conversation(self, project_id: str) -> Tuple[UUID, str, str]:
         """
@@ -199,24 +199,27 @@ class InformationGatheringAgentService:
             # Get user information
             user_id = project.get("userId")
             user_name = None
-            user_email = None
             user_state = None
             user_country = None
             user_experience = None
             user_tools = None
             user_confidence = None
+            user_interests = None
+            user_notes = None
 
             if user_id:
-                user = self.user_collection.find_one({"_id": ObjectId(user_id)})
+                user_object_id = user_id if isinstance(user_id, ObjectId) else ObjectId(str(user_id))
+                user = self.user_collection.find_one({"_id": user_object_id})
                 if user:
                     user_name = user.get("name") or user.get(
                         "displayName") or f"{user.get('firstname', '')} {user.get('lastname', '')}".strip() or None
-                    user_email = user.get("email")
                     user_state = user.get("state")
                     user_country = user.get("country")
                     user_experience = user.get("experienceLevel")
                     user_tools = user.get("tools")
                     user_confidence = user.get("confidence")
+                    user_interests = user.get("interestedProjects")
+                    user_notes = user.get("describe")
 
             # Build context sections
             context_parts = []
@@ -225,8 +228,6 @@ class InformationGatheringAgentService:
             context_parts.append("## User Information")
             if user_name:
                 context_parts.append(f"**Name:** {user_name}")
-            if user_email:
-                context_parts.append(f"**Email:** {user_email}")
             if user_state:
                 context_parts.append(f"**State:** {user_state}")
             if user_country:
@@ -237,6 +238,10 @@ class InformationGatheringAgentService:
                 context_parts.append(f"**Tools Available:** {user_tools}")
             if user_confidence is not None:
                 context_parts.append(f"**Confidence Level:** {user_confidence}")
+            if user_interests:
+                context_parts.append(f"**Interested Project Types:** {user_interests}")
+            if user_notes:
+                context_parts.append(f"**User Notes:** {user_notes}")
             context_parts.append("")
 
             return "\n".join(context_parts)
