@@ -76,39 +76,63 @@ DOMAIN_PHYSICS_LIBRARY = {
     },
 
     "carpentry": {
-        "physics": [
-            "Wood grain runs consistently in one direction per piece",
-            "Joints must be flush — gaps indicate incomplete work",
-            "Fasteners (screws/nails) go INTO the wood at 90 degrees unless angled for toe-nailing",
-            "Clamps apply pressure FROM both sides toward the joint",
-            "Saw blade cuts downward through material resting on a stable surface",
-            "Level bubble must be centered for a level surface",
-        ],
-        "hand_rules": [
-            "Drill held with dominant hand on grip, other hand steadying workpiece or drill body",
-            "Saw operation: both hands on saw, material clamped or held by helper",
-            "Measuring tape: one hand holds tape body, other pulls and reads",
-            "Never show three hands",
-        ],
-        "camera": [
-            "Joint/connection work: close-up at joint level",
-            "Full assembly: wide shot showing complete piece in context",
-            "Measuring: medium shot showing tape, material, and marking point",
-            "Drilling: medium close-up showing drill bit entering material at correct angle",
-        ],
-        "alignment": [
-            "Mirror hung with reflective face INTO the room — never backward",
-            "Picture frame shows front face to viewer",
-            "Cabinet doors open toward the room — hinges on wall side",
-            "Shelves are horizontal, level, supported at both ends",
-        ],
-        "impossible_states": [
-            "Mirror showing its back face as the hung result",
-            "Floating shelves with no visible mounting",
-            "Three or more hands",
-            "Drill bit entering at impossible angle",
-        ],
-    },
+    "physics": [
+        "Wood grain runs consistently in one direction per piece",
+        "Joints must be flush — gaps indicate incomplete work",
+        "Fasteners (screws/nails) go INTO the wood at 90 degrees unless angled for toe-nailing",
+        "Clamps apply pressure FROM both sides toward the joint",
+        "Saw blade cuts downward through material resting on a stable surface",
+        "Level bubble must be centered for a level surface",
+        "All tools must appear TRUE TO SCALE relative to the room and person — ",
+        "a measuring tape is hand-sized, not wall-height; a drill is forearm-length",
+        "Hands and arms must appear in natural proportion to the person's body — ",
+        "never enlarged or zoomed beyond what a medium/wide shot would show",
+    ],
+    "hand_rules": [
+        "Drill held with dominant hand on grip, other hand steadying workpiece or drill body",
+        "Saw operation: both hands on saw, material clamped or held by helper",
+        "Measuring tape: one hand holds tape body, other pulls and reads — ",
+        "tape is MAX 1 meter visible, not floor-to-ceiling length",
+        "Never show three hands",
+        "Hands must be in natural proportion — if hands appear larger than a person's ",
+        "head in the frame, the camera is too close; pull back to medium or wide shot",
+        "For wall work, person stands at arm's length from wall — ",
+        "hands are NOT filling the foreground of the frame",
+    ],
+    "camera": [
+        "Joint/connection work: close-up at joint level — but person still visible",
+        "Full assembly/installation: wide shot showing complete piece AND full person in frame",
+        "Measuring: medium shot — person visible from waist up, tape visible but hand-sized",
+        "Drilling: medium shot — person's full upper body visible, drill in natural proportion",
+        "Stud finding / wall marking: medium-wide shot showing the CORRECT wall ",
+        "(the wall where the mirror/object will hang) — person standing facing that wall, ",
+        "full body or waist-up visible, tool hand-sized not foreground-filling",
+        "NEVER use extreme close-up (hands filling frame) for carpentry — ",
+        "always show enough of the person to establish body proportions",
+        "Camera should be 2-3 meters from the person for most carpentry steps",
+    ],
+    "alignment": [
+        "Mirror hung with reflective face INTO the room — never backward",
+        "Picture frame shows front face to viewer",
+        "Cabinet doors open toward the room — hinges on wall side",
+        "Shelves are horizontal, level, supported at both ends",
+        "ALL wall work (drilling, stud-finding, marking, mounting) happens on ",
+        "the PRIMARY FEATURE WALL — the main flat wall where the object will be installed, ",
+        "NOT the side walls, NOT the ceiling, NOT adjacent walls",
+        "The feature wall is the largest unobstructed wall visible straight ahead ",
+        "when entering the room — the sofa/furniture faces it",
+    ],
+    "impossible_states": [
+        "Mirror showing its back face as the hung result",
+        "Floating shelves with no visible mounting",
+        "Three or more hands",
+        "Drill bit entering at impossible angle",
+        "Hands/tools appearing larger than the person's torso in the frame",
+        "Measuring tape appearing taller than a person",
+        "Stud finder / drill / tools used on the wrong wall (side wall instead of feature wall)",
+        "Person invisible or only hands visible in a wide installation step",
+    ],
+},
 
     "painting": {
         "physics": [
@@ -443,28 +467,50 @@ DOMAIN_PHYSICS_LIBRARY = {
 
 # ─── CAMERA ANGLE GUIDE ───────────────────────────────────────────────────────
 CAMERA_ANGLE_GUIDE = """
-CAMERA SELECTION RULES:
-- WIDE SHOT (show full object + surroundings + person): Use when the step involves
-  placing, mounting, or installing a large object. User needs to see scale,
-  position relative to room, and overall result. E.g. hanging a mirror, mounting TV,
-  installing a door. REQUIRED when object is > 30cm in any dimension.
+CAMERA SELECTION RULES — defined by what is VISIBLE IN FRAME:
 
-- MEDIUM SHOT (waist-up person or object + immediate context): Use for most
-  repair/adjustment steps. Shows hands, tool, and object being worked on with
-  enough surrounding context to understand location.
+- WIDE SHOT: Full person head-to-toe visible, plus 30-50% of surrounding room.
+  Room furniture, floor, ceiling partially visible. Person occupies 40-60% of
+  frame height. Use for: mounting, hanging, installing large objects, any step
+  where the object being installed is > 30cm.
+  Example: person standing at wall hanging a mirror — full body visible,
+  sofa and room visible behind them, mirror on wall visible in full.
 
-- CLOSE-UP (hands + tool + work surface only): Use ONLY for fine detail steps:
-  marking a measurement point, tightening a specific screw, applying tape to a
-  seam. Should NOT be used when the overall scene orientation matters.
+- MEDIUM SHOT (most common): Person visible from waist to top of head.
+  Both hands and the work surface clearly visible. Room context visible
+  behind/beside person (wall, floor, some furniture). Person occupies
+  50-70% of frame height. Tool appears ARM-SIZED in frame, not frame-filling.
+  Use for: drilling, stud-finding, measuring, screwing in hardware.
+  Example: person standing at wall drilling — upper body, both arms, drill,
+  and wall section all visible. Room visible behind them.
 
-- TOP-DOWN / OVERHEAD: Use for layout steps: arranging tiles, measuring floor area,
-  mapping cable routes on a flat surface.
+- CLOSE-UP: Hands + tool + work surface ONLY. No face. Arms visible to elbow.
+  Use ONLY for fine detail: marking a pencil dot, tightening one screw,
+  reading a measurement. The subject (screw/mark/joint) is 10cm or smaller.
+  FORBIDDEN for: drilling, stud-finding, hanging objects, any step where
+  room context or object position matters.
 
-- FROM BELOW: Use for under-sink or under-cabinet work where the viewer needs to
-  see upward into the cabinet.
+- TOP-DOWN: Camera directly above, person crouching or kneeling visible from above.
+  Use for: floor layout, tile arrangement, measuring floor area.
 
-RULE: If in doubt, choose one step wider than you think you need.
-A wide shot that shows too much is better than a close-up that loses all context.
+- FROM BELOW: Camera below subject looking upward.
+  Use for: under-sink, under-cabinet, ceiling work.
+
+PROPORTION RULE — ENFORCED IN EVERY SHOT:
+  Hands must appear SMALLER than the person's torso in the frame.
+  Tools must appear SMALLER than the person's arm.
+  If hands are filling more than 25% of the frame width — the shot is too close.
+  Pull back to the next wider shot type.
+
+PERSON VISIBILITY RULE:
+  For WIDE and MEDIUM shots: the person's torso must be visible.
+  Floating hands with no body = FORBIDDEN in wide and medium shots.
+  The person's arms must connect visibly to their body in the frame.
+
+ROOM CONTEXT RULE:
+  For installation steps (drilling, mounting, hanging): at least one piece of
+  room furniture (sofa, table, chair) must be visible in the background to
+  establish scale and confirm the correct wall is being worked on.
 """
 
 # ─── OBJECT ALIGNMENT RULES ───────────────────────────────────────────────────
@@ -601,48 +647,90 @@ You receive:
 
 Return ONLY valid JSON:
 {
-  "camera_angle": "<wide|medium|close-up|top-down|from-below> — justify in camera_reason",
+  "camera_angle": "<wide|medium|close-up|top-down|from-below>",
   "camera_reason": "<1 sentence: why this angle best shows this step>",
+  "camera_distance": "<specific distance: '3-4 meters from person' | '2-3 meters' | 'arm length from subject'>",
+  "body_visibility": "<what of the person is visible: 'full body head-to-toe' | 'waist-to-head' | 'hands and forearms only (close-up only)'>",
+  "which_wall": "<'primary feature wall facing viewer' | 'floor' | 'ceiling' | 'not applicable'>",
+  "person_position": "<where person stands: e.g. 'standing 30-50cm from feature wall, facing it, back toward camera, camera 3m behind at eye level'>",
   "primary_action": "<single most visual action, verb+direction+object, max 15 words>",
   "objects_visible": ["<object1 with color from registry>", "<object2>"],
-  "hand_description": "<exactly what hands are doing — max 2 hands, grounded to body>",
-  "cumulative_state": "<what the scene looks like based on ALL prior steps — what was done, what remains>",
-  "physics_checks": ["<physics rule that applies to THIS step and how it's satisfied>"],
-  "impossible_states_avoided": ["<specific impossible state this step could generate and how prompt avoids it>"],
-  "orientation_note": "<if any object has orientation requirement (TV screen, mirror face), state it explicitly>",
-  "imagen_prompt": "<final 60-100 word structured Imagen prompt combining all above. Format: [CAMERA] [SCENE STATE] [BODY+HANDS] [ACTION] [OBJECTS VISIBLE WITH COLORS] [PHYSICS NOTES]>",
-  "state_summary": "<10-20 word plain English: what physically changed in this step>"
+  "object_scale_check": "<each tool's size relative to person: e.g. 'drill: forearm-length, occupies 15% of frame width; tape: hand-sized'>",
+  "hand_description": "<exactly what hands are doing — max 2 hands, arms connect to visible torso>",
+  "room_context_visible": "<what room elements are visible to establish scale: e.g. 'sofa visible in background left, wood floor visible below person'>",
+  "cumulative_state": "<what the scene looks like based on ALL prior steps>",
+  "physics_checks": ["<physics rule that applies and how satisfied>"],
+  "impossible_states_avoided": ["<impossible state avoided and how>"],
+  "orientation_note": "<object orientation requirement if any>",
+  "imagen_prompt": "<final 70-110 word structured prompt. MUST follow this exact structure: '[SHOT TYPE: wide/medium] [CAMERA POSITION: X meters from person at eye level] [PERSON: full body/waist-up visible, standing Xcm from wall, facing wall] [ROOM CONTEXT: sofa/furniture visible in background] [ACTION: person doing X] [TOOLS: tool name, arm-sized/hand-sized, in natural proportion] [WALL: primary feature wall, beige/white drywall] [PHYSICS: any critical physics note]'>",
+  "state_summary": "<10-20 word plain English: what physically changed>"
 }
 
 CRITICAL RULES:
-- camera_angle WIDE is required whenever main object > 30cm or full installation visible
-- Maximum TWO hands. Never three.
-- Hands must connect to a body — specify arm entry direction
-- If step involves object that was already installed (e.g. mirror hung in step 3,
-  now cleaning it in step 5), show it in its INSTALLED state + the new action
-- object_colors from the registry must be used verbatim for each object described
-- No text, labels, watermarks in imagen_prompt
-- No brand names — describe tools by appearance
+
+SHOT SELECTION:
+- Drilling, stud-finding, measuring on wall → ALWAYS medium or wide. NEVER close-up.
+- Hanging/mounting large object → ALWAYS wide. Person full body visible.
+- Fine detail (single screw, pencil mark) → close-up only if object < 10cm.
+- When in doubt: one shot wider than you think you need.
+
+BODY VISIBILITY (non-negotiable):
+- wide shot: full body head-to-toe in frame
+- medium shot: waist-to-head in frame, torso visible
+- hands must connect to arms which connect to visible torso
+- floating disconnected hands = forbidden in wide/medium shots
+- person must occupy at least 30% of frame height in wide shots
+- person must occupy at least 50% of frame height in medium shots
+
+PROPORTION (non-negotiable):
+- hands must be smaller than person's torso in frame
+- tools must be smaller than person's arm in frame
+- measuring tape: max 60-80cm visible length in frame, never floor-to-ceiling
+- drill: forearm-length in frame, never larger than person's torso
+- if any tool appears larger than the person's head: shot is too close, use wider
+
+WALL IDENTIFICATION:
+- ALL drilling/marking/stud-finding/mounting → primary feature wall only
+- feature wall = large flat wall the furniture faces
+- side walls, adjacent walls = FORBIDDEN for mirror/picture hanging steps
+- room furniture (sofa, table) must be visible to confirm correct wall
+
+IMAGEN PROMPT FORMAT (mandatory structure):
+'[SHOT TYPE] shot. Camera [X] meters from person at eye level.
+[Person full body/waist-up] visible, standing [distance] from [feature wall description],
+facing the wall. [Room furniture] visible in background establishing scale.
+[Person] is [action with tool — tool described as arm-sized/hand-sized].
+[Primary object] on wall. [Physics note if needed].'
 
 Return ONLY the JSON. No markdown. No explanation."""
-
 
 # ─── PROMPT 4: IMAGE GENERATION (passed to Gemini with reference images) ──────
 IMAGE_GENERATION_PROMPT = """You are generating a photorealistic DIY instructional image using Gemini.
 
 Reference images are provided showing:
-1. Context images (wide shots of the scene/objects before work — use for object colors, shapes, room style)
-2. Prior step images (cumulative work state — use for scene continuity)
+1. Context images (wide shots of the scene/objects before work — match colors, shapes, room style)
+2. Prior step images (cumulative work state — maintain scene continuity)
 
-Your task: generate ONE photorealistic image matching the structured prompt exactly.
+Generate ONE photorealistic image matching the structured prompt exactly.
 
 ABSOLUTE RULES:
 1. MAXIMUM TWO HANDS — never three, never four
-2. All objects face toward the viewer unless explicitly stated otherwise
-3. Mounted/hung objects show their FRONT (screen, reflective face, panel) toward viewer
-4. All physics rules in the prompt must be satisfied
-5. No text, no labels, no watermarks, no brand names
-6. Match the object colors/materials EXACTLY as shown in reference images
-7. Camera angle specified in prompt must be used — do not substitute
-8. One action only — do not add extra activities not in the prompt
-9. Photorealistic, 4K HDR, sharp focus, professional photography quality"""
+2. PERSON MUST BE VISIBLE — for wide and medium shots, the person's torso must
+   be in frame. Floating hands with no body are FORBIDDEN in wide/medium shots.
+3. BODY PROPORTIONS — hands must appear smaller than the person's torso.
+   Tools must appear smaller than the person's arm. If the prompt says "medium shot",
+   the person's waist-to-head must be visible, not just their hands.
+4. SHOT DISTANCE — if prompt says "wide shot at 3-4 meters", the person must
+   appear as a full-body figure occupying ~40-60% of frame height, not a close-up.
+5. CORRECT WALL — all drilling/mounting/measuring work happens on the PRIMARY
+   FEATURE WALL (large flat wall the furniture faces). Room furniture must be
+   visible in background to confirm scale and wall identity.
+6. TOOL SCALE — measuring tape is hand-sized (max 60-80cm visible).
+   Drill is forearm-length. No tool appears larger than the person's torso.
+7. All objects face toward the viewer unless stated otherwise
+8. Mounted objects show FRONT face toward viewer
+9. All physics rules in prompt must be satisfied
+10. No text, no labels, no watermarks, no brand names
+11. Match object colors EXACTLY as shown in reference images
+12. Camera angle specified in prompt must be used — do not substitute
+13. Photorealistic, 4K HDR, sharp focus, professional photography quality"""
