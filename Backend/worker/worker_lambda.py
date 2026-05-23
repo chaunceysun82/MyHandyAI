@@ -112,11 +112,6 @@ def _append_user_profile_context(summary: str, user_profile_context: str) -> str
 
 
 def preflight_image_setup(project_id: str, summary: str) -> None:
-    """
-    Run BEFORE any SQS step messages are sent.
-    Generates: Visual DNA → Context Images (establishing shots)
-    Both blocked synchronously so all step Lambdas find them ready.
-    """
     service = _get_image_service()
 
     # 1. Visual DNA
@@ -131,22 +126,29 @@ def preflight_image_setup(project_id: str, summary: str) -> None:
         print(f"✅ Visual DNA saved — domain: {dna.get('domain')}, "
               f"objects: {list(dna.get('object_colors', {}).keys())}")
 
-    # 2. Context images (establishing shots from summary)
+    # 2. Context images — build_context_images handles all three cases
     existing_ctx = service.get_context_images(project_id)
     if existing_ctx and existing_ctx.objects:
         print(f"✅ Context images exist: {[o.name for o in existing_ctx.objects]}")
     else:
-        print(f"🔍 Generating context images for project {project_id}")
+        print(f"🔍 Building context images for project {project_id}")
         try:
-            ctx_result = service.generate_context_images(
+            ctx_result = service.build_context_images(
                 project_id=project_id,
                 summary_text=summary,
                 dna=dna,
             )
-            print(f"✅ Context images ready: {[o.name for o in ctx_result.objects]}")
+            user_count = sum(
+                1 for o in ctx_result.objects
+                if "user-uploads" in (o.s3_key or "")
+            )
+            gen_count = len(ctx_result.objects) - user_count
+            print(
+                f"✅ Context images ready: {len(ctx_result.objects)} total "
+                f"({user_count} from user, {gen_count} generated)"
+            )
         except Exception as e:
-            print(f"⚠️ Context image generation failed (non-fatal): {e}")
-
+            print(f"⚠️ Context image build failed (non-fatal): {e}")
 
 def enqueue_image_tasks(
         project_id: str,
