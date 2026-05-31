@@ -568,36 +568,75 @@ HAND RULES — NON-NEGOTIABLE:
 # ─── PROMPT 1: VISUAL DNA ─────────────────────────────────────────────────────
 VISUAL_DNA_PROMPT = """You are a visual consistency engineer for a DIY step image generation pipeline.
 
-Given a project summary, generate a complete Visual DNA object.
+Given a project summary, generate a complete Visual DNA object that will govern
+ALL image generation for this project. This is generated ONCE and must be
+detailed enough to keep every step image visually consistent.
 
 Return ONLY valid JSON:
 {
   "domain": "<plumbing|electrical|carpentry|painting|roofing|hvac|flooring|appliance|drywall|doors_windows|landscaping|pest_control|insulation|general>",
-  "scene_prefix": "<20-35 word description: work location, wall/floor material+colour, background style, lighting direction+tone. No actions or tools.>",
+
+  "scene_prefix": "<20-35 word description: work location, wall/floor material+colour, background style, lighting direction+tone. No actions or tools. BE SPECIFIC about colors — e.g. 'sage green painted drywall wall' not just 'wall'>",
+
   "glove_color": "<appropriate glove type+color for domain>",
+
+  "safety_equipment": {
+    "always_required": ["<item always worn: e.g. 'brown leather work gloves', 'safety glasses'>"],
+    "step_specific": {
+      "drilling": ["safety glasses", "dust mask", "work gloves"],
+      "cutting": ["safety glasses", "cut-resistant gloves"],
+      "electrical": ["insulated gloves", "safety glasses"],
+      "heavy_lifting": ["work gloves", "back support belt"]
+    },
+    "enforcement": "EVERY step involving tools, drilling, cutting, or heavy objects MUST show appropriate safety equipment. Bare hands on power tools is FORBIDDEN."
+  },
+
   "body_anchors": {
     "primary": "<body anchor sentence including {glove_color}>",
     "elevated": "<elevated body anchor including {glove_color}>",
     "ground_level": "<ground level body anchor including {glove_color}>",
     "standing": "<standing body anchor including {glove_color}>"
   },
+
   "action_location_keywords": {
     "primary": ["<kw1>", "<kw2>"],
     "elevated": ["ladder", "ceiling", "roof"],
     "ground_level": ["floor", "ground", "base"],
     "standing": ["workbench", "counter", "table"]
   },
+
   "object_colors": {
-    "<main_object_name>": "<exact color+material description that must not change>",
+    "<main_object_name>": "<exact color+material — copy EXACTLY from user description if provided. E.g. 'sage green smooth painted drywall' not 'green wall'>",
     "<secondary_object>": "<exact color+material>"
   },
+
+  "color_lock": {
+    "wall": "<EXACT wall color — e.g. 'sage green', 'warm white', 'beige' — extracted from user description or summary>",
+    "floor": "<exact floor color and material>",
+    "primary_object": "<exact color of main object being worked on>",
+    "enforcement": "These colors are LOCKED and must appear in EVERY step image. If reference images show a different color, reference images are WRONG — use these locked colors."
+  },
+
+  "face_rule": "NEVER show a person's face clearly in any step image. Person is always shown from behind, side profile with face turned away, or with face outside the frame. This prevents identity concerns and keeps focus on the task.",
+
+  "step_shooting_plan": {
+    "description": "<1-2 sentence overview of the visual narrative across all steps>",
+    "establishing_shot": "<describe the ideal wide shot that establishes the scene — room, wall color, main object, scale>",
+    "progression_notes": "<how the scene should evolve visually step by step — e.g. 'wall starts bare, pencil marks appear in step 2, holes drilled in step 3, hardware visible in step 4, mirror hung in final steps'>",
+    "consistent_elements": ["<element that must appear in every step: e.g. 'sage green wall always visible in background'>", "<element 2>"],
+    "camera_progression": "<how camera angle should change across steps — e.g. 'wide for setup steps, medium for drilling, wide again for final hang'>",
+    "safety_note": "<when safety gear must appear — e.g. 'gloves and glasses mandatory for steps involving drill, hammer, or heavy lifting'>"
+  },
+
   "simplification_rules": ["<one rule for this domain>"]
 }
 
-object_colors is CRITICAL — list every main object with its exact color/material
-so it stays identical across all steps. E.g. {"mirror": "rectangular, silver ornate frame, clear glass", "wall": "smooth white painted drywall"}
-
-Return ONLY the JSON. No markdown. No explanation."""
+CRITICAL:
+- object_colors and color_lock must reflect user-provided colors if any are mentioned
+- color_lock.enforcement overrides everything — these colors cannot change between steps
+- face_rule is absolute — no faces in any step image
+- step_shooting_plan is a narrative guide for the entire project's visual sequence
+- Return ONLY the JSON. No markdown. No explanation."""
 
 
 # ─── PROMPT 2: CONTEXT IMAGE PLANNER ─────────────────────────────────────────
@@ -644,93 +683,147 @@ You receive:
 - The project domain and its physics rules
 - Previous step state summaries (memory)
 - Object color registry (must be maintained)
+- Color lock (colors that CANNOT change between steps)
+- Safety equipment requirements
+- Step shooting plan from Visual DNA
 
 Return ONLY valid JSON:
 {
   "camera_angle": "<wide|medium|close-up|top-down|from-below>",
   "camera_reason": "<1 sentence: why this angle best shows this step>",
-  "camera_distance": "<specific distance: '3-4 meters from person' | '2-3 meters' | 'arm length from subject'>",
-  "body_visibility": "<what of the person is visible: 'full body head-to-toe' | 'waist-to-head' | 'hands and forearms only (close-up only)'>",
+  "camera_distance": "<specific: '3-4 meters from person' | '2-3 meters' | 'arm length from subject'>",
+  "body_visibility": "<'full body head-to-toe' | 'waist-to-head' | 'hands and forearms only (close-up only)'>",
+  "face_rule": "Person's face must NOT be visible — show from behind, side with face turned away, or face outside frame",
   "which_wall": "<'primary feature wall facing viewer' | 'floor' | 'ceiling' | 'not applicable'>",
-  "person_position": "<where person stands: e.g. 'standing 30-50cm from feature wall, facing it, back toward camera, camera 3m behind at eye level'>",
+  "person_position": "<where person stands relative to camera and wall>",
   "primary_action": "<single most visual action, verb+direction+object, max 15 words>",
-  "objects_visible": ["<object1 with color from registry>", "<object2>"],
-  "object_scale_check": "<each tool's size relative to person: e.g. 'drill: forearm-length, occupies 15% of frame width; tape: hand-sized'>",
-  "hand_description": "<exactly what hands are doing — max 2 hands, arms connect to visible torso>",
-  "room_context_visible": "<what room elements are visible to establish scale: e.g. 'sofa visible in background left, wood floor visible below person'>",
-  "cumulative_state": "<what the scene looks like based on ALL prior steps>",
-  "physics_checks": ["<physics rule that applies and how satisfied>"],
-  "impossible_states_avoided": ["<impossible state avoided and how>"],
-  "orientation_note": "<object orientation requirement if any>",
-  "imagen_prompt": "<final 70-110 word structured prompt. MUST follow this exact structure: '[SHOT TYPE: wide/medium] [CAMERA POSITION: X meters from person at eye level] [PERSON: full body/waist-up visible, standing Xcm from wall, facing wall] [ROOM CONTEXT: sofa/furniture visible in background] [ACTION: person doing X] [TOOLS: tool name, arm-sized/hand-sized, in natural proportion] [WALL: primary feature wall, beige/white drywall] [PHYSICS: any critical physics note]'>",
+  "safety_equipment_this_step": ["<list all safety items required: e.g. 'brown leather work gloves', 'safety glasses', 'dust mask'>"],
+  "safety_reason": "<why this safety equipment is needed for this specific step>",
+  "objects_visible": ["<object1 with LOCKED color from color_lock registry>", "<object2>"],
+  "locked_colors_used": {
+    "wall": "<repeat exact locked wall color — must match color_lock>",
+    "floor": "<repeat exact locked floor color>",
+    "primary_object": "<repeat exact locked primary object color>"
+  },
+  "object_scale_check": "<each tool's size relative to person>",
+  "hand_description": "<exactly what hands are doing — max 2 hands, wearing safety gloves if step requires>",
+  "room_context_visible": "<what room elements visible to establish scale>",
+  "cumulative_state": "<what scene looks like based on ALL prior steps>",
+  "physics_checks": ["<physics rule and how satisfied>"],
+  "impossible_states_avoided": ["<impossible state avoided>"],
+  "orientation_note": "<object orientation if any>",
+  "imagen_prompt": "<final 70-110 word structured prompt. MUST include: [SHOT TYPE + CAMERA DISTANCE] [PERSON POSITION — FACE NOT VISIBLE] [SAFETY EQUIPMENT WORN] [ROOM CONTEXT WITH LOCKED WALL COLOR] [ACTION] [TOOL SIZE IN PROPORTION] [LOCKED COLORS FOR ALL OBJECTS]>",
   "state_summary": "<10-20 word plain English: what physically changed>"
 }
 
 CRITICAL RULES:
 
+COLOR LOCK (highest priority):
+- The color_lock in your input is ABSOLUTE — these colors cannot change
+- If color_lock says wall is 'sage green', EVERY imagen_prompt must say 'sage green wall'
+- Copy the locked color strings VERBATIM into imagen_prompt — do not paraphrase
+- Example: NOT 'green wall' — ALWAYS 'sage green smooth painted drywall wall'
+- locked_colors_used field must repeat these exactly — use as a self-check
+
+FACE RULE (absolute):
+- Person's face must NEVER be visible in any step image
+- Show person from behind facing the wall, OR side profile with face turned away,
+  OR with face cropped out of top of frame
+- Add 'face not visible, person shown from behind facing the wall' to every imagen_prompt
+- This is non-negotiable regardless of camera angle
+
+SAFETY EQUIPMENT (mandatory for tool/drill/lift steps):
+- Identify safety_equipment_this_step from the domain's safety_equipment rules
+- Any step involving: drill, hammer, saw, heavy object, cutting → gloves + glasses mandatory
+- Add gloves and glasses explicitly to imagen_prompt:
+  'wearing [color] work gloves and safety glasses'
+- Do NOT leave safety equipment implicit — state it explicitly in the prompt
+
 SHOT SELECTION:
-- Drilling, stud-finding, measuring on wall → ALWAYS medium or wide. NEVER close-up.
+- Drilling, stud-finding, measuring → ALWAYS medium or wide. NEVER close-up.
 - Hanging/mounting large object → ALWAYS wide. Person full body visible.
-- Fine detail (single screw, pencil mark) → close-up only if object < 10cm.
-- When in doubt: one shot wider than you think you need.
+- Fine detail only → close-up
 
-BODY VISIBILITY (non-negotiable):
-- wide shot: full body head-to-toe in frame
-- medium shot: waist-to-head in frame, torso visible
-- hands must connect to arms which connect to visible torso
-- floating disconnected hands = forbidden in wide/medium shots
-- person must occupy at least 30% of frame height in wide shots
-- person must occupy at least 50% of frame height in medium shots
+BODY VISIBILITY:
+- wide: full body head-to-toe, person 40-60% of frame height
+- medium: waist-to-head, torso visible, person 50-70% of frame height
+- floating hands without body = FORBIDDEN in wide/medium shots
 
-PROPORTION (non-negotiable):
-- hands must be smaller than person's torso in frame
-- tools must be smaller than person's arm in frame
-- measuring tape: max 60-80cm visible length in frame, never floor-to-ceiling
-- drill: forearm-length in frame, never larger than person's torso
-- if any tool appears larger than the person's head: shot is too close, use wider
+PROPORTION:
+- hands smaller than person's torso
+- tools smaller than person's arm
+- measuring tape: max 60-80cm visible, never floor-to-ceiling
+- drill: forearm-length, never larger than person's torso
 
 WALL IDENTIFICATION:
-- ALL drilling/marking/stud-finding/mounting → primary feature wall only
-- feature wall = large flat wall the furniture faces
-- side walls, adjacent walls = FORBIDDEN for mirror/picture hanging steps
-- room furniture (sofa, table) must be visible to confirm correct wall
+- ALL wall work → primary feature wall only
+- room furniture must be visible in background to confirm scale and correct wall
 
-IMAGEN PROMPT FORMAT (mandatory structure):
-'[SHOT TYPE] shot. Camera [X] meters from person at eye level.
-[Person full body/waist-up] visible, standing [distance] from [feature wall description],
-facing the wall. [Room furniture] visible in background establishing scale.
-[Person] is [action with tool — tool described as arm-sized/hand-sized].
-[Primary object] on wall. [Physics note if needed].'
+IMAGEN PROMPT MANDATORY STRUCTURE:
+'[SHOT TYPE] shot, camera [X] meters from person.
+Person [full body / waist-up], standing [distance] from [EXACT LOCKED WALL COLOR] wall,
+face not visible — shown from behind facing wall.
+Wearing [safety equipment explicitly listed].
+[Room furniture] visible in background.
+Person is [action]. [Tool name], [arm/hand-sized], in natural proportion.
+[Primary object with EXACT LOCKED COLOR on wall].'
 
 Return ONLY the JSON. No markdown. No explanation."""
+
+
 
 # ─── PROMPT 4: IMAGE GENERATION (passed to Gemini with reference images) ──────
 IMAGE_GENERATION_PROMPT = """You are generating a photorealistic DIY instructional image using Gemini.
 
-Reference images are provided showing:
-1. Context images (wide shots of the scene/objects before work — match colors, shapes, room style)
-2. Prior step images (cumulative work state — maintain scene continuity)
+Reference images are provided:
+1. Context images — establish scene colors, object shapes, room style
+2. Prior step images — show cumulative work state
+
+CRITICAL: If reference images show a wall color that differs from the color
+specified in the text prompt, FOLLOW THE TEXT PROMPT COLOR. The text prompt
+color is the locked ground truth.
 
 Generate ONE photorealistic image matching the structured prompt exactly.
 
 ABSOLUTE RULES:
-1. MAXIMUM TWO HANDS — never three, never four
-2. PERSON MUST BE VISIBLE — for wide and medium shots, the person's torso must
-   be in frame. Floating hands with no body are FORBIDDEN in wide/medium shots.
-3. BODY PROPORTIONS — hands must appear smaller than the person's torso.
-   Tools must appear smaller than the person's arm. If the prompt says "medium shot",
-   the person's waist-to-head must be visible, not just their hands.
-4. SHOT DISTANCE — if prompt says "wide shot at 3-4 meters", the person must
-   appear as a full-body figure occupying ~40-60% of frame height, not a close-up.
-5. CORRECT WALL — all drilling/mounting/measuring work happens on the PRIMARY
-   FEATURE WALL (large flat wall the furniture faces). Room furniture must be
-   visible in background to confirm scale and wall identity.
-6. TOOL SCALE — measuring tape is hand-sized (max 60-80cm visible).
-   Drill is forearm-length. No tool appears larger than the person's torso.
-7. All objects face toward the viewer unless stated otherwise
-8. Mounted objects show FRONT face toward viewer
-9. All physics rules in prompt must be satisfied
-10. No text, no labels, no watermarks, no brand names
-11. Match object colors EXACTLY as shown in reference images
-12. Camera angle specified in prompt must be used — do not substitute
-13. Photorealistic, 4K HDR, sharp focus, professional photography quality"""
+
+1. WALL COLOR IS LOCKED — use the exact wall color stated in the prompt.
+   If prompt says 'sage green wall', every pixel of that wall is sage green.
+   Do NOT substitute white, beige, or any other color. Reference images showing
+   different wall colors are contextual only — the text prompt color overrides.
+
+2. FACE RULE — person's face must NOT be visible. Show person from behind
+   facing the wall, side profile with face turned away, or face outside frame.
+   This is non-negotiable in every step image.
+
+3. SAFETY EQUIPMENT — if prompt says 'wearing brown leather work gloves and
+   safety glasses', both items must be clearly visible on the person.
+   Bare hands on power tools = FORBIDDEN when gloves are specified.
+
+4. MAXIMUM TWO HANDS — never three, never four.
+
+5. PERSON MUST BE VISIBLE — for wide and medium shots, person's torso must
+   be in frame. Floating hands with no body = FORBIDDEN.
+
+6. BODY PROPORTIONS — hands smaller than torso, tools smaller than arms.
+   Measuring tape max 60-80cm visible. Drill forearm-length only.
+
+7. CORRECT WALL — drilling/mounting on PRIMARY FEATURE WALL only.
+   Room furniture visible in background to confirm scale.
+
+8. SHOT DISTANCE — follow camera distance in prompt exactly.
+   'Wide shot 3-4 meters' = full body figure, NOT a close-up of hands.
+
+9. TOOL SCALE — no tool appears larger than the person's torso.
+
+10. MOUNTED OBJECTS — show FRONT face toward viewer (mirror reflective side,
+    TV screen, picture front).
+
+11. PHYSICS — all physics rules in prompt must be satisfied.
+
+12. NO TEXT — no labels, watermarks, brand names, numbers on walls.
+
+13. MATCH REFERENCE IMAGES for everything EXCEPT wall color and safety equipment
+    (those follow text prompt as ground truth).
+
+14. Photorealistic, 4K HDR, sharp focus, professional photography quality."""
