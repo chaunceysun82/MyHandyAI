@@ -78,12 +78,22 @@ async def chat(
         preview = (project or {}).get("result_preview_image") or {}
         preview_image_url = preview.get("url") if preview else None
         preview_image_status = preview.get("status") if preview_image_url else "generating"
+        logger.info(
+            f"chat preview status project_id={request.project_id} "
+            f"conversation_status={conversation_status} preview_status={preview.get('status')} "
+            f"has_url={bool(preview_image_url)} stage={preview.get('stage')}"
+        )
     else:
         project = project_collection.find_one({"_id": ObjectId(request.project_id)})
         if project and project.get("summary_preview"):
             preview = project.get("result_preview_image") or {}
             preview_image_url = preview.get("url") if preview else None
             preview_image_status = preview.get("status") if preview_image_url else "generating"
+            logger.info(
+                f"chat draft preview status project_id={request.project_id} "
+                f"conversation_status={conversation_status} preview_status={preview.get('status')} "
+                f"has_url={bool(preview_image_url)} stage={preview.get('stage')}"
+            )
 
     return ChatMessageResponse(
         thread_id=thread_id,
@@ -102,14 +112,45 @@ async def generate_project_preview(
     """Generate or fetch the visual result preview for a project."""
     logger.info(f"generate_project_preview called for project_id: {project_id}")
     project = project_collection.find_one({"_id": ObjectId(project_id)})
+    if not project:
+        logger.warning(f"generate_project_preview project not found project_id={project_id}")
+        return {
+            "status": "failed",
+            "url": None,
+            "stage": "project_lookup",
+            "error": "Project not found",
+        }
+
     if project and str(project.get("userId")) != str(current_user.get("id")):
-        return {"status": "failed", "url": None}
+        logger.warning(
+            f"generate_project_preview user mismatch project_id={project_id} "
+            f"project_user={project.get('userId')} current_user={current_user.get('id')}"
+        )
+        return {
+            "status": "failed",
+            "url": None,
+            "stage": "authorization",
+            "error": "Current user does not own this project",
+        }
 
     prefer_draft = bool(project and project.get("summary_preview") and not project.get("summary"))
+    logger.info(
+        f"generate_project_preview context project_id={project_id} "
+        f"prefer_draft={prefer_draft} has_summary={bool(project.get('summary'))} "
+        f"has_summary_preview={bool(project.get('summary_preview'))} "
+        f"existing_preview_status={(project.get('result_preview_image') or {}).get('status')}"
+    )
     preview = ensure_project_preview_image(project_id, prefer_draft=prefer_draft)
+    logger.info(
+        f"generate_project_preview result project_id={project_id} "
+        f"status={(preview or {}).get('status')} has_url={bool((preview or {}).get('url'))} "
+        f"stage={(preview or {}).get('stage')}"
+    )
     return {
         "status": preview.get("status") if preview else "failed",
         "url": preview.get("url") if preview else None,
+        "stage": preview.get("stage") if preview else "unknown",
+        "error": preview.get("error") if preview else "Preview generation returned no result",
     }
 
 

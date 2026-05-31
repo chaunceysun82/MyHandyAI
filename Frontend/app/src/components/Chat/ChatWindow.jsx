@@ -38,12 +38,24 @@ export default function ChatWindow({
 
   const generatePreviewImage = useCallback(async (messageId) => {
     try {
+      console.log("[preview] requesting project preview", {
+        projectId,
+        endpoint: `${URL}/api/v1/information-gathering-agent/preview/${projectId}`,
+      });
       const previewRes = await axios.post(
         `${URL}/api/v1/information-gathering-agent/preview/${projectId}`,
         {},
         axiosAuthConfig({ headers: { "Content-Type": "application/json" } })
       );
+      console.log("[preview] response", previewRes.data);
       const previewUrl = previewRes.data?.url;
+      if (!previewUrl) {
+        console.warn("[preview] no preview URL returned", {
+          status: previewRes.data?.status,
+          stage: previewRes.data?.stage,
+          error: previewRes.data?.error,
+        });
+      }
       setMessages((prev) =>
         prev.map((message) =>
           message.id === messageId
@@ -59,7 +71,11 @@ export default function ChatWindow({
         )
       );
     } catch (error) {
-      console.error("Preview generation failed:", error);
+      console.error("[preview] generation request failed", {
+        message: error?.message,
+        status: error?.response?.status,
+        data: error?.response?.data,
+      });
       setMessages((prev) =>
         prev.map((message) =>
           message.id === messageId
@@ -607,6 +623,12 @@ export default function ChatWindow({
       );
 
       const shouldGeneratePreview = res.data.preview_image_status === "generating";
+      if (res.data.preview_image_status || res.data.preview_image_url) {
+        console.log("[preview] chat response preview metadata", {
+          status: res.data.preview_image_status,
+          hasUrl: Boolean(res.data.preview_image_url),
+        });
+      }
       const previewImages = res.data.preview_image_url ? [res.data.preview_image_url] : [];
       const botMessageId = `bot-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const botMsg = {
