@@ -56,6 +56,22 @@ def _looks_like_summary_confirmation(response_text: str | None) -> bool:
     return has_confirmation and has_summary_sections and not asks_for_more_info
 
 
+def _remove_premature_confirmation_filler(response_text: str | None) -> str | None:
+    if not response_text:
+        return response_text
+
+    filler_phrases = [
+        "Great, we have everything confirmed. I will proceed.",
+        "Great, we have everything confirmed. I'll proceed.",
+        "Great, I have everything confirmed. I will proceed.",
+        "Great, I have everything confirmed. I'll proceed.",
+    ]
+    cleaned = response_text
+    for phrase in filler_phrases:
+        cleaned = cleaned.replace(phrase, "").strip()
+    return cleaned or response_text
+
+
 @router.post("/initialize", response_model=InitializeConversationResponse, status_code=status.HTTP_200_OK)
 async def initialize_conversation(
         request: InitializeConversationRequest,
@@ -107,6 +123,7 @@ async def chat(
         image_base64=request.image_base64,
         image_mime_type=request.image_mime_type
     )
+    agent_response = _remove_premature_confirmation_filler(agent_response)
 
     preview_image_url = None
     preview_image_status = None

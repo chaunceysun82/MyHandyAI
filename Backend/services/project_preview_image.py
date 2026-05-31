@@ -7,7 +7,7 @@ import boto3
 import requests
 from bson import ObjectId
 from loguru import logger
-from openai import OpenAI, OpenAIError
+from openai import APITimeoutError, OpenAI, OpenAIError
 from pymongo.collection import Collection
 
 from config.settings import get_settings
@@ -15,6 +15,7 @@ from database.mongodb import mongodb
 
 
 MODEL = "gpt-image-2"
+OPENAI_IMAGE_TIMEOUT_SECONDS = 25.0
 
 
 def _failed_preview(stage: str, message: str) -> dict:
@@ -120,10 +121,18 @@ def ensure_project_preview_image(project_id: str, prefer_draft: bool = False) ->
         f"summary_chars={len(summary)} prompt_chars={len(prompt)} "
         f"has_image_analysis={bool(project.get('image_analysis'))}"
     )
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    client = OpenAI(
+        api_key=settings.OPENAI_API_KEY,
+        timeout=OPENAI_IMAGE_TIMEOUT_SECONDS,
+        max_retries=0,
+    )
 
     try:
-        logger.info(f"Calling OpenAI image generation project_id={project_id} model={MODEL}")
+        started_at = time.time()
+        logger.info(
+            f"Calling OpenAI image generation project_id={project_id} "
+            f"model={MODEL} timeout_seconds={OPENAI_IMAGE_TIMEOUT_SECONDS}"
+        )
         response = client.images.generate(
             model=MODEL,
             prompt=prompt,
@@ -131,7 +140,24 @@ def ensure_project_preview_image(project_id: str, prefer_draft: bool = False) ->
             n=1,
         )
         image_bytes = _image_bytes_from_response(response)
-        logger.info(f"OpenAI returned preview image project_id={project_id} bytes={len(image_bytes)}")
+        logger.info(
+            f"OpenAI returned preview image project_id={project_id} "
+            f"bytes={len(image_bytes)} elapsed_seconds={time.time() - started_at:.2f}"
+        )
+    except APITimeoutError as exc:
+        preview = _failed_preview(
+            "openai_timeout",
+            f"OpenAI image generation exceeded {OPENAI_IMAGE_TIMEOUT_SECONDS} seconds",
+        )
+        logger.exception(
+            f"Result preview OpenAI timeout project_id={project_id} "
+            f"timeout_seconds={OPENAI_IMAGE_TIMEOUT_SECONDS}"
+        )
+        projects.update_one(
+            {"_id": ObjectId(project_id)},
+            {"$set": {"result_preview_image": preview}},
+        )
+        return preview
     except OpenAIError as exc:
         preview = _failed_preview("openai_generation", f"{exc.__class__.__name__}: {exc}")
         logger.exception(f"Result preview OpenAI generation failed project_id={project_id}")
