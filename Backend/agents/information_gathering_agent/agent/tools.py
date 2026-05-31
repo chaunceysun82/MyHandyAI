@@ -15,6 +15,68 @@ project_collection: Collection = database.get_collection("Project")
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 
+
+def _message_text(message) -> str:
+    content = getattr(message, "content", "")
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        text_parts = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text_parts.append(str(item.get("text", "")))
+        return " ".join(text_parts).strip()
+    return str(content or "").strip()
+
+
+def _latest_human_text(messages) -> str:
+    for message in reversed(messages or []):
+        msg_type = getattr(message, "type", None) or message.__class__.__name__.lower()
+        if msg_type == "human":
+            return _message_text(message)
+    return ""
+
+
+def _is_explicit_summary_confirmation(text: str) -> bool:
+    normalized = f" {text.lower().strip()} "
+    if not normalized.strip():
+        return False
+
+    negative_markers = [
+        " no ",
+        " not ",
+        " change ",
+        " edit ",
+        " wait ",
+        " wrong ",
+        " incorrect ",
+        " missing ",
+        " add ",
+    ]
+    if any(marker in normalized for marker in negative_markers):
+        return False
+
+    confirmation_markers = [
+        " yes ",
+        " yep ",
+        " yeah ",
+        " correct ",
+        " looks good ",
+        " that's right ",
+        " that is right ",
+        " confirm ",
+        " confirmed ",
+        " approve ",
+        " approved ",
+        " go ahead ",
+        " finalize ",
+        " proceed ",
+        " continue ",
+        " all good ",
+        " sounds good ",
+    ]
+    return any(marker in normalized for marker in confirmation_markers)
+
 @tool(
     description="Call this tool AFTER identifying the problem category but BEFORE beginning focused information gathering. This establishes the diagnostic framework and stores your information gathering strategy."
 )
@@ -141,6 +203,29 @@ def store_summary(
         else:
             # If state is not a dict, try to get messages directly
             messages = getattr(state, "messages", []) if hasattr(state, "messages") else []
+
+        latest_user_text = _latest_human_text(messages)
+        if not _is_explicit_summary_confirmation(latest_user_text):
+            logger.warning(
+                "Blocked premature store_summary call. Latest user message was not an explicit confirmation. "
+                f"project_id={project_id}, latest_user_text={latest_user_text[:120]!r}"
+            )
+            project_collection.update_one(
+                {"_id": ObjectId(project_id)},
+                {
+                    "$set": {
+                        "summary_preview": {
+                            "summary": summary,
+                            "hypotheses": hypotheses,
+                        },
+                        "information_gathering_conversation_status": InformationGatheringConversationStatus.IN_PROGRESS.value,
+                    }
+                }
+            )
+            return (
+                "Draft overview saved, but finalization is blocked until the user explicitly confirms. "
+                "Show the overview summary, ask for confirmation, and do not hand off to the Planner Agent yet."
+            )
 
         # Extract Q&A pairs from conversation history
         questions, answers, image_analysis = extract_qa_pairs_from_messages(messages)
