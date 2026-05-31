@@ -1,5 +1,7 @@
+import json
 from uuid import UUID
 
+import boto3
 from bson import ObjectId
 from fastapi import APIRouter, Depends, status
 from loguru import logger
@@ -12,11 +14,13 @@ from routes.schemas.response.information_gathering_agent import InitializeConver
 from security.current_user import get_current_app_user
 from database.enums.project import InformationGatheringConversationStatus
 from database.mongodb import mongodb
-from services.project_preview_image import ensure_project_preview_image
+from config.settings import get_settings
 from services.user_upload_storage import store_user_uploaded_image
 
 router = APIRouter(prefix="/information-gathering-agent")
 project_collection = mongodb.get_collection("Project")
+settings = get_settings()
+sqs = boto3.client("sqs", region_name=settings.AWS_REGION)
 
 
 def _looks_like_summary_confirmation(response_text: str | None) -> bool:
@@ -70,6 +74,61 @@ def _remove_premature_confirmation_filler(response_text: str | None) -> str | No
     for phrase in filler_phrases:
         cleaned = cleaned.replace(phrase, "").strip()
     return cleaned or response_text
+
+
+def _preview_response(project: dict | None) -> dict:
+    preview = (project or {}).get("result_preview_image") or {}
+    return {
+        "status": preview.get("status") or "not_started",
+        "url": preview.get("url"),
+        "stage": preview.get("stage"),
+        "error": preview.get("error"),
+    }
+
+
+def _enqueue_preview_generation(project_id: str, prefer_draft: bool) -> dict:
+    project = project_collection.find_one({"_id": ObjectId(project_id)})
+    existing = _preview_response(project)
+
+    if existing.get("url") or existing.get("status") in {"queued", "in-progress"}:
+        logger.info(
+            f"Preview generation already {existing.get('status')} project_id={project_id} "
+            f"has_url={bool(existing.get('url'))}"
+        )
+        return existing
+
+    if not settings.AWS_SQS_URL:
+        logger.error(f"Cannot queue preview generation. AWS_SQS_URL is not configured. project_id={project_id}")
+        failed = {
+            "status": "failed",
+            "stage": "sqs_enqueue",
+            "error": "AWS_SQS_URL is not configured",
+        }
+        project_collection.update_one(
+            {"_id": ObjectId(project_id)},
+            {"$set": {"result_preview_image": failed}},
+        )
+        return failed
+
+    queued = {
+        "status": "queued",
+        "stage": "sqs_enqueue",
+        "error": None,
+    }
+    project_collection.update_one(
+        {"_id": ObjectId(project_id)},
+        {"$set": {"result_preview_image": queued}},
+    )
+    sqs.send_message(
+        QueueUrl=settings.AWS_SQS_URL,
+        MessageBody=json.dumps({
+            "task": "preview_image",
+            "project": project_id,
+            "prefer_draft": prefer_draft,
+        }),
+    )
+    logger.info(f"Queued preview generation project_id={project_id} prefer_draft={prefer_draft}")
+    return queued
 
 
 @router.post("/initialize", response_model=InitializeConversationResponse, status_code=status.HTTP_200_OK)
@@ -195,23 +254,39 @@ async def generate_project_preview(
 
     prefer_draft = bool(project and project.get("summary_preview") and not project.get("summary"))
     logger.info(
-        f"generate_project_preview context project_id={project_id} "
+        f"queue_project_preview context project_id={project_id} "
         f"prefer_draft={prefer_draft} has_summary={bool(project.get('summary'))} "
         f"has_summary_preview={bool(project.get('summary_preview'))} "
         f"existing_preview_status={(project.get('result_preview_image') or {}).get('status')}"
     )
-    preview = ensure_project_preview_image(project_id, prefer_draft=prefer_draft)
-    logger.info(
-        f"generate_project_preview result project_id={project_id} "
-        f"status={(preview or {}).get('status')} has_url={bool((preview or {}).get('url'))} "
-        f"stage={(preview or {}).get('stage')}"
-    )
-    return {
-        "status": preview.get("status") if preview else "failed",
-        "url": preview.get("url") if preview else None,
-        "stage": preview.get("stage") if preview else "unknown",
-        "error": preview.get("error") if preview else "Preview generation returned no result",
-    }
+    preview = _enqueue_preview_generation(project_id, prefer_draft=prefer_draft)
+    return preview
+
+
+@router.get("/preview/{project_id}", status_code=status.HTTP_200_OK)
+async def get_project_preview(
+        project_id: str,
+        current_user: dict = Depends(get_current_app_user),
+) -> dict:
+    """Fetch preview generation status for a project."""
+    project = project_collection.find_one({"_id": ObjectId(project_id)})
+    if not project:
+        return {
+            "status": "failed",
+            "url": None,
+            "stage": "project_lookup",
+            "error": "Project not found",
+        }
+
+    if str(project.get("userId")) != str(current_user.get("id")):
+        return {
+            "status": "failed",
+            "url": None,
+            "stage": "authorization",
+            "error": "Current user does not own this project",
+        }
+
+    return _preview_response(project)
 
 
 @router.get("/chat/{thread_id}/history",

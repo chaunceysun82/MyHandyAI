@@ -19,6 +19,7 @@ from agents.solution_generation_multi_agent.services.steps_generation_agent_serv
 from agents.solution_generation_multi_agent.steps_generation_agent.steps_generation_agent import StepsGenerationAgent
 from config.settings import get_settings
 from database.mongodb import mongodb
+from services.project_preview_image import ensure_project_preview_image
 from helper import (
     similar_by_project,
     store_tool_in_database,
@@ -238,6 +239,33 @@ def handle_image_step(msg: dict) -> None:
     print(f"✅ Step {step_id} image complete: {result.url}")
 
 
+def handle_preview_image(msg: dict) -> None:
+    """Generate + upload the project result preview image and persist result."""
+    project_id = msg["project"]
+    prefer_draft = bool(msg.get("prefer_draft", True))
+
+    print(f"Generating project preview image for {project_id}, prefer_draft={prefer_draft}")
+    project_collection.update_one(
+        {"_id": ObjectId(project_id)},
+        {
+            "$set": {
+                "result_preview_image.status": "in-progress",
+                "result_preview_image.stage": "worker_generation",
+            }
+        },
+    )
+
+    preview = ensure_project_preview_image(
+        project_id,
+        prefer_draft=prefer_draft,
+        timeout_seconds=180.0,
+    )
+    if preview and preview.get("url"):
+        print(f"Project preview image complete: {preview.get('url')}")
+    else:
+        print(f"Project preview image failed: {preview}")
+
+
 def reset_all_steps(project_id):
     cursor = project_collection.find_one({"_id": ObjectId(project_id)})
     if "step_generation" in cursor and "steps" in cursor["step_generation"]:
@@ -294,6 +322,13 @@ def lambda_handler(event, context):
                     handle_image_step(payload)
                 except Exception as e:
                     print(f"❌ handle_image_step failed: {e}")
+                continue
+
+            if task == "preview_image":
+                try:
+                    handle_preview_image(payload)
+                except Exception as e:
+                    print(f"handle_preview_image failed: {e}")
                 continue
 
             project_id_str = payload.get("project")

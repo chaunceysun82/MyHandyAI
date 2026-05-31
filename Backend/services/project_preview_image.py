@@ -84,7 +84,11 @@ def _image_bytes_from_response(response) -> bytes:
     raise ValueError("OpenAI image response did not include image data")
 
 
-def ensure_project_preview_image(project_id: str, prefer_draft: bool = False) -> Optional[dict]:
+def ensure_project_preview_image(
+        project_id: str,
+        prefer_draft: bool = False,
+        timeout_seconds: float = OPENAI_IMAGE_TIMEOUT_SECONDS,
+) -> Optional[dict]:
     settings = get_settings()
     projects: Collection = mongodb.get_collection("Project")
 
@@ -123,7 +127,7 @@ def ensure_project_preview_image(project_id: str, prefer_draft: bool = False) ->
     )
     client = OpenAI(
         api_key=settings.OPENAI_API_KEY,
-        timeout=OPENAI_IMAGE_TIMEOUT_SECONDS,
+        timeout=timeout_seconds,
         max_retries=0,
     )
 
@@ -131,7 +135,7 @@ def ensure_project_preview_image(project_id: str, prefer_draft: bool = False) ->
         started_at = time.time()
         logger.info(
             f"Calling OpenAI image generation project_id={project_id} "
-            f"model={MODEL} timeout_seconds={OPENAI_IMAGE_TIMEOUT_SECONDS}"
+            f"model={MODEL} timeout_seconds={timeout_seconds}"
         )
         response = client.images.generate(
             model=MODEL,
@@ -147,11 +151,11 @@ def ensure_project_preview_image(project_id: str, prefer_draft: bool = False) ->
     except APITimeoutError as exc:
         preview = _failed_preview(
             "openai_timeout",
-            f"OpenAI image generation exceeded {OPENAI_IMAGE_TIMEOUT_SECONDS} seconds",
+            f"OpenAI image generation exceeded {timeout_seconds} seconds",
         )
         logger.exception(
             f"Result preview OpenAI timeout project_id={project_id} "
-            f"timeout_seconds={OPENAI_IMAGE_TIMEOUT_SECONDS}"
+            f"timeout_seconds={timeout_seconds}"
         )
         projects.update_one(
             {"_id": ObjectId(project_id)},

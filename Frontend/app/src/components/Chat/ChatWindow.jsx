@@ -36,9 +36,37 @@ export default function ChatWindow({
   ];
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
 
+  const waitForPreviewImage = useCallback(async () => {
+    const maxAttempts = 36;
+    const delayMs = 5000;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+      const statusRes = await axios.get(
+        `${URL}/api/v1/information-gathering-agent/preview/${projectId}`,
+        axiosAuthConfig()
+      );
+      console.log("[preview] poll response", {
+        attempt,
+        data: statusRes.data,
+      });
+
+      if (statusRes.data?.url) {
+        return statusRes.data.url;
+      }
+
+      if (statusRes.data?.status === "failed") {
+        throw new Error(`${statusRes.data.stage || "preview_failed"}: ${statusRes.data.error || "Preview generation failed"}`);
+      }
+    }
+
+    throw new Error("preview_poll_timeout: Preview generation did not finish in time");
+  }, [URL, projectId]);
+
   const generatePreviewImage = useCallback(async (messageId) => {
     try {
-      console.log("[preview] requesting project preview", {
+      console.log("[preview] queueing project preview", {
         projectId,
         endpoint: `${URL}/api/v1/information-gathering-agent/preview/${projectId}`,
       });
@@ -48,7 +76,7 @@ export default function ChatWindow({
         axiosAuthConfig({ headers: { "Content-Type": "application/json" } })
       );
       console.log("[preview] response", previewRes.data);
-      const previewUrl = previewRes.data?.url;
+      const previewUrl = previewRes.data?.url || (await waitForPreviewImage());
       if (!previewUrl) {
         console.warn("[preview] no preview URL returned", {
           status: previewRes.data?.status,
@@ -88,7 +116,7 @@ export default function ChatWindow({
         )
       );
     }
-  }, [URL, projectId]);
+  }, [URL, projectId, waitForPreviewImage]);
 
   useEffect(() => {
     if (status) {
