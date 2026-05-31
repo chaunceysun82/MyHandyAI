@@ -19,6 +19,43 @@ router = APIRouter(prefix="/information-gathering-agent")
 project_collection = mongodb.get_collection("Project")
 
 
+def _looks_like_summary_confirmation(response_text: str | None) -> bool:
+    if not response_text:
+        return False
+
+    text = response_text.lower()
+    has_confirmation = any(
+        phrase in text
+        for phrase in [
+            "confirm",
+            "does this look correct",
+            "is this correct",
+            "is everything correct",
+            "before i finalize",
+            "ready to finalize",
+        ]
+    )
+    has_summary_sections = (
+        "the problem" in text
+        or "the setup" in text
+        or "the goal" in text
+        or "project overview" in text
+        or "summary" in text
+    )
+    asks_for_more_info = any(
+        phrase in text
+        for phrase in [
+            "i need one piece of information",
+            "i need one more",
+            "what kind of",
+            "can you tell me",
+            "can you send",
+        ]
+    )
+
+    return has_confirmation and has_summary_sections and not asks_for_more_info
+
+
 @router.post("/initialize", response_model=InitializeConversationResponse, status_code=status.HTTP_200_OK)
 async def initialize_conversation(
         request: InitializeConversationRequest,
@@ -85,7 +122,7 @@ async def chat(
         )
     else:
         project = project_collection.find_one({"_id": ObjectId(request.project_id)})
-        if project and project.get("summary_preview"):
+        if project and project.get("summary_preview") and _looks_like_summary_confirmation(agent_response):
             preview = project.get("result_preview_image") or {}
             preview_image_url = preview.get("url") if preview else None
             preview_image_status = preview.get("status") if preview_image_url else "generating"
@@ -93,6 +130,11 @@ async def chat(
                 f"chat draft preview status project_id={request.project_id} "
                 f"conversation_status={conversation_status} preview_status={preview.get('status')} "
                 f"has_url={bool(preview_image_url)} stage={preview.get('stage')}"
+            )
+        elif project and project.get("summary_preview"):
+            logger.info(
+                f"summary_preview exists but preview not triggered yet project_id={request.project_id} "
+                f"reason=response_not_summary_confirmation"
             )
 
     return ChatMessageResponse(
