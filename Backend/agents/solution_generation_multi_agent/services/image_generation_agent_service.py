@@ -38,9 +38,9 @@ from database.llm_consumption import record_google_image_generation, record_open
 
 GEMINI_IMAGE_MODEL_FLASH = "gemini-2.5-flash-image"
 
-REFERENCE_IMAGE_BUDGET = 6
+REFERENCE_IMAGE_BUDGET = 8
 MAX_CONTEXT_IMAGES = 3
-MAX_PRIOR_STEP_REFS = 3
+MAX_PRIOR_STEP_REFS = 5
 
 _NEGATIVE_SUFFIX = (
     " Photorealistic, 4K HDR, sharp focus, professional photography. "
@@ -531,82 +531,128 @@ class ImageGenerationAgentService:
     # ─── Step planning ────────────────────────────────────────────────────────
 
     def plan_step_image(
-            self,
-            step_id: str,
-            step_text: str,
-            summary_text: Optional[str],
-            dna: dict,
-            prior_states: list[dict],
-            project_id: Optional[str],
-            user_id: Optional[str],
-    ) -> tuple[str, str]:
-        domain = dna.get("domain", "general")
-        domain_physics = DOMAIN_PHYSICS_LIBRARY.get(
-            domain, DOMAIN_PHYSICS_LIBRARY["general"]
+        self,
+        step_id: str,
+        step_text: str,
+        summary_text: Optional[str],
+        dna: dict,
+        prior_states: list[dict],
+        project_id: Optional[str],
+        user_id: Optional[str],
+) -> tuple[str, str]:
+    domain = dna.get("domain", "general")
+    domain_physics = DOMAIN_PHYSICS_LIBRARY.get(
+        domain, DOMAIN_PHYSICS_LIBRARY["general"]
+    )
+    object_colors = dna.get("object_colors", {})
+
+    # ── NEW: extract color lock, safety, shooting plan from DNA ──────────────
+    color_lock = dna.get("color_lock", {})
+    safety_equipment = dna.get("safety_equipment", {})
+    step_shooting_plan = dna.get("step_shooting_plan", {})
+    face_rule = dna.get("face_rule", "Person's face must not be visible.")
+
+    user_content = json.dumps({
+        "project_summary": summary_text or "",
+        "domain": domain,
+        "step_description": step_text,
+        "previous_step_states": prior_states,
+        "object_color_registry": object_colors,
+
+        # ── NEW fields ────────────────────────────────────────────────────────
+        "color_lock": color_lock,
+        "color_lock_instruction": (
+            "These colors are LOCKED and must appear verbatim in imagen_prompt. "
+            f"Wall color is '{color_lock.get('wall', 'as specified')}' — "
+            "never substitute a different color. Copy these exact strings into the prompt."
+        ),
+        "safety_equipment_rules": safety_equipment,
+        "face_rule": face_rule,
+        "step_shooting_plan": step_shooting_plan,
+
+        # ── Existing fields ───────────────────────────────────────────────────
+        "domain_physics_rules": domain_physics["physics"],
+        "domain_hand_rules": domain_physics["hand_rules"],
+        "domain_camera_guide": domain_physics["camera"],
+        "domain_alignment_rules": domain_physics.get("alignment", []),
+        "domain_impossible_states": domain_physics["impossible_states"],
+        "universal_camera_guide": CAMERA_ANGLE_GUIDE,
+        "universal_alignment_rules": OBJECT_ALIGNMENT_RULES,
+        "universal_hand_rules": HAND_RULES,
+    }, indent=2)
+
+    content = _call_openai(
+        api_key=self.settings.OPENAI_API_KEY,
+        system=STEP_PLANNER_PROMPT,
+        user=user_content,
+        max_tokens=900,     # slightly increased for new fields
+    )
+
+    if content:
+        record_openai_response_usage(
+            {"choices": [{"message": {"content": content}}]},
+            model="gpt-4o-mini",
+            operation="step_image_planning",
+            project_id=project_id,
+            user_id=user_id,
+            endpoint="/v1/chat/completions",
+            metadata={"step_id": step_id, "step_text": step_text[:100]},
         )
-        object_colors = dna.get("object_colors", {})
+        parsed = _parse_json_safe(content, f"step_planner_{step_id}")
+        if parsed:
+            imagen_prompt = parsed.get("imagen_prompt", "")
+            state_summary = parsed.get("state_summary", "")
+            camera = parsed.get("camera_angle", "medium")
+            orientation = parsed.get("orientation_note", "")
 
-        user_content = json.dumps({
-            "project_summary": summary_text or "",
-            "domain": domain,
-            "step_description": step_text,
-            "previous_step_states": prior_states,
-            "object_color_registry": object_colors,
-            "domain_physics_rules": domain_physics["physics"],
-            "domain_hand_rules": domain_physics["hand_rules"],
-            "domain_camera_guide": domain_physics["camera"],
-            "domain_alignment_rules": domain_physics.get("alignment", []),
-            "domain_impossible_states": domain_physics["impossible_states"],
-            "universal_camera_guide": CAMERA_ANGLE_GUIDE,
-            "universal_alignment_rules": OBJECT_ALIGNMENT_RULES,
-            "universal_hand_rules": HAND_RULES,
-        }, indent=2)
-
-        content = _call_openai(
-            api_key=self.settings.OPENAI_API_KEY,
-            system=STEP_PLANNER_PROMPT,
-            user=user_content,
-            max_tokens=800,
-        )
-
-        if content:
-            record_openai_response_usage(
-                {"choices": [{"message": {"content": content}}]},
-                model="gpt-4o-mini",
-                operation="step_image_planning",
-                project_id=project_id,
-                user_id=user_id,
-                endpoint="/v1/chat/completions",
-                metadata={"step_id": step_id, "step_text": step_text[:100]},
+            # ── Inject locked colors directly into final prompt ───────────────
+            # Done here (not just in GPT output) as a hard guarantee —
+            # even if GPT paraphrases the color, this re-injects it
+            wall_color = color_lock.get("wall", "")
+            color_injection = (
+                f"LOCKED WALL COLOR: {wall_color} painted wall — do not substitute. "
+                if wall_color else ""
             )
-            parsed = _parse_json_safe(content, f"step_planner_{step_id}")
-            if parsed:
-                imagen_prompt = parsed.get("imagen_prompt", "")
-                state_summary = parsed.get("state_summary", "")
-                camera = parsed.get("camera_angle", "medium")
-                orientation = parsed.get("orientation_note", "")
 
-                final_prompt = (
-                    f"CAMERA: {camera} shot. "
-                    f"{imagen_prompt} "
-                    f"{'ORIENTATION: ' + orientation + '. ' if orientation else ''}"
-                    f"Reference images provided show exact object colors and scene — "
-                    f"match them precisely. "
-                    f"{_NEGATIVE_SUFFIX}"
-                )
-                logger.info(
-                    f"Step {step_id} plan — camera: {camera}, "
-                    f"action: {parsed.get('primary_action', '')[:60]}"
-                )
-                return final_prompt, state_summary
+            # ── Inject face rule directly ─────────────────────────────────────
+            face_injection = "Person's face is NOT visible — shown from behind or side facing away. "
 
-        logger.warning(f"Step planning failed for step {step_id} — using fallback")
-        return (
-            f"CAMERA: medium shot. "
-            f"Photorealistic image of a person performing: {step_text}. "
-            f"Maximum two hands. Objects face toward viewer. "
-            f"{_NEGATIVE_SUFFIX}"
-        ), ""
+            # ── Inject safety equipment ───────────────────────────────────────
+            safety_this_step = parsed.get("safety_equipment_this_step", [])
+            safety_injection = (
+                f"Person is wearing: {', '.join(safety_this_step)}. "
+                if safety_this_step else ""
+            )
+
+            final_prompt = (
+                f"CAMERA: {camera} shot. "
+                f"{color_injection}"
+                f"{face_injection}"
+                f"{safety_injection}"
+                f"{imagen_prompt} "
+                f"{'ORIENTATION: ' + orientation + '. ' if orientation else ''}"
+                f"Reference images show exact scene — match all colors except "
+                f"wall which is {wall_color or 'as specified in prompt'}. "
+                f"{_NEGATIVE_SUFFIX}"
+            )
+            logger.info(
+                f"Step {step_id} plan — camera: {camera}, "
+                f"wall: {wall_color}, "
+                f"safety: {safety_this_step}, "
+                f"action: {parsed.get('primary_action', '')[:60]}"
+            )
+            return final_prompt, state_summary
+
+    logger.warning(f"Step planning failed for step {step_id} — using fallback")
+    wall_color = color_lock.get("wall", "")
+    return (
+        f"CAMERA: medium shot. "
+        f"{'LOCKED WALL COLOR: ' + wall_color + ' wall. ' if wall_color else ''}"
+        f"Person face not visible — shown from behind. "
+        f"Photorealistic image of a person performing: {step_text}. "
+        f"Maximum two hands. Objects face toward viewer. "
+        f"{_NEGATIVE_SUFFIX}"
+    ), ""
 
     # ─── Main entry ───────────────────────────────────────────────────────────
 
