@@ -72,16 +72,45 @@ async def chat(
     )
 
     preview_image_url = None
+    preview_image_status = None
     if conversation_status == InformationGatheringConversationStatus.COMPLETED.value:
-        preview = ensure_project_preview_image(request.project_id)
+        project = project_collection.find_one({"_id": ObjectId(request.project_id)})
+        preview = (project or {}).get("result_preview_image") or {}
         preview_image_url = preview.get("url") if preview else None
+        preview_image_status = preview.get("status") if preview_image_url else "generating"
+    else:
+        project = project_collection.find_one({"_id": ObjectId(request.project_id)})
+        if project and project.get("summary_preview"):
+            preview = project.get("result_preview_image") or {}
+            preview_image_url = preview.get("url") if preview else None
+            preview_image_status = preview.get("status") if preview_image_url else "generating"
 
     return ChatMessageResponse(
         thread_id=thread_id,
         agent_response=agent_response,
         conversation_status=conversation_status,
-        preview_image_url=preview_image_url
+        preview_image_url=preview_image_url,
+        preview_image_status=preview_image_status
     )
+
+
+@router.post("/preview/{project_id}", status_code=status.HTTP_200_OK)
+async def generate_project_preview(
+        project_id: str,
+        current_user: dict = Depends(get_current_app_user),
+) -> dict:
+    """Generate or fetch the visual result preview for a project."""
+    logger.info(f"generate_project_preview called for project_id: {project_id}")
+    project = project_collection.find_one({"_id": ObjectId(project_id)})
+    if project and str(project.get("userId")) != str(current_user.get("id")):
+        return {"status": "failed", "url": None}
+
+    prefer_draft = bool(project and project.get("summary_preview") and not project.get("summary"))
+    preview = ensure_project_preview_image(project_id, prefer_draft=prefer_draft)
+    return {
+        "status": preview.get("status") if preview else "failed",
+        "url": preview.get("url") if preview else None,
+    }
 
 
 @router.get("/chat/{thread_id}/history",

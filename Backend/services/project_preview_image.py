@@ -23,10 +23,19 @@ def _public_url(key: str, public_base: Optional[str]) -> Optional[str]:
     return f"{public_base.rstrip('/')}/{key}"
 
 
-def _build_preview_prompt(project: dict) -> str:
+def _build_preview_prompt(project: dict, prefer_draft: bool = False) -> str:
     title = project.get("projectTitle") or "DIY project"
-    summary = project.get("summary") or project.get("user_description") or ""
-    hypotheses = project.get("hypotheses") or ""
+    draft = project.get("summary_preview") or {}
+    summary = (
+        draft.get("summary")
+        if prefer_draft and draft.get("summary")
+        else project.get("summary") or draft.get("summary") or project.get("user_description") or ""
+    )
+    hypotheses = (
+        draft.get("hypotheses")
+        if prefer_draft and draft.get("hypotheses")
+        else project.get("hypotheses") or draft.get("hypotheses") or ""
+    )
     image_analysis = project.get("image_analysis") or ""
 
     return f"""
@@ -62,7 +71,7 @@ def _image_bytes_from_response(response) -> bytes:
     raise ValueError("OpenAI image response did not include image data")
 
 
-def ensure_project_preview_image(project_id: str) -> Optional[dict]:
+def ensure_project_preview_image(project_id: str, prefer_draft: bool = False) -> Optional[dict]:
     settings = get_settings()
     projects: Collection = mongodb.get_collection("Project")
 
@@ -75,12 +84,13 @@ def ensure_project_preview_image(project_id: str) -> Optional[dict]:
     if existing.get("url"):
         return existing
 
-    summary = project.get("summary")
+    draft = project.get("summary_preview") or {}
+    summary = draft.get("summary") if prefer_draft else project.get("summary") or draft.get("summary")
     if not summary:
         logger.warning(f"Cannot generate preview image. Project has no summary: {project_id}")
         return None
 
-    prompt = _build_preview_prompt(project)
+    prompt = _build_preview_prompt(project, prefer_draft=prefer_draft)
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
     try:

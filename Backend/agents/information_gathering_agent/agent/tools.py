@@ -66,6 +66,46 @@ def store_home_issue(
 
 
 @tool(
+    description="Call this tool when you have enough information to show a draft project overview, BEFORE asking the user to confirm it. This stores the draft summary so MyHandyAI can generate a visual preview while the user reviews the overview."
+)
+def store_summary_preview(
+        runtime: ToolRuntime,
+        summary: str = Field(
+            description="A structured draft summary of the gathered facts. Use the same factual content you will show the user for confirmation."
+        ),
+        hypotheses: str = Field(
+            description="Your draft expert hypothesis or diagnostic conclusion."
+        )) -> str:
+    """Store a draft summary before final user confirmation."""
+    project_id = runtime.config.get("configurable", {}).get("project_id")
+
+    if not project_id:
+        logger.warning("No project_id found in config, cannot save summary preview")
+        return "Draft overview prepared."
+
+    try:
+        project_collection.update_one(
+            {"_id": ObjectId(project_id)},
+            {
+                "$set": {
+                    "summary_preview": {
+                        "summary": summary,
+                        "hypotheses": hypotheses,
+                    }
+                },
+                "$unset": {
+                    "result_preview_image": ""
+                },
+            }
+        )
+        logger.info(f"Stored draft summary preview for project {project_id}")
+    except Exception as e:
+        logger.error(f"Error storing draft summary preview: {e}")
+
+    return "Draft overview stored. Show the overview to the user and ask for confirmation."
+
+
+@tool(
     description="Call this tool at the END of the conversation, AFTER the user has confirmed your summary. This finalizes the diagnostic phase and hands off to the Solution Generation Agent."
 )
 def store_summary(

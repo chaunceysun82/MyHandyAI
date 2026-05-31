@@ -33,6 +33,20 @@ export async function fetchEstimations(projectId) {
 	return body;
 }
 
+export async function fetchProject(projectId) {
+	const url = `${API}/project/${encodeURIComponent(projectId)}`;
+	const res = await fetch(url, {
+		headers: authHeaders(),
+	});
+	const body = await safeJson(res);
+
+	log("fetchProject:response", { url, status: res.status });
+	log("fetchProject:payload", body);
+
+	if (!res.ok) throw new Error(errMsg(res, body));
+	return body;
+}
+
 // ---------- Steps ----------
 export async function fetchSteps(projectId) {
 	// let url = `${API}/projects/steps/${encodeURIComponent(projectId)}`;

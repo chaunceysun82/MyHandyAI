@@ -35,6 +35,45 @@ export default function ChatWindow({
     "💡 Almost there, hang tight! MyHandyAI is gathering the best tools for you..."
   ];
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
+
+  const generatePreviewImage = useCallback(async (messageId) => {
+    try {
+      const previewRes = await axios.post(
+        `${URL}/api/v1/information-gathering-agent/preview/${projectId}`,
+        {},
+        axiosAuthConfig({ headers: { "Content-Type": "application/json" } })
+      );
+      const previewUrl = previewRes.data?.url;
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                previewLoading: false,
+                images: previewUrl ? [previewUrl] : [],
+                content: previewUrl
+                  ? `${message.content}\n\nPreview ready. Tap the image to open it larger.`
+                  : `${message.content}\n\nI couldn't generate the preview this time, but we can still continue with the project confirmation.`,
+              }
+            : message
+        )
+      );
+    } catch (error) {
+      console.error("Preview generation failed:", error);
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                previewLoading: false,
+                content: `${message.content}\n\nI couldn't generate the preview this time, but we can still continue with the project confirmation.`,
+              }
+            : message
+        )
+      );
+    }
+  }, [URL, projectId]);
+
   useEffect(() => {
     if (status) {
       const interval = setInterval(() => {
@@ -567,16 +606,24 @@ export default function ChatWindow({
         axiosAuthConfig({ headers: { "Content-Type": "application/json" } })
       );
 
+      const shouldGeneratePreview = res.data.preview_image_status === "generating";
       const previewImages = res.data.preview_image_url ? [res.data.preview_image_url] : [];
+      const botMessageId = `bot-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const botMsg = {
+        id: botMessageId,
         sender: "bot",
-        content: res.data.preview_image_url
+        content: res.data.preview_image_url || shouldGeneratePreview
           ? `${res.data.agent_response}\n\nHere is a preview of how the finished result could look:`
           : res.data.agent_response,
         images: previewImages,
+        previewLoading: shouldGeneratePreview && previewImages.length === 0,
       };
       setLoading(false);
       setMessages((prev) => [...prev, botMsg]);
+
+      if (shouldGeneratePreview && previewImages.length === 0) {
+        generatePreviewImage(botMessageId);
+      }
       
       // Update suggested messages if provided in response
       if (res.data.suggested_messages) {

@@ -16,6 +16,7 @@ export default function MessageList({ messages = [] }) {
             role={m.sender}
             images={m.images || []}
             isImageOnly={m.isImageOnly || false}
+            previewLoading={m.previewLoading || false}
           >
             {content}
           </MessageBubble>

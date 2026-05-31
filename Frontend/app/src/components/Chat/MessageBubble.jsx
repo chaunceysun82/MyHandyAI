@@ -134,7 +134,7 @@ const MessagePart = ({ type, content, icon, isFirst = false, showIcon = false })
  * MessageBubble component that intelligently splits long messages
  * to improve readability while preserving sentence boundaries
  */
-export default function MessageBubble({ role = "bot", children, images = [], isImageOnly = false }) {
+export default function MessageBubble({ role = "bot", children, images = [], isImageOnly = false, previewLoading = false }) {
 	// If this is an image-only message, render just the image without bubble background
 	if (isImageOnly && images && images.length > 0) {
 		return (
@@ -216,6 +216,16 @@ export default function MessageBubble({ role = "bot", children, images = [], isI
 								/>
 							</div>
 						))}
+					</div>
+				)}
+
+				{previewLoading && (
+					<div className="ml-9 mt-4 max-w-[78%] rounded-2xl border border-[#d8e8ee] bg-white p-3 shadow-sm">
+						<div className="mb-3 flex items-center gap-2 text-sm font-medium text-[#066580]">
+							<span className="h-3 w-3 animate-pulse rounded-full bg-[#1484A3]" />
+							Generating your project preview...
+						</div>
+						<div className="aspect-[4/3] animate-pulse rounded-xl bg-gradient-to-br from-[#E9FAFF] via-gray-100 to-[#fff6df]" />
 					</div>
 				)}
 			</div>

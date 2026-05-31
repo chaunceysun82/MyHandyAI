@@ -1,7 +1,7 @@
 // src/pages/ProjectOverview.jsx
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { fetchEstimations, fetchSteps } from "../services/overview";
+import { fetchEstimations, fetchProject, fetchSteps } from "../services/overview";
 import StepCard from "../components/StepCard";
 import EstimatedBreakdown from "../components/EstimationBreakdown";
 import ChatWindow2 from "../components/Chat/ChatWindow2";
@@ -45,6 +45,7 @@ export default function ProjectOverview() {
 	const [estimations, setEstimations] = useState(null);
 	const [error, setError] = useState("");
 	const [projectVideoUrl, setProjectVideoUrl] = useState(null); // Store the project-level YouTube URL
+	const [previewImageUrl, setPreviewImageUrl] = useState(null);
 	
 	// Refs for scrollable sections
 	const stepsContainerRef = useRef(null);
@@ -57,7 +58,7 @@ export default function ProjectOverview() {
 			setError("");
 			try {
 				
-				const [rawSteps, rawEst] = await Promise.all([
+				const [rawSteps, rawEst, rawProject] = await Promise.all([
 					fetchSteps(projectId).catch((err) => {
 						console.log("ProjectOverview: Error fetching steps:", err);
 						return null;
@@ -72,6 +73,10 @@ export default function ProjectOverview() {
 							skill: "Beginner–Intermediate"
 						};
 					}),
+					fetchProject(projectId).catch((err) => {
+						console.log("ProjectOverview: Error fetching project:", err);
+						return null;
+					}),
 				]);
 
 				if (cancelled) return;
@@ -84,6 +89,7 @@ export default function ProjectOverview() {
 				
 				setSteps(normalizedSteps);
 				setEstimations(normalizedEstimations);
+				setPreviewImageUrl(rawProject?.result_preview_image?.url || null);
 				setLoading(false);
 			} catch (e) {
 				if (!cancelled) {
@@ -199,6 +205,14 @@ export default function ProjectOverview() {
 		}
 	};
 
+	const previewCard = (
+		<ResultPreviewCard
+			loading={loading}
+			imageUrl={previewImageUrl}
+			onOpen={() => previewImageUrl && window.open(previewImageUrl, "_blank")}
+		/>
+	);
+
 	return (
 		<div className="min-h-screen bg-[#fffef6]">
 			<div className="mx-auto flex h-screen w-full max-w-6xl flex-col">
@@ -249,6 +263,10 @@ export default function ProjectOverview() {
 											onClick={() => goToStep(0)}
 										/>
 									)}
+								</div>
+
+								<div className="hidden lg:block">
+									{previewCard}
 								</div>
 							</div>
 						</div>
@@ -325,6 +343,10 @@ export default function ProjectOverview() {
 									)}
 								</div>
 							</div>
+
+							<div className="mt-2 lg:hidden">
+								{previewCard}
+							</div>
 						</div>
 					</div>
 				</div>
@@ -362,6 +384,46 @@ export default function ProjectOverview() {
 				</div>
 			</div>
 		</div>
+	);
+}
+
+function ResultPreviewCard({ imageUrl, loading, onOpen }) {
+	if (loading) {
+		return (
+			<div className="animate-pulse rounded-3xl border-l-4 border-[#288AA5] bg-white p-4 shadow-lg">
+				<div className="mb-3 h-4 w-36 rounded bg-gray-200"></div>
+				<div className="aspect-[4/3] rounded-2xl bg-gray-200"></div>
+			</div>
+		);
+	}
+
+	if (!imageUrl) {
+		return null;
+	}
+
+	return (
+		<button
+			type="button"
+			onClick={onOpen}
+			className="group w-full overflow-hidden rounded-3xl border-l-4 border-[#288AA5] bg-white text-left shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_-18px_rgba(20,132,163,0.65)]"
+		>
+			<div className="p-4">
+				<div className="mb-3 flex items-center justify-between gap-3">
+					<div>
+						<h3 className="text-base font-semibold text-gray-900">Project Preview</h3>
+						<p className="text-xs text-gray-500">A visual estimate of the finished result</p>
+					</div>
+					<span className="rounded-full bg-[#E9FAFF] px-3 py-1 text-xs text-[#066580]">
+						View
+					</span>
+				</div>
+				<img
+					src={imageUrl}
+					alt="Generated project preview"
+					className="aspect-[4/3] w-full rounded-2xl object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+				/>
+			</div>
+		</button>
 	);
 }
 

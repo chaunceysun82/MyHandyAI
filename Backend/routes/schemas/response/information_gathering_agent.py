@@ -17,6 +17,7 @@ class ChatMessageResponse(BaseModel):
     agent_response: str = Field(..., description="Agent's response message")
     conversation_status: str = Field(..., description="Current conversation status (PENDING, IN_PROGRESS, COMPLETED)")
     preview_image_url: Optional[str] = Field(None, description="Generated preview image URL for the confirmed project")
+    preview_image_status: Optional[str] = Field(None, description="Preview image generation status")
 
 
 class HistoryMessage(BaseModel):
