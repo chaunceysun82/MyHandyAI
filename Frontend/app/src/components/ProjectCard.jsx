@@ -1,5 +1,6 @@
 // src/components/ProjectCard.jsx
 import React, { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import defaultProjectImage from "../assets/default-project.png";
 
 export default function ProjectCard({
@@ -155,10 +156,16 @@ export default function ProjectCard({
           </svg>
         </button>
 
-        {/* Dropdown Menu */}
-        {showMenu && (
+      </div>
+
+      {showMenu && createPortal(
+        <>
           <div
-            className="fixed w-36 rounded-lg border border-gray-200 bg-white shadow-xl z-[9999]"
+            className="fixed inset-0 z-[9998]"
+            onClick={() => setShowMenu(false)}
+          />
+          <div
+            className="fixed w-36 rounded-lg border border-gray-200 bg-white shadow-2xl z-[9999]"
             style={{ top: menuPosition.top, right: menuPosition.right }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -172,8 +179,7 @@ export default function ProjectCard({
               >
                 Resume
               </button>
-              
-              {/* Complete option - only show if project has steps and isn't already complete */}
+
               {canComplete && (
                 <button
                   onClick={(e) => {
@@ -182,15 +188,15 @@ export default function ProjectCard({
                   }}
                   disabled={isCompleting}
                   className={`w-full text-left px-4 py-2 text-sm transition-colors ${
-                    isCompleting 
-                      ? 'text-gray-400 cursor-not-allowed' 
+                    isCompleting
+                      ? 'text-gray-400 cursor-not-allowed'
                       : 'text-green-600 hover:bg-green-50'
                   }`}
                 >
                   {isCompleting ? 'Completing...' : 'Complete'}
                 </button>
               )}
-              
+
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -200,16 +206,6 @@ export default function ProjectCard({
               >
                 Rename
               </button>
-              {/* <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleOptionClick('archive');
-                }}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors cursor-not-allowed opacity-50"
-                disabled
-              >
-                Archive
-              </button> */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -221,15 +217,8 @@ export default function ProjectCard({
               </button>
             </div>
           </div>
-        )}
-      </div>
-
-      {/* Click outside to close menu */}
-      {showMenu && (
-        <div 
-          className="fixed inset-0 z-[9998]" 
-          onClick={() => setShowMenu(false)}
-        />
+        </>,
+        document.body
       )}
     </div>
   );
