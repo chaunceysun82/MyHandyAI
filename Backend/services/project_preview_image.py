@@ -129,7 +129,6 @@ def ensure_project_preview_image(project_id: str, prefer_draft: bool = False) ->
             prompt=prompt,
             size="1024x1024",
             n=1,
-            response_format="b64_json",
         )
         image_bytes = _image_bytes_from_response(response)
         logger.info(f"OpenAI returned preview image project_id={project_id} bytes={len(image_bytes)}")

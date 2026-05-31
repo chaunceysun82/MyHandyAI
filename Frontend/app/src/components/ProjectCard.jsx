@@ -1,5 +1,5 @@
 // src/components/ProjectCard.jsx
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import defaultProjectImage from "../assets/default-project.png";
 
 export default function ProjectCard({
@@ -15,6 +15,8 @@ export default function ProjectCard({
 }) {
   const [showMenu, setShowMenu] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
+  const menuButtonRef = useRef(null);
 
   console.log("Propject percentage", Number(percentComplete));
 
@@ -33,7 +35,14 @@ export default function ProjectCard({
 
   const handleMenuClick = (e) => {
     e.stopPropagation();
-    setShowMenu(!showMenu);
+    if (menuButtonRef.current) {
+      const rect = menuButtonRef.current.getBoundingClientRect();
+      setMenuPosition({
+        top: rect.bottom + 8,
+        right: window.innerWidth - rect.right,
+      });
+    }
+    setShowMenu((current) => !current);
   };
 
   const handleOptionClick = async (option) => {
@@ -136,6 +145,7 @@ export default function ProjectCard({
       {/* Right Section - Three-dot menu with dropdown - Not clickable for navigation */}
       <div className="flex items-center flex-shrink-0">
         <button
+          ref={menuButtonRef}
           onClick={handleMenuClick}
           className="absolute right-1.5 top-1.5 z-[2] rounded-lg p-2 text-black transition-colors hover:bg-[#E9FAFF] hover:text-[#066580] focus:outline-none focus:ring-2 focus:ring-[#1484A3]/30 lg:right-3 lg:top-3"
           title="More options"
@@ -147,7 +157,11 @@ export default function ProjectCard({
 
         {/* Dropdown Menu */}
         {showMenu && (
-          <div className="absolute right-0 top-full mt-2 w-36 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+          <div
+            className="fixed w-36 rounded-lg border border-gray-200 bg-white shadow-xl z-[9999]"
+            style={{ top: menuPosition.top, right: menuPosition.right }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="py-1">
               <button
                 onClick={(e) => {
@@ -213,7 +227,7 @@ export default function ProjectCard({
       {/* Click outside to close menu */}
       {showMenu && (
         <div 
-          className="fixed inset-0 z-0" 
+          className="fixed inset-0 z-[9998]" 
           onClick={() => setShowMenu(false)}
         />
       )}
