@@ -64,7 +64,7 @@ export default function ChatWindow({
                 previewLoading: false,
                 images: previewUrl ? [previewUrl] : [],
                 content: previewUrl
-                  ? `${message.content}\n\nPreview ready. Tap the image to open it larger.`
+                  ? message.content
                   : `${message.content}\n\nI couldn't generate the preview this time, but we can still continue with the project confirmation.`,
               }
             : message
@@ -635,7 +635,7 @@ export default function ChatWindow({
         id: botMessageId,
         sender: "bot",
         content: res.data.preview_image_url || shouldGeneratePreview
-          ? `${res.data.agent_response}\n\nHere is a preview of how the finished result could look:`
+          ? `${res.data.agent_response}\n\nGenerating a preview from this summary before you confirm:`
           : res.data.agent_response,
         images: previewImages,
         previewLoading: shouldGeneratePreview && previewImages.length === 0,

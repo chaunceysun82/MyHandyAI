@@ -114,11 +114,12 @@ async def chat(
         project = project_collection.find_one({"_id": ObjectId(request.project_id)})
         preview = (project or {}).get("result_preview_image") or {}
         preview_image_url = preview.get("url") if preview else None
-        preview_image_status = preview.get("status") if preview_image_url else "generating"
+        preview_image_status = preview.get("status") if preview_image_url else None
         logger.info(
             f"chat preview status project_id={request.project_id} "
             f"conversation_status={conversation_status} preview_status={preview.get('status')} "
-            f"has_url={bool(preview_image_url)} stage={preview.get('stage')}"
+            f"has_url={bool(preview_image_url)} stage={preview.get('stage')} "
+            f"generation_triggered_after_confirmation=False"
         )
     else:
         project = project_collection.find_one({"_id": ObjectId(request.project_id)})
