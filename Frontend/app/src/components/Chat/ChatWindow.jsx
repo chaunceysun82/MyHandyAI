@@ -567,7 +567,14 @@ export default function ChatWindow({
         axiosAuthConfig({ headers: { "Content-Type": "application/json" } })
       );
 
-      const botMsg = { sender: "bot", content: res.data.agent_response };
+      const previewImages = res.data.preview_image_url ? [res.data.preview_image_url] : [];
+      const botMsg = {
+        sender: "bot",
+        content: res.data.preview_image_url
+          ? `${res.data.agent_response}\n\nHere is a preview of how the finished result could look:`
+          : res.data.agent_response,
+        images: previewImages,
+      };
       setLoading(false);
       setMessages((prev) => [...prev, botMsg]);
       

@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import defaultNavLogo from '../assets/default_nav_logo.png';
 import { redirectToCognitoLogout } from "../services/cognitoAuth";
 import { getUserById, updateUser } from "../services/auth";
+import { fetchOnboardingQuestions } from "../services/onboarding";
+import StepRenderer from "./onboarding/StepRender";
+import LocationSelector from "./onboarding/LocationSelector";
 
 export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
   const navigate = useNavigate();
@@ -14,6 +17,7 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [profileSuccess, setProfileSuccess] = useState("");
+  const [onboardingQuestions, setOnboardingQuestions] = useState([]);
 
   // Get user data from localStorage
   const userName = localStorage.getItem("displayName") || sessionStorage.getItem("displayName") || "User";
@@ -56,9 +60,13 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
 
     setProfileLoading(true);
     try {
-      const user = await getUserById(userId);
+      const [user, questions] = await Promise.all([
+        getUserById(userId),
+        onboardingQuestions.length ? Promise.resolve(onboardingQuestions) : fetchOnboardingQuestions(),
+      ]);
+      setOnboardingQuestions(questions);
       setProfileUser(user);
-      setProfileForm(createProfileForm(user));
+      setProfileForm(createProfileForm(user, questions));
     } catch (err) {
       console.error("Could not load profile:", err);
       setProfileError("Could not load your profile answers right now.");
@@ -84,15 +92,23 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
     setActiveInfoModal(null);
   };
 
-  const createProfileForm = (user = {}) => ({
+  const createProfileForm = (user = {}, questions = onboardingQuestions) => ({
     experienceLevel: user.experienceLevel || "",
-    confidence: user.confidence || "",
-    tools: formatProfileValue(user.tools) || "",
-    interestedProjects: formatProfileValue(user.interestedProjects) || "",
+    confidence: getConfidenceTitle(user.confidence, questions),
+    tools: parseProfileList(user.tools),
+    interestedProjects: parseProfileList(user.interestedProjects),
     country: user.country || "",
     state: user.state || "",
     describe: user.describe || "",
   });
+
+  const parseProfileList = (value) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value === "string") {
+      return value.split(",").map((item) => item.trim()).filter(Boolean);
+    }
+    return [];
+  };
 
   const formatProfileValue = (value) => {
     if (Array.isArray(value)) return value.join(", ");
@@ -100,6 +116,45 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
       return [value.country, value.state].filter(Boolean).join(", ") || JSON.stringify(value);
     }
     return value;
+  };
+
+  const confidenceMap = {
+    "not confident at all": 1,
+    "slightly confident": 2,
+    "somewhat confident": 3,
+    "confident": 4,
+    "very confident": 5,
+  };
+
+  const findOnboardingQuestion = (matcher) =>
+    onboardingQuestions.find((question) => {
+      const text = [
+        question.Type,
+        question.Question,
+        question.Comment,
+        ...(Array.isArray(question.Options) ? question.Options.map((option) => option?.title || option) : []),
+      ].filter(Boolean).join(" ").toLowerCase();
+      return matcher(text, question);
+    });
+
+  const getConfidenceQuestion = (questions = onboardingQuestions) =>
+    questions.find((question) => String(question.Type || "").toLowerCase() === "diy confidence");
+
+  const getConfidenceTitle = (confidence, questions = onboardingQuestions) => {
+    if (confidence === undefined || confidence === null || confidence === "") return "";
+    if (typeof confidence === "string" && Number.isNaN(Number(confidence))) return confidence;
+
+    const confidenceNumber = Number(confidence);
+    const confidenceQuestion = getConfidenceQuestion(questions);
+    const options = confidenceQuestion?.Options || [];
+    const matchingOption = options.find((option) => confidenceMap[String(option.title || option).toLowerCase()] === confidenceNumber);
+    return matchingOption?.title || String(confidence);
+  };
+
+  const getConfidenceNumber = (confidence) => {
+    if (confidence === undefined || confidence === null || confidence === "") return "";
+    if (!Number.isNaN(Number(confidence))) return Number(confidence);
+    return confidenceMap[String(confidence).toLowerCase()] || "";
   };
 
   const handleProfileFieldChange = (field, value) => {
@@ -121,9 +176,9 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
     try {
       const payload = {
         experienceLevel: profileForm.experienceLevel,
-        confidence: profileForm.confidence,
-        tools: profileForm.tools,
-        interestedProjects: profileForm.interestedProjects,
+        confidence: getConfidenceNumber(profileForm.confidence),
+        tools: formatProfileValue(profileForm.tools) || "",
+        interestedProjects: formatProfileValue(profileForm.interestedProjects) || "",
         country: profileForm.country,
         state: profileForm.state,
         describe: profileForm.describe,
@@ -141,14 +196,68 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
     }
   };
 
-  const profileFields = [
-    ["experienceLevel", "Experience level", "Example: Beginner, Intermediate, Advanced"],
-    ["confidence", "DIY confidence", "Example: Confident"],
-    ["tools", "Tools available", "Example: drill, screwdriver, level"],
-    ["interestedProjects", "Interested projects", "Example: plumbing, mounting, painting"],
-    ["country", "Country", "Example: United States"],
-    ["state", "State", "Example: Florida"],
+  const profileQuestionConfigs = [
+    {
+      field: "experienceLevel",
+      label: "Experience level",
+      matcher: (text, question) => question.Category === "single-selection" && text.includes("experience"),
+      fallbackPlaceholder: "Example: Beginner, Intermediate, Advanced",
+    },
+    {
+      field: "confidence",
+      label: "DIY confidence",
+      matcher: (_text, question) => String(question.Type || "").toLowerCase() === "diy confidence",
+      fallbackPlaceholder: "Example: Confident",
+    },
+    {
+      field: "tools",
+      label: "Tools available",
+      matcher: (text, question) => question.Category === "multiple-selection" && (text.includes("tool") || text.includes("equipment")),
+      fallbackPlaceholder: "Example: drill, screwdriver, level",
+    },
+    {
+      field: "interestedProjects",
+      label: "Interested projects",
+      matcher: (text, question) => question.Category === "multiple-selection" && (text.includes("project") || text.includes("interested")),
+      fallbackPlaceholder: "Example: plumbing, mounting, painting",
+    },
   ];
+
+  const renderProfileQuestion = ({ field, label, matcher, fallbackPlaceholder }) => {
+    const question = findOnboardingQuestion(matcher);
+    const labelClass = "text-[11px] font-semibold uppercase tracking-wide text-gray-500";
+
+    if (question) {
+      const step = {
+        ...question,
+        Question: label,
+        Comment: "",
+        _id: `profile_${field}`,
+      };
+
+      return (
+        <div key={field} className="rounded-2xl border border-[#d8e8ee] bg-white/70 p-3">
+          <StepRenderer
+            step={step}
+            value={profileForm[field]}
+            onChange={(value) => handleProfileFieldChange(field, value)}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <label key={field} className="block">
+        <span className={labelClass}>{label}</span>
+        <input
+          className="mt-1 w-full rounded-xl border border-[#d8e8ee] bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#1484A3] focus:ring-2 focus:ring-[#1484A3]/20"
+          value={formatProfileValue(profileForm[field]) || ""}
+          placeholder={fallbackPlaceholder}
+          onChange={(e) => handleProfileFieldChange(field, e.target.value)}
+        />
+      </label>
+    );
+  };
 
   const modalContent = {
     profile: {
@@ -188,19 +297,20 @@ export default function SideNavbar({ isOpen, onClose, onStartNewProject }) {
 
             {!profileLoading && profileUser && (
               <div className="mt-3 space-y-3">
-                {profileFields.map(([field, label, placeholder]) => (
-                  <label key={field} className="block">
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                      {label}
-                    </span>
-                    <input
-                      className="mt-1 w-full rounded-xl border border-[#d8e8ee] bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#1484A3] focus:ring-2 focus:ring-[#1484A3]/20"
-                      value={profileForm[field] || ""}
-                      placeholder={placeholder}
-                      onChange={(e) => handleProfileFieldChange(field, e.target.value)}
-                    />
-                  </label>
-                ))}
+                {profileQuestionConfigs.map(renderProfileQuestion)}
+
+                <div className="rounded-2xl border border-[#d8e8ee] bg-white/70 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Location
+                  </p>
+                  <LocationSelector
+                    value={{ country: profileForm.country || "", state: profileForm.state || "" }}
+                    onChange={(value) => {
+                      handleProfileFieldChange("country", value.country || "");
+                      handleProfileFieldChange("state", value.state || "");
+                    }}
+                  />
+                </div>
 
                 <label className="block">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">

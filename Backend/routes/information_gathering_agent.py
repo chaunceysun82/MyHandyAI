@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from bson import ObjectId
 from fastapi import APIRouter, Depends, status
 from loguru import logger
 
@@ -9,9 +10,13 @@ from routes.schemas.request.information_gathering_agent import InitializeConvers
 from routes.schemas.response.information_gathering_agent import InitializeConversationResponse, \
     ChatMessageResponse, ConversationHistoryResponse, HistoryMessage
 from security.current_user import get_current_app_user
+from database.enums.project import InformationGatheringConversationStatus
+from database.mongodb import mongodb
+from services.project_preview_image import ensure_project_preview_image
 from services.user_upload_storage import store_user_uploaded_image
 
 router = APIRouter(prefix="/information-gathering-agent")
+project_collection = mongodb.get_collection("Project")
 
 
 @router.post("/initialize", response_model=InitializeConversationResponse, status_code=status.HTTP_200_OK)
@@ -53,6 +58,10 @@ async def chat(
             source="information-gathering-agent",
         )
         logger.info(f"Stored information gathering upload: {upload['key']}")
+        project_collection.update_one(
+            {"_id": ObjectId(request.project_id)},
+            {"$push": {"information_gathering_uploads": upload}},
+        )
 
     agent_response, conversation_status = orchestrator.process_message(
         thread_id=thread_id,
@@ -62,10 +71,16 @@ async def chat(
         image_mime_type=request.image_mime_type
     )
 
+    preview_image_url = None
+    if conversation_status == InformationGatheringConversationStatus.COMPLETED.value:
+        preview = ensure_project_preview_image(request.project_id)
+        preview_image_url = preview.get("url") if preview else None
+
     return ChatMessageResponse(
         thread_id=thread_id,
         agent_response=agent_response,
-        conversation_status=conversation_status
+        conversation_status=conversation_status,
+        preview_image_url=preview_image_url
     )
 
 

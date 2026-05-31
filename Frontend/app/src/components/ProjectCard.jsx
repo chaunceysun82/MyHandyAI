@@ -77,19 +77,30 @@ export default function ProjectCard({
   const canComplete = hasSteps && percentComplete < 100;
 
   return (
-    <div className="bg-gray-100 rounded-xl flex items-center justify-between relative select-none shadow-md border-l-4 border-[#288AA5] min-h-[72px] lg:min-h-0 lg:rounded-[20px]"
-    style={{
-      boxShadow: '0 6px 12px -2px rgba(0, 0, 0, 0.1)',
-    }}
+    <div
+      className="group relative flex min-h-[72px] select-none items-center justify-between overflow-hidden rounded-xl border-l-4 border-[#288AA5] bg-gray-100 shadow-md transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_30px_-14px_rgba(20,132,163,0.65)] active:translate-y-0 active:scale-[0.995] focus-within:ring-2 focus-within:ring-[#1484A3]/30 lg:min-h-0 lg:rounded-[20px]"
+      style={{
+        boxShadow: '0 6px 12px -2px rgba(0, 0, 0, 0.1)',
+      }}
     >
+      <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-[#1484A3] opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#E9FAFF]/80 via-transparent to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
 
       {/* Left Section - Image and Project Details - Clickable */}
       <div 
-        className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-2 hover:bg-transparent lg:gap-4 lg:px-4 lg:py-3"
+        className="relative z-[1] flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg px-2 py-2 outline-none transition-transform duration-200 group-hover:translate-x-0.5 lg:gap-4 lg:px-4 lg:py-3"
         onClick={handleCardClick}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleCardClick();
+          }
+        }}
+        role="button"
+        tabIndex={0}
       >
         {/* Project Image */}
-        <div className="h-11 w-11 bg-blue-50 rounded-lg flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0 lg:h-16 lg:w-16">
+        <div className="h-11 w-11 flex-shrink-0 overflow-hidden rounded-lg bg-blue-50 shadow-sm ring-0 ring-[#1484A3]/20 transition-all duration-200 group-hover:scale-105 group-hover:ring-4 lg:h-16 lg:w-16">
           <img 
             src={defaultProjectImage} 
             alt="Project" 
@@ -108,7 +119,7 @@ export default function ProjectCard({
         {/* Project Details - Three lines as shown in image */}
         <div className="flex min-w-0 flex-col gap-0.5 pr-9 lg:pr-10">
           {/* Project Title - First line */}
-          <h3 className="truncate text-[15px] font-semibold leading-5 text-gray-900 hover:no-underline lg:text-[18px] lg:leading-6">
+          <h3 className="truncate text-[15px] font-semibold leading-5 text-gray-900 transition-colors duration-200 group-hover:text-[#066580] lg:text-[18px] lg:leading-6">
             {projectTitle}
           </h3>
           {/* Last Activity - Second line */}
@@ -126,7 +137,7 @@ export default function ProjectCard({
       <div className="flex items-center flex-shrink-0">
         <button
           onClick={handleMenuClick}
-          className="absolute right-1.5 top-1.5 rounded-lg p-2 text-black transition-colors hover:bg-gray-200 hover:text-gray-800 lg:right-3 lg:top-3"
+          className="absolute right-1.5 top-1.5 z-[2] rounded-lg p-2 text-black transition-colors hover:bg-[#E9FAFF] hover:text-[#066580] focus:outline-none focus:ring-2 focus:ring-[#1484A3]/30 lg:right-3 lg:top-3"
           title="More options"
         >
           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">

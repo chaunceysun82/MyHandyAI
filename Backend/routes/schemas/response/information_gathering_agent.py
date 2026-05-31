@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -16,6 +16,7 @@ class ChatMessageResponse(BaseModel):
     thread_id: UUID = Field(..., description="Thread ID for the conversation")
     agent_response: str = Field(..., description="Agent's response message")
     conversation_status: str = Field(..., description="Current conversation status (PENDING, IN_PROGRESS, COMPLETED)")
+    preview_image_url: Optional[str] = Field(None, description="Generated preview image URL for the confirmed project")
 
 
 class HistoryMessage(BaseModel):
