@@ -64,6 +64,84 @@ export default function ChatWindow({
     throw new Error("preview_poll_timeout: Preview generation did not finish in time");
   }, [URL, projectId]);
 
+  const attachStoredPreviewToMessages = useCallback(async (messagesToHydrate) => {
+    try {
+      const previewRes = await axios.get(
+        `${URL}/api/v1/information-gathering-agent/preview/${projectId}`,
+        axiosAuthConfig()
+      );
+      const previewUrl = previewRes.data?.url;
+      if (!previewUrl) return messagesToHydrate;
+
+      const targetIndex = [...messagesToHydrate]
+        .map((message, index) => ({ message, index }))
+        .reverse()
+        .find(({ message }) => {
+          const content = String(message.content || "").toLowerCase();
+          return (
+            message.sender === "bot" &&
+            (
+              content.includes("generating a preview from this summary") ||
+              content.includes("project overview") ||
+              content.includes("the problem") ||
+              content.includes("please review")
+            )
+          );
+        })?.index;
+
+      if (targetIndex === undefined) return messagesToHydrate;
+
+      return messagesToHydrate.map((message, index) =>
+        index === targetIndex
+          ? {
+              ...message,
+              images: [previewUrl],
+              previewLoading: false,
+            }
+          : message
+      );
+    } catch (error) {
+      console.warn("[preview] could not hydrate stored preview", {
+        message: error?.message,
+        status: error?.response?.status,
+        data: error?.response?.data,
+      });
+      return messagesToHydrate;
+    }
+  }, [URL, projectId]);
+
+  const formatHistoryMessages = useCallback((historyMessages = []) =>
+    historyMessages.map(({ role, content }) => {
+      if (!content || typeof content !== 'string') {
+        return {
+          sender: role === "user" ? "user" : "bot",
+          content: content || "",
+        };
+      }
+
+      const base64ImageRegex = /data:image\/[^;]+;base64,[^\s]+/g;
+      const imageMatches = content.match(base64ImageRegex);
+
+      if (imageMatches && imageMatches.length > 0) {
+        let textContent = content;
+        imageMatches.forEach(img => {
+          textContent = textContent.replace(img, '').trim();
+        });
+
+        return {
+          sender: role === "user" ? "user" : "bot",
+          content: textContent,
+          images: imageMatches,
+          isImageOnly: !textContent || textContent.length === 0,
+        };
+      }
+
+      return {
+        sender: role === "user" ? "user" : "bot",
+        content,
+      };
+    }), []);
+
   const generatePreviewImage = useCallback(async (messageId) => {
     try {
       console.log("[preview] queueing project preview", {
@@ -339,40 +417,8 @@ export default function ChatWindow({
               `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`,
               axiosAuthConfig()
             );
-            const formattedMessages = historyRes.data.messages.map(
-              ({ role, content }) => {
-                if (!content || typeof content !== 'string') {
-                  return {
-                    sender: role === "user" ? "user" : "bot",
-                    content: content || "",
-                  };
-                }
-                
-                const base64ImageRegex = /data:image\/[^;]+;base64,[^\s]+/g;
-                const imageMatches = content.match(base64ImageRegex);
-                
-                if (imageMatches && imageMatches.length > 0) {
-                  const images = imageMatches;
-                  let textContent = content;
-                  imageMatches.forEach(img => {
-                    textContent = textContent.replace(img, '').trim();
-                  });
-                  
-                  return {
-                    sender: role === "user" ? "user" : "bot",
-                    content: textContent,
-                    images: images,
-                    isImageOnly: !textContent || textContent.length === 0,
-                  };
-                }
-                
-                return {
-                  sender: role === "user" ? "user" : "bot",
-                  content: content,
-                };
-              }
-            );
-            setMessages(formattedMessages);
+            const formattedMessages = formatHistoryMessages(historyRes.data.messages);
+            setMessages(await attachStoredPreviewToMessages(formattedMessages));
             setLoading(false);
           } catch (err) {
             console.error("Error loading completed conversation history:", err);
@@ -436,45 +482,8 @@ export default function ChatWindow({
             `${URL}/${api}/chat/${sessionRes.data.thread_id}/history`,
             axiosAuthConfig()
           );
-          const formattedMessages = historyRes.data.messages.map(
-            ({ role, content }) => {
-              if (!content || typeof content !== 'string') {
-                return {
-                  sender: role === "user" ? "user" : "bot",
-                  content: content || "",
-                };
-              }
-              
-              // Check if content contains a base64 image data URL
-              const base64ImageRegex = /data:image\/[^;]+;base64,[^\s]+/g;
-              const imageMatches = content.match(base64ImageRegex);
-              
-              if (imageMatches && imageMatches.length > 0) {
-                // Extract images and remove them from text
-                const images = imageMatches;
-                let textContent = content;
-                
-                // Remove all image data URLs from the text
-                imageMatches.forEach(img => {
-                  textContent = textContent.replace(img, '').trim();
-                });
-                
-                return {
-                  sender: role === "user" ? "user" : "bot",
-                  content: textContent,
-                  images: images,
-                  isImageOnly: !textContent || textContent.length === 0,
-                };
-              }
-              
-              // Regular text message
-              return {
-                sender: role === "user" ? "user" : "bot",
-                content: content,
-              };
-            }
-          );
-          setMessages(formattedMessages);
+          const formattedMessages = formatHistoryMessages(historyRes.data.messages);
+          setMessages(await attachStoredPreviewToMessages(formattedMessages));
           setLoading(false);
 
         } catch (err) {
