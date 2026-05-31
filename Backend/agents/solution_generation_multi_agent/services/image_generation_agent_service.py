@@ -540,13 +540,16 @@ class ImageGenerationAgentService:
         project_id: Optional[str],
         user_id: Optional[str],
 ) -> tuple[str, str]:
+    """
+    Use GPT to fully plan the image before generating it.
+    Injects domain physics, color lock, safety equipment, face rule, shooting plan.
+    Returns (structured_imagen_prompt, state_summary).
+    """
     domain = dna.get("domain", "general")
     domain_physics = DOMAIN_PHYSICS_LIBRARY.get(
         domain, DOMAIN_PHYSICS_LIBRARY["general"]
     )
     object_colors = dna.get("object_colors", {})
-
-    # ── NEW: extract color lock, safety, shooting plan from DNA ──────────────
     color_lock = dna.get("color_lock", {})
     safety_equipment = dna.get("safety_equipment", {})
     step_shooting_plan = dna.get("step_shooting_plan", {})
@@ -558,8 +561,6 @@ class ImageGenerationAgentService:
         "step_description": step_text,
         "previous_step_states": prior_states,
         "object_color_registry": object_colors,
-
-        # ── NEW fields ────────────────────────────────────────────────────────
         "color_lock": color_lock,
         "color_lock_instruction": (
             "These colors are LOCKED and must appear verbatim in imagen_prompt. "
@@ -569,8 +570,6 @@ class ImageGenerationAgentService:
         "safety_equipment_rules": safety_equipment,
         "face_rule": face_rule,
         "step_shooting_plan": step_shooting_plan,
-
-        # ── Existing fields ───────────────────────────────────────────────────
         "domain_physics_rules": domain_physics["physics"],
         "domain_hand_rules": domain_physics["hand_rules"],
         "domain_camera_guide": domain_physics["camera"],
@@ -585,7 +584,7 @@ class ImageGenerationAgentService:
         api_key=self.settings.OPENAI_API_KEY,
         system=STEP_PLANNER_PROMPT,
         user=user_content,
-        max_tokens=900,     # slightly increased for new fields
+        max_tokens=900,
     )
 
     if content:
@@ -605,19 +604,19 @@ class ImageGenerationAgentService:
             camera = parsed.get("camera_angle", "medium")
             orientation = parsed.get("orientation_note", "")
 
-            # ── Inject locked colors directly into final prompt ───────────────
-            # Done here (not just in GPT output) as a hard guarantee —
-            # even if GPT paraphrases the color, this re-injects it
+            # Inject locked wall color directly — bypasses any GPT paraphrasing
             wall_color = color_lock.get("wall", "")
             color_injection = (
                 f"LOCKED WALL COLOR: {wall_color} painted wall — do not substitute. "
                 if wall_color else ""
             )
 
-            # ── Inject face rule directly ─────────────────────────────────────
-            face_injection = "Person's face is NOT visible — shown from behind or side facing away. "
+            # Inject face rule directly
+            face_injection = (
+                "Person's face is NOT visible — shown from behind or side facing away. "
+            )
 
-            # ── Inject safety equipment ───────────────────────────────────────
+            # Inject safety equipment directly
             safety_this_step = parsed.get("safety_equipment_this_step", [])
             safety_injection = (
                 f"Person is wearing: {', '.join(safety_this_step)}. "
@@ -643,6 +642,7 @@ class ImageGenerationAgentService:
             )
             return final_prompt, state_summary
 
+    # Fallback — stays on topic even if GPT fails
     logger.warning(f"Step planning failed for step {step_id} — using fallback")
     wall_color = color_lock.get("wall", "")
     return (
@@ -653,7 +653,6 @@ class ImageGenerationAgentService:
         f"Maximum two hands. Objects face toward viewer. "
         f"{_NEGATIVE_SUFFIX}"
     ), ""
-
     # ─── Main entry ───────────────────────────────────────────────────────────
 
     def generate_step_image(
