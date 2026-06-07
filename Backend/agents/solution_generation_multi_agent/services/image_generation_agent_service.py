@@ -36,14 +36,11 @@ from agents.solution_generation_multi_agent.prompt_templates.v1.image_generation
 from config.settings import get_settings
 from database.llm_consumption import record_google_image_generation, record_openai_response_usage
 
-# ── Models ────────────────────────────────────────────────────────────────────
-GEMINI_IMAGE_MODEL_PRO   = "gemini-3-pro-image-preview"   # step images — highest quality
-GEMINI_IMAGE_MODEL_FLASH = "gemini-3.1-flash-image"       # context images — fast/cheap
+GEMINI_IMAGE_MODEL_FLASH = "gemini-3-pro-image-preview"
 
-# ── Budgets ───────────────────────────────────────────────────────────────────
-REFERENCE_IMAGE_BUDGET = 8   # total refs per step (context + prior steps)
-MAX_CONTEXT_IMAGES     = 3   # establishing shots from summary
-MAX_PRIOR_STEP_REFS    = 5   # prior step images passed as visual memory
+REFERENCE_IMAGE_BUDGET = 8
+MAX_CONTEXT_IMAGES = 3
+MAX_PRIOR_STEP_REFS = 5
 
 _NEGATIVE_SUFFIX = (
     " Photorealistic, 4K HDR, sharp focus, professional photography. "
@@ -64,7 +61,7 @@ def _call_openai(
         "model": "gpt-4o-mini",
         "messages": [
             {"role": "system", "content": system},
-            {"role": "user",   "content": user},
+            {"role": "user", "content": user},
         ],
         "max_tokens": max_tokens,
         "temperature": 0.3,
@@ -149,7 +146,7 @@ class ImageGenerationAgentService:
             api_key=self.settings.OPENAI_API_KEY,
             system=VISUAL_DNA_PROMPT,
             user=summary_text,
-            max_tokens=1500,
+            max_tokens=1000,
         )
         if content:
             dna = _parse_json_safe(content, "visual_dna")
@@ -162,10 +159,6 @@ class ImageGenerationAgentService:
             "domain": "general",
             "scene_prefix": "indoor home workspace, neutral background, natural lighting",
             "glove_color": "blue nitrile",
-            "color_lock": {},
-            "safety_equipment": {},
-            "face_rule": "Person's face must not be visible.",
-            "step_shooting_plan": {},
             "body_anchors": {
                 "primary": "A photo of a person, their {glove_color} gloved hands",
                 "elevated": "A photo of a person on a stepladder, their {glove_color} gloved hands",
@@ -183,23 +176,50 @@ class ImageGenerationAgentService:
     # ─── User uploaded images ─────────────────────────────────────────────────
 
     def fetch_user_uploaded_image_urls(self, project_id: str) -> list[str]:
-        """Read user-uploaded image URLs from MongoDB (written by route handlers at upload time)."""
+        """
+        List all user-uploaded images for this project from S3.
+        Path pattern: user-uploads/*/projects/{project_id}/*
+        Returns public URLs ordered by LastModified ascending (oldest first).
+        """
         try:
-            doc = self.project_collection.find_one(
-                {"_id": ObjectId(project_id)},
-                {"user_uploaded_images": 1}
+            prefix = f"user-uploads/"
+            paginator = self.s3_client.get_paginator("list_objects_v2")
+            all_objects = []
+
+            # S3 doesn't support mid-path wildcards — list broad prefix and filter
+            for page in paginator.paginate(
+                Bucket=self.settings.AWS_S3_BUCKET,
+                Prefix=prefix,
+            ):
+                for obj in page.get("Contents", []):
+                    key = obj["Key"]
+                    # Match: user-uploads/{user_id}/projects/{project_id}/...
+                    if f"/projects/{project_id}/" in key:
+                        all_objects.append(obj)
+
+            # Sort oldest → newest so context images are in chronological order
+            all_objects.sort(key=lambda o: o["LastModified"])
+
+            urls = []
+            for obj in all_objects:
+                url = get_public_url(obj["Key"], self.settings.AWS_S3_PUBLIC_BASE)
+                if url:
+                    urls.append(url)
+
+            logger.info(
+                f"User uploaded images for project {project_id}: {len(urls)} found"
             )
-            if not doc:
-                return []
-            uploads = doc.get("user_uploaded_images", [])
-            urls = [u["url"] for u in uploads if u.get("url")]
-            logger.info(f"User uploaded images for project {project_id}: {len(urls)} found in MongoDB")
             return urls
+
         except Exception as e:
             logger.warning(f"fetch_user_uploaded_image_urls failed: {e}")
             return []
 
     def load_user_uploaded_images(self, project_id: str) -> list[PIL.Image.Image]:
+        """
+        Load all user-uploaded images for this project as PIL images.
+        Returns empty list if none found or loading fails.
+        """
         urls = self.fetch_user_uploaded_image_urls(project_id)
         images = []
         for url in urls:
@@ -210,7 +230,7 @@ class ImageGenerationAgentService:
         logger.info(f"User images loaded as PIL: {len(images)}/{len(urls)}")
         return images
 
-    # ─── Context images ───────────────────────────────────────────────────────
+    # ─── Context image planning — smart merge with user uploads ───────────────
 
     def _plan_needed_context_images(
             self,
@@ -218,8 +238,13 @@ class ImageGenerationAgentService:
             dna: dict,
             user_image_count: int,
     ) -> list[dict]:
+        """
+        Ask GPT how many context images are needed and what they should show.
+        Returns the full plan list — caller decides which to generate vs skip.
+        """
         domain = dna.get("domain", "general")
         object_colors = dna.get("object_colors", {})
+
         content = _call_openai(
             api_key=self.settings.OPENAI_API_KEY,
             system=CONTEXT_IMAGE_PLANNER_PROMPT,
@@ -228,14 +253,15 @@ class ImageGenerationAgentService:
                 "domain": domain,
                 "object_colors": object_colors,
                 "scene_prefix": dna.get("scene_prefix", ""),
-                "color_lock": dna.get("color_lock", {}),
             }),
             max_tokens=1000,
         )
+
         if content:
             parsed = _parse_json_safe(content, "context_image_planner")
             if parsed:
                 return parsed.get("context_images", [])
+
         logger.warning("Context image planning returned no plans")
         return []
 
@@ -270,16 +296,28 @@ class ImageGenerationAgentService:
     ) -> AnchorObjectsResult:
         """
         Smart context image builder — three cases:
-        Case 1: No user images → generate all context images.
-        Case 2: User provided all needed → use as-is, generate nothing.
-        Case 3: User provided some → use theirs, generate the rest.
+
+        Case 1: User provided NO images
+            → Plan 2-3 context images from summary, generate all of them.
+
+        Case 2: User provided ALL needed images (count >= planned count)
+            → Use user images directly, generate nothing.
+
+        Case 3: User provided SOME images (count < planned count)
+            → Use user images for the slots they fill (oldest first),
+              generate only the remaining slots.
+
+        All results (user + generated) are stored in MongoDB as image_context_images
+        so fetch_context_pil_images() works identically regardless of case.
         """
         logger.info(f"Building context images for project {project_id}")
 
-        user_image_urls = self.fetch_user_uploaded_image_urls(project_id)
+        # 1. Load user uploads
         user_images_pil = self.load_user_uploaded_images(project_id)
+        user_image_urls = self.fetch_user_uploaded_image_urls(project_id)
         user_count = len(user_images_pil)
 
+        # 2. Plan what context images are needed
         image_plans = self._plan_needed_context_images(
             summary_text=summary_text,
             dna=dna,
@@ -288,15 +326,16 @@ class ImageGenerationAgentService:
         planned_count = len(image_plans)
 
         logger.info(
-            f"Context image plan: {planned_count} needed, {user_count} user-provided — "
+            f"Context image plan: {planned_count} needed, "
+            f"{user_count} user-provided — "
             f"Case {'1' if user_count == 0 else '2' if user_count >= planned_count else '3'}"
         )
 
         results: list[AnchorObject] = []
 
-        # Case 2: user provided everything
+        # ── Case 2: user provided everything — use as-is ─────────────────────
         if user_count >= planned_count and planned_count > 0:
-            logger.info("Case 2: all context images user-provided — no generation needed")
+            logger.info("Case 2: all context images provided by user — no generation needed")
             for i, (plan, url) in enumerate(zip(image_plans, user_image_urls)):
                 results.append(AnchorObject(
                     name=plan.get("name", f"user_image_{i + 1}"),
@@ -311,17 +350,21 @@ class ImageGenerationAgentService:
             self.save_context_images(project_id, result)
             return result
 
-        # Case 1 or 3: fill slots with user images, generate the rest
-        # Use Flash for context images — cheaper, adequate for static reference shots
+        # ── Case 1 or 3: generate missing slots ──────────────────────────────
         flash_agent = ImageGenerationAgent(model=GEMINI_IMAGE_MODEL_FLASH)
-        user_slots_used = 0
 
+        # Fill slots with user images first (Case 3), then generate the rest
+        user_slots_used = 0
         for i, plan in enumerate(image_plans[:MAX_CONTEXT_IMAGES]):
             name = plan.get("name", f"context_{i + 1}")
 
+            # Use a user-provided image for this slot if available
             if user_slots_used < user_count:
                 url = user_image_urls[user_slots_used]
-                logger.info(f"Slot {i + 1} ('{name}'): using user image {url.split('/')[-1]}")
+                logger.info(
+                    f"Slot {i + 1} ('{name}'): using user-provided image "
+                    f"{url.split('/')[-1]}"
+                )
                 results.append(AnchorObject(
                     name=name,
                     description=plan.get("purpose", "User provided image"),
@@ -334,22 +377,22 @@ class ImageGenerationAgentService:
                 user_slots_used += 1
                 continue
 
+            # No user image available — generate this slot
             prompt = plan.get("prompt", "")
             if not prompt:
                 continue
 
-            # Inject locked wall color into context image prompts too
-            wall_color = dna.get("color_lock", {}).get("wall", "")
-            color_note = f"Wall color is {wall_color}. " if wall_color else ""
-
             full_prompt = (
-                f"{color_note}{prompt} "
+                f"{prompt} "
                 f"No people, no hands. Static scene only. "
                 f"Photorealistic, 4K HDR, professional photography. "
                 f"No text, no labels, no watermarks."
             )
 
-            logger.info(f"Slot {i + 1} ('{name}'): generating {plan.get('angle', '')} shot")
+            logger.info(
+                f"Slot {i + 1} ('{name}'): generating — "
+                f"{plan.get('angle', '')} shot"
+            )
             try:
                 raw_bytes = flash_agent.generate_image(
                     prompt=full_prompt,
@@ -358,7 +401,10 @@ class ImageGenerationAgentService:
                     output_mime_type="image/png",
                 )
                 png_bytes = png_to_bytes_ensure_rgba(raw_bytes)
-                s3_key = f"project_{project_id}/context/{name}_{int(time.time())}.png"
+                s3_key = (
+                    f"project_{project_id}/context/"
+                    f"{name}_{int(time.time())}.png"
+                )
                 self.s3_client.put_object(
                     Bucket=self.settings.AWS_S3_BUCKET,
                     Key=s3_key,
@@ -384,9 +430,9 @@ class ImageGenerationAgentService:
                 logger.error(f"Failed to generate context image '{name}': {e}")
                 continue
 
-        # Fallback: no plans but user has images
+        # Case 1 with no plans at all — fall back to user images directly
         if not results and user_count > 0:
-            logger.info("No plans — using all user images as context directly")
+            logger.info("No plans generated — using all user images as context directly")
             for i, url in enumerate(user_image_urls):
                 results.append(AnchorObject(
                     name=f"user_image_{i + 1}",
@@ -407,6 +453,7 @@ class ImageGenerationAgentService:
         return result
 
     def fetch_context_pil_images(self, project_id: str) -> list[PIL.Image.Image]:
+        """Load context PIL images from stored URLs for passing to Gemini."""
         ctx = self.get_context_images(project_id)
         if not ctx or not ctx.objects:
             return []
@@ -418,64 +465,6 @@ class ImageGenerationAgentService:
                     images.append(pil)
                     logger.info(f"Loaded context image: {obj.name}")
         return images
-
-    def fetch_user_uploaded_pil_images(self, project_id: str) -> list[PIL.Image.Image]:
-        """
-        Load user-uploaded images as PIL directly from MongoDB URLs.
-        Called per step to ensure user images always reach Gemini,
-        regardless of when preflight ran relative to user uploads.
-        """
-        urls = self.fetch_user_uploaded_image_urls(project_id)
-        if not urls:
-            return []
-        images = []
-        for url in urls:
-            pil = self.image_generation_agent.load_image_from_url(url)
-            if pil:
-                images.append(pil)
-                logger.info(f"Loaded user upload for step context: {url.split('/')[-1]}")
-        logger.info(f"User uploaded images for step: {len(images)} loaded")
-        return images
-
-    def _context_was_built_without_user_images(self, project_id: str) -> bool:
-        """
-        Check if stored context images were generated before user uploaded their images.
-        Returns True if a rebuild is needed.
-        """
-        try:
-            doc = self.project_collection.find_one(
-                {"_id": ObjectId(project_id)},
-                {"image_context_images": 1, "user_uploaded_images": 1}
-            )
-            if not doc:
-                return False
-
-            user_uploads = doc.get("user_uploaded_images", [])
-            ctx_objects = doc.get("image_context_images", {}).get("objects", [])
-
-            if not user_uploads or not ctx_objects:
-                return False
-
-            # Check if any context object URL/key contains a user-upload path
-            user_keys = {u.get("key", "") for u in user_uploads if u.get("key")}
-            ctx_has_user_image = any(
-                any(uk in (o.get("s3_key", "") + o.get("url", ""))
-                    for uk in user_keys)
-                for o in ctx_objects
-            )
-
-            if not ctx_has_user_image:
-                logger.info(
-                    f"Context images exist but none from user uploads — "
-                    f"rebuild needed for project {project_id}"
-                )
-                return True
-
-            return False
-
-        except Exception as e:
-            logger.warning(f"_context_was_built_without_user_images check failed: {e}")
-            return False
 
     # ─── Prior step memory ────────────────────────────────────────────────────
 
@@ -551,18 +540,11 @@ class ImageGenerationAgentService:
             project_id: Optional[str],
             user_id: Optional[str],
     ) -> tuple[str, str]:
-        """
-        Use GPT to fully plan the image before generating it.
-        Injects domain physics, color lock, safety equipment, face rule, shooting plan.
-        Returns (structured_imagen_prompt, state_summary).
-        """
         domain = dna.get("domain", "general")
-        domain_physics = DOMAIN_PHYSICS_LIBRARY.get(domain, DOMAIN_PHYSICS_LIBRARY["general"])
+        domain_physics = DOMAIN_PHYSICS_LIBRARY.get(
+            domain, DOMAIN_PHYSICS_LIBRARY["general"]
+        )
         object_colors = dna.get("object_colors", {})
-        color_lock = dna.get("color_lock", {})
-        safety_equipment = dna.get("safety_equipment", {})
-        step_shooting_plan = dna.get("step_shooting_plan", {})
-        face_rule = dna.get("face_rule", "Person's face must not be visible.")
 
         user_content = json.dumps({
             "project_summary": summary_text or "",
@@ -570,15 +552,6 @@ class ImageGenerationAgentService:
             "step_description": step_text,
             "previous_step_states": prior_states,
             "object_color_registry": object_colors,
-            "color_lock": color_lock,
-            "color_lock_instruction": (
-                "These colors are LOCKED and must appear verbatim in imagen_prompt. "
-                f"Wall color is '{color_lock.get('wall', 'as specified')}' — "
-                "never substitute a different color. Copy these exact strings into the prompt."
-            ),
-            "safety_equipment_rules": safety_equipment,
-            "face_rule": face_rule,
-            "step_shooting_plan": step_shooting_plan,
             "domain_physics_rules": domain_physics["physics"],
             "domain_hand_rules": domain_physics["hand_rules"],
             "domain_camera_guide": domain_physics["camera"],
@@ -587,21 +560,13 @@ class ImageGenerationAgentService:
             "universal_camera_guide": CAMERA_ANGLE_GUIDE,
             "universal_alignment_rules": OBJECT_ALIGNMENT_RULES,
             "universal_hand_rules": HAND_RULES,
-            "user_images_provided": len(self.fetch_user_uploaded_image_urls(project_id or "")) > 0,
-            "user_images_instruction": (
-            "The FIRST reference images passed to Gemini are the user's actual photos "
-            "of their specific problem/object. These are the highest priority reference — "
-            "Gemini must match the exact appearance of objects shown in these user photos. "
-            "The user's wall color, mirror style, fixture type etc. from these photos "
-            "override any generated context images."
-            ) if project_id else "",
         }, indent=2)
 
         content = _call_openai(
             api_key=self.settings.OPENAI_API_KEY,
             system=STEP_PLANNER_PROMPT,
             user=user_content,
-            max_tokens=900,
+            max_tokens=800,
         )
 
         if content:
@@ -621,51 +586,23 @@ class ImageGenerationAgentService:
                 camera = parsed.get("camera_angle", "medium")
                 orientation = parsed.get("orientation_note", "")
 
-                # Hard-inject locked wall color — bypasses any GPT paraphrasing
-                wall_color = color_lock.get("wall", "")
-                color_injection = (
-                    f"LOCKED WALL COLOR: {wall_color} painted wall — do not substitute. "
-                    if wall_color else ""
-                )
-
-                # Hard-inject face rule
-                face_injection = (
-                    "Person's face is NOT visible — shown from behind or side facing away. "
-                )
-
-                # Hard-inject safety equipment
-                safety_this_step = parsed.get("safety_equipment_this_step", [])
-                safety_injection = (
-                    f"Person is wearing: {', '.join(safety_this_step)}. "
-                    if safety_this_step else ""
-                )
-
                 final_prompt = (
                     f"CAMERA: {camera} shot. "
-                    f"{color_injection}"
-                    f"{face_injection}"
-                    f"{safety_injection}"
                     f"{imagen_prompt} "
                     f"{'ORIENTATION: ' + orientation + '. ' if orientation else ''}"
-                    f"Reference images show exact scene — match all colors except "
-                    f"wall which is {wall_color or 'as specified in prompt'}. "
+                    f"Reference images provided show exact object colors and scene — "
+                    f"match them precisely. "
                     f"{_NEGATIVE_SUFFIX}"
                 )
                 logger.info(
                     f"Step {step_id} plan — camera: {camera}, "
-                    f"wall: {wall_color}, "
-                    f"safety: {safety_this_step}, "
                     f"action: {parsed.get('primary_action', '')[:60]}"
                 )
                 return final_prompt, state_summary
 
-        # Fallback
         logger.warning(f"Step planning failed for step {step_id} — using fallback")
-        wall_color = color_lock.get("wall", "")
         return (
             f"CAMERA: medium shot. "
-            f"{'LOCKED WALL COLOR: ' + wall_color + ' wall. ' if wall_color else ''}"
-            f"Person face not visible — shown from behind. "
             f"Photorealistic image of a person performing: {step_text}. "
             f"Maximum two hands. Objects face toward viewer. "
             f"{_NEGATIVE_SUFFIX}"
@@ -694,54 +631,27 @@ class ImageGenerationAgentService:
                 if project_id:
                     self.save_visual_dna(project_id, dna)
 
-            # 2. Rebuild context images if preflight ran before user uploaded images
-            if project_id and self._context_was_built_without_user_images(project_id):
-                logger.info(
-                    f"Rebuilding context images with user uploads "
-                    f"for project {project_id}"
-                )
-                self.build_context_images(
-                    project_id=project_id,
-                    summary_text=summary_text or "",
-                    dna=dna,
-                )
-
-            # 3. Context images (generated establishing shots)
+            # 2. Context images (user uploads + generated — set by preflight)
             context_images: list[PIL.Image.Image] = []
             if project_id:
                 context_images = self.fetch_context_pil_images(project_id)
                 logger.info(f"Context images loaded: {len(context_images)}")
 
-            # 4. User uploaded images — loaded DIRECTLY every step
-            #    Guarantees user images reach Gemini regardless of preflight timing.
-            #    These are the highest-priority visual reference.
-            user_images: list[PIL.Image.Image] = []
-            if project_id:
-                user_images = self.fetch_user_uploaded_pil_images(project_id)
-                logger.info(
-                    f"User uploaded images: {len(user_images)} "
-                    f"loaded directly for step {step_id}"
-                )
-
-            # 5. Prior step states — text memory for the planner
+            # 3. Prior step states — text memory
             prior_states: list[dict] = []
             if project_id:
                 prior_states = self.fetch_prior_step_states(project_id, step_id)
                 logger.info(f"Prior step states: {len(prior_states)}")
 
-            # 6. Prior step images — visual memory, fill remaining budget
-            #    Budget = total - context slots - user image slots
-            prior_image_budget = max(
-                1,
-                REFERENCE_IMAGE_BUDGET - len(context_images) - len(user_images)
-            )
+            # 4. Prior step images — visual memory
+            prior_image_budget = max(1, REFERENCE_IMAGE_BUDGET - len(context_images))
             prior_step_images: list[PIL.Image.Image] = []
             if project_id:
                 prior_step_images = self.fetch_prior_step_images(
                     project_id, step_id, budget=prior_image_budget,
                 )
 
-            # 7. Plan step image
+            # 5. Plan the step image
             planned_prompt, state_summary = self.plan_step_image(
                 step_id=step_id,
                 step_text=step_text,
@@ -754,24 +664,14 @@ class ImageGenerationAgentService:
 
             logger.debug(f"Planned prompt step {step_id}:\n{planned_prompt}")
 
-            # 8. Assemble references in priority order:
-            #    [user_images] → [context_images] → [prior_step_images]
-            #
-            #    User images FIRST — Gemini weights earlier inputs more heavily.
-            #    User photos are ground truth for object appearance (exact mirror,
-            #    exact wall color, exact fixtures). Context images establish the
-            #    generated scene around them. Prior steps provide cumulative
-            #    work state continuity.
-            all_references = user_images + context_images + prior_step_images
+            # 6. Assemble references: context first, then prior steps
+            all_references = context_images + prior_step_images
             logger.info(
-                f"References for step {step_id}: "
-                f"{len(user_images)} user + "
-                f"{len(context_images)} context + "
-                f"{len(prior_step_images)} prior steps = "
-                f"{len(all_references)} total"
+                f"References: {len(context_images)} context + "
+                f"{len(prior_step_images)} prior steps = {len(all_references)} total"
             )
 
-            # 9. Generate with Pro model
+            # 7. Generate
             aspect_ratio = map_size_to_aspect(size)
             raw_bytes = self.image_generation_agent.generate_image(
                 prompt=planned_prompt,
@@ -790,14 +690,13 @@ class ImageGenerationAgentService:
                     "step_id": step_id,
                     "size": size,
                     "aspect_ratio": aspect_ratio,
-                    "user_images_count": len(user_images),
                     "context_images_count": len(context_images),
                     "step_refs_count": len(prior_step_images),
                     "domain": dna.get("domain", "unknown"),
                 },
             )
 
-            # 10. Normalize and upload
+            # 8. Upload
             png_bytes = png_to_bytes_ensure_rgba(raw_bytes)
             s3_key = generate_s3_key(step_id, project_id)
             self.s3_client.put_object(
@@ -810,7 +709,6 @@ class ImageGenerationAgentService:
                     "project_id": project_id or "",
                     "size": size,
                     "model": self.image_generation_agent.model,
-                    "user_images_count": str(len(user_images)),
                     "context_count": str(len(context_images)),
                 },
             )
