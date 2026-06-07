@@ -587,6 +587,14 @@ class ImageGenerationAgentService:
             "universal_camera_guide": CAMERA_ANGLE_GUIDE,
             "universal_alignment_rules": OBJECT_ALIGNMENT_RULES,
             "universal_hand_rules": HAND_RULES,
+            "user_images_provided": len(self.fetch_user_uploaded_image_urls(project_id or "")) > 0,
+            "user_images_instruction": (
+            "The FIRST reference images passed to Gemini are the user's actual photos "
+            "of their specific problem/object. These are the highest priority reference — "
+            "Gemini must match the exact appearance of objects shown in these user photos. "
+            "The user's wall color, mirror style, fixture type etc. from these photos "
+            "override any generated context images."
+            ) if project_id else "",
         }, indent=2)
 
         content = _call_openai(
