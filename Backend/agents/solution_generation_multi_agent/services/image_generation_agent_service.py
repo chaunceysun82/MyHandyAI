@@ -419,6 +419,64 @@ class ImageGenerationAgentService:
                     logger.info(f"Loaded context image: {obj.name}")
         return images
 
+    def fetch_user_uploaded_pil_images(self, project_id: str) -> list[PIL.Image.Image]:
+        """
+        Load user-uploaded images as PIL directly from MongoDB URLs.
+        Called per step to ensure user images always reach Gemini,
+        regardless of when preflight ran relative to user uploads.
+        """
+        urls = self.fetch_user_uploaded_image_urls(project_id)
+        if not urls:
+            return []
+        images = []
+        for url in urls:
+            pil = self.image_generation_agent.load_image_from_url(url)
+            if pil:
+                images.append(pil)
+                logger.info(f"Loaded user upload for step context: {url.split('/')[-1]}")
+        logger.info(f"User uploaded images for step: {len(images)} loaded")
+        return images
+
+    def _context_was_built_without_user_images(self, project_id: str) -> bool:
+        """
+        Check if stored context images were generated before user uploaded their images.
+        Returns True if a rebuild is needed.
+        """
+        try:
+            doc = self.project_collection.find_one(
+                {"_id": ObjectId(project_id)},
+                {"image_context_images": 1, "user_uploaded_images": 1}
+            )
+            if not doc:
+                return False
+
+            user_uploads = doc.get("user_uploaded_images", [])
+            ctx_objects = doc.get("image_context_images", {}).get("objects", [])
+
+            if not user_uploads or not ctx_objects:
+                return False
+
+            # Check if any context object URL/key contains a user-upload path
+            user_keys = {u.get("key", "") for u in user_uploads if u.get("key")}
+            ctx_has_user_image = any(
+                any(uk in (o.get("s3_key", "") + o.get("url", ""))
+                    for uk in user_keys)
+                for o in ctx_objects
+            )
+
+            if not ctx_has_user_image:
+                logger.info(
+                    f"Context images exist but none from user uploads — "
+                    f"rebuild needed for project {project_id}"
+                )
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.warning(f"_context_was_built_without_user_images check failed: {e}")
+            return False
+
     # ─── Prior step memory ────────────────────────────────────────────────────
 
     def fetch_prior_step_states(
@@ -628,27 +686,54 @@ class ImageGenerationAgentService:
                 if project_id:
                     self.save_visual_dna(project_id, dna)
 
-            # 2. Context images
+            # 2. Rebuild context images if preflight ran before user uploaded images
+            if project_id and self._context_was_built_without_user_images(project_id):
+                logger.info(
+                    f"Rebuilding context images with user uploads "
+                    f"for project {project_id}"
+                )
+                self.build_context_images(
+                    project_id=project_id,
+                    summary_text=summary_text or "",
+                    dna=dna,
+                )
+
+            # 3. Context images (generated establishing shots)
             context_images: list[PIL.Image.Image] = []
             if project_id:
                 context_images = self.fetch_context_pil_images(project_id)
                 logger.info(f"Context images loaded: {len(context_images)}")
 
-            # 3. Prior step states — text memory
+            # 4. User uploaded images — loaded DIRECTLY every step
+            #    Guarantees user images reach Gemini regardless of preflight timing.
+            #    These are the highest-priority visual reference.
+            user_images: list[PIL.Image.Image] = []
+            if project_id:
+                user_images = self.fetch_user_uploaded_pil_images(project_id)
+                logger.info(
+                    f"User uploaded images: {len(user_images)} "
+                    f"loaded directly for step {step_id}"
+                )
+
+            # 5. Prior step states — text memory for the planner
             prior_states: list[dict] = []
             if project_id:
                 prior_states = self.fetch_prior_step_states(project_id, step_id)
                 logger.info(f"Prior step states: {len(prior_states)}")
 
-            # 4. Prior step images — visual memory
-            prior_image_budget = max(1, REFERENCE_IMAGE_BUDGET - len(context_images))
+            # 6. Prior step images — visual memory, fill remaining budget
+            #    Budget = total - context slots - user image slots
+            prior_image_budget = max(
+                1,
+                REFERENCE_IMAGE_BUDGET - len(context_images) - len(user_images)
+            )
             prior_step_images: list[PIL.Image.Image] = []
             if project_id:
                 prior_step_images = self.fetch_prior_step_images(
                     project_id, step_id, budget=prior_image_budget,
                 )
 
-            # 5. Plan step image with full domain physics + color lock + safety
+            # 7. Plan step image
             planned_prompt, state_summary = self.plan_step_image(
                 step_id=step_id,
                 step_text=step_text,
@@ -661,14 +746,24 @@ class ImageGenerationAgentService:
 
             logger.debug(f"Planned prompt step {step_id}:\n{planned_prompt}")
 
-            # 6. Assemble references: context first, then prior steps
-            all_references = context_images + prior_step_images
+            # 8. Assemble references in priority order:
+            #    [user_images] → [context_images] → [prior_step_images]
+            #
+            #    User images FIRST — Gemini weights earlier inputs more heavily.
+            #    User photos are ground truth for object appearance (exact mirror,
+            #    exact wall color, exact fixtures). Context images establish the
+            #    generated scene around them. Prior steps provide cumulative
+            #    work state continuity.
+            all_references = user_images + context_images + prior_step_images
             logger.info(
-                f"References: {len(context_images)} context + "
-                f"{len(prior_step_images)} prior steps = {len(all_references)} total"
+                f"References for step {step_id}: "
+                f"{len(user_images)} user + "
+                f"{len(context_images)} context + "
+                f"{len(prior_step_images)} prior steps = "
+                f"{len(all_references)} total"
             )
 
-            # 7. Generate with Pro model
+            # 9. Generate with Pro model
             aspect_ratio = map_size_to_aspect(size)
             raw_bytes = self.image_generation_agent.generate_image(
                 prompt=planned_prompt,
@@ -687,13 +782,14 @@ class ImageGenerationAgentService:
                     "step_id": step_id,
                     "size": size,
                     "aspect_ratio": aspect_ratio,
+                    "user_images_count": len(user_images),
                     "context_images_count": len(context_images),
                     "step_refs_count": len(prior_step_images),
                     "domain": dna.get("domain", "unknown"),
                 },
             )
 
-            # 8. Normalize and upload
+            # 10. Normalize and upload
             png_bytes = png_to_bytes_ensure_rgba(raw_bytes)
             s3_key = generate_s3_key(step_id, project_id)
             self.s3_client.put_object(
@@ -706,6 +802,7 @@ class ImageGenerationAgentService:
                     "project_id": project_id or "",
                     "size": size,
                     "model": self.image_generation_agent.model,
+                    "user_images_count": str(len(user_images)),
                     "context_count": str(len(context_images)),
                 },
             )
