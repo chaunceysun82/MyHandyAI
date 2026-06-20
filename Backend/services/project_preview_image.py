@@ -1,6 +1,5 @@
 import base64
 import time
-from io import BytesIO
 from typing import Optional
 from uuid import uuid4
 
@@ -17,7 +16,6 @@ from database.mongodb import mongodb
 
 MODEL = "gpt-image-2"
 OPENAI_IMAGE_TIMEOUT_SECONDS = 25.0
-MAX_REFERENCE_IMAGES = 8  # stay well under the API's 16-image limit
 
 
 def _failed_preview(stage: str, message: str) -> dict:
@@ -35,53 +33,7 @@ def _public_url(key: str, public_base: Optional[str]) -> Optional[str]:
     return f"{public_base.rstrip('/')}/{key}"
 
 
-# ─── User uploaded image fetching ─────────────────────────────────────────────
-
-def _fetch_user_uploaded_image_urls(project: dict) -> list[str]:
-    """
-    Read user-uploaded image URLs stored on the project document.
-    Written by the chat route handlers at upload time (user_uploaded_images field).
-    """
-    uploads = project.get("user_uploaded_images", [])
-    urls = [u["url"] for u in uploads if u.get("url")]
-    return urls
-
-
-def _download_image_bytes(url: str, timeout: int = 15) -> Optional[bytes]:
-    """Download an image from a public URL. Returns None on failure."""
-    try:
-        resp = requests.get(url, timeout=timeout)
-        resp.raise_for_status()
-        return resp.content
-    except Exception as e:
-        logger.warning(f"Failed to download reference image {url}: {e}")
-        return None
-
-
-def _prepare_reference_files(urls: list[str]) -> list[tuple]:
-    """
-    Download user images and prepare them as file tuples for the
-    OpenAI images.edit() call: (filename, bytes, content_type).
-    Skips any that fail to download. Caps at MAX_REFERENCE_IMAGES.
-    """
-    files = []
-    for i, url in enumerate(urls[:MAX_REFERENCE_IMAGES]):
-        image_bytes = _download_image_bytes(url)
-        if not image_bytes:
-            continue
-        ext = url.split(".")[-1].lower().split("?")[0]
-        content_type = {
-            "jpg": "image/jpeg", "jpeg": "image/jpeg",
-            "png": "image/png", "webp": "image/webp",
-        }.get(ext, "image/png")
-        filename = f"reference_{i}.{ext if ext in ('jpg', 'jpeg', 'png', 'webp') else 'png'}"
-        files.append((filename, BytesIO(image_bytes), content_type))
-    return files
-
-
-# ─── Prompt building ───────────────────────────────────────────────────────────
-
-def _build_preview_prompt(project: dict, prefer_draft: bool = False, has_reference_images: bool = False) -> str:
+def _build_preview_prompt(project: dict, prefer_draft: bool = False) -> str:
     title = project.get("projectTitle") or "DIY project"
     draft = project.get("summary_preview") or {}
     summary = (
@@ -96,21 +48,10 @@ def _build_preview_prompt(project: dict, prefer_draft: bool = False, has_referen
     )
     image_analysis = project.get("image_analysis") or ""
 
-    reference_instruction = (
-        "Reference photos of the user's actual room/object are provided as input images. "
-        "Use them as the visual ground truth: preserve the exact room layout, wall colors, "
-        "existing fixtures, furniture, and object appearance shown in these photos. "
-        "Generate the same space with the repair/installation completed, "
-        "keeping everything else in the photos consistent.\n\n"
-        if has_reference_images else
-        "No reference photos were provided. Generate a representative realistic home environment "
-        "based on the description below.\n\n"
-    )
-
     return f"""
 Create a realistic finished-result preview for a home improvement project.
 
-{reference_instruction}Project title: {title}
+Project title: {title}
 
 Confirmed project summary:
 {summary}
@@ -178,27 +119,11 @@ def ensure_project_preview_image(
         )
         return preview
 
-    # ── NEW: fetch user uploaded images for this project ──────────────────────
-    user_image_urls = _fetch_user_uploaded_image_urls(project)
-    reference_files = _prepare_reference_files(user_image_urls) if user_image_urls else []
-    has_reference_images = len(reference_files) > 0
-
-    logger.info(
-        f"Preview reference images project_id={project_id} "
-        f"user_uploads_found={len(user_image_urls)} "
-        f"downloaded_for_edit={len(reference_files)}"
-    )
-
-    prompt = _build_preview_prompt(
-        project,
-        prefer_draft=prefer_draft,
-        has_reference_images=has_reference_images,
-    )
+    prompt = _build_preview_prompt(project, prefer_draft=prefer_draft)
     logger.info(
         f"Preview prompt prepared project_id={project_id} "
         f"summary_chars={len(summary)} prompt_chars={len(prompt)} "
-        f"has_image_analysis={bool(project.get('image_analysis'))} "
-        f"has_reference_images={has_reference_images}"
+        f"has_image_analysis={bool(project.get('image_analysis'))}"
     )
     client = OpenAI(
         api_key=settings.OPENAI_API_KEY,
@@ -208,48 +133,20 @@ def ensure_project_preview_image(
 
     try:
         started_at = time.time()
-
-        if has_reference_images:
-            # ── Use images.edit() with user photos as reference — same model ───
-            logger.info(
-                f"Calling OpenAI image EDIT (with {len(reference_files)} reference images) "
-                f"project_id={project_id} model={MODEL} timeout_seconds={timeout_seconds}"
-            )
-            # Reset each BytesIO's position before sending
-            for _, buf, _ in reference_files:
-                buf.seek(0)
-
-            image_param = (
-                [(fname, buf, ctype) for fname, buf, ctype in reference_files]
-                if len(reference_files) > 1
-                else reference_files[0]
-            )
-
-            response = client.images.edit(
-                model=MODEL,
-                image=image_param,
-                prompt=prompt,
-                size="1024x1024",
-                n=1,
-            )
-        else:
-            # ── Fallback: no user images — original text-to-image path ─────────
-            logger.info(
-                f"Calling OpenAI image GENERATE (no reference images) "
-                f"project_id={project_id} model={MODEL} timeout_seconds={timeout_seconds}"
-            )
-            response = client.images.generate(
-                model=MODEL,
-                prompt=prompt,
-                size="1024x1024",
-                n=1,
-            )
-
+        logger.info(
+            f"Calling OpenAI image generation project_id={project_id} "
+            f"model={MODEL} timeout_seconds={timeout_seconds}"
+        )
+        response = client.images.generate(
+            model=MODEL,
+            prompt=prompt,
+            size="1024x1024",
+            n=1,
+        )
         image_bytes = _image_bytes_from_response(response)
         logger.info(
             f"OpenAI returned preview image project_id={project_id} "
-            f"bytes={len(image_bytes)} elapsed_seconds={time.time() - started_at:.2f} "
-            f"mode={'edit' if has_reference_images else 'generate'}"
+            f"bytes={len(image_bytes)} elapsed_seconds={time.time() - started_at:.2f}"
         )
     except APITimeoutError as exc:
         preview = _failed_preview(
@@ -266,46 +163,13 @@ def ensure_project_preview_image(
         )
         return preview
     except OpenAIError as exc:
-        # If edit fails (e.g. unsupported image format), fall back to generate
-        if has_reference_images:
-            logger.warning(
-                f"images.edit failed project_id={project_id}: {exc} — "
-                f"falling back to text-only generate"
-            )
-            try:
-                fallback_prompt = _build_preview_prompt(
-                    project, prefer_draft=prefer_draft, has_reference_images=False
-                )
-                response = client.images.generate(
-                    model=MODEL,
-                    prompt=fallback_prompt,
-                    size="1024x1024",
-                    n=1,
-                )
-                image_bytes = _image_bytes_from_response(response)
-                logger.info(
-                    f"Fallback generate succeeded project_id={project_id} "
-                    f"bytes={len(image_bytes)}"
-                )
-            except Exception as fallback_exc:
-                preview = _failed_preview(
-                    "openai_generation",
-                    f"edit failed: {exc}; fallback generate also failed: {fallback_exc}",
-                )
-                logger.exception(f"Result preview OpenAI generation failed project_id={project_id}")
-                projects.update_one(
-                    {"_id": ObjectId(project_id)},
-                    {"$set": {"result_preview_image": preview}},
-                )
-                return preview
-        else:
-            preview = _failed_preview("openai_generation", f"{exc.__class__.__name__}: {exc}")
-            logger.exception(f"Result preview OpenAI generation failed project_id={project_id}")
-            projects.update_one(
-                {"_id": ObjectId(project_id)},
-                {"$set": {"result_preview_image": preview}},
-            )
-            return preview
+        preview = _failed_preview("openai_generation", f"{exc.__class__.__name__}: {exc}")
+        logger.exception(f"Result preview OpenAI generation failed project_id={project_id}")
+        projects.update_one(
+            {"_id": ObjectId(project_id)},
+            {"$set": {"result_preview_image": preview}},
+        )
+        return preview
     except Exception as exc:
         preview = _failed_preview("image_response_decode", f"{exc.__class__.__name__}: {exc}")
         logger.exception(f"Result preview image response decode failed project_id={project_id}")
@@ -331,7 +195,6 @@ def ensure_project_preview_image(
                 "project_id": project_id,
                 "source": "information-gathering-result-preview",
                 "model": MODEL,
-                "used_reference_images": str(has_reference_images),
             },
         )
     except Exception as exc:
@@ -349,9 +212,7 @@ def ensure_project_preview_image(
         "bucket": settings.AWS_S3_BUCKET,
         "key": key,
         "url": _public_url(key, settings.AWS_S3_PUBLIC_BASE),
-        "prompt_version": "result-preview-v2-with-references" if has_reference_images else "result-preview-v1",
-        "used_reference_images": has_reference_images,
-        "reference_image_count": len(reference_files),
+        "prompt_version": "result-preview-v1",
     }
 
     projects.update_one(
@@ -361,7 +222,6 @@ def ensure_project_preview_image(
 
     logger.info(
         f"Stored result preview image project_id={project_id} "
-        f"key={key} has_public_url={bool(preview.get('url'))} "
-        f"used_reference_images={has_reference_images}"
+        f"key={key} has_public_url={bool(preview.get('url'))}"
     )
     return preview
