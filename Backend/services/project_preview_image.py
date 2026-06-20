@@ -39,7 +39,7 @@ def _public_url(key: str, public_base: Optional[str]) -> Optional[str]:
 
 def _fetch_user_uploaded_image_urls(project: dict) -> list[str]:
     """Read user-uploaded image URLs stored on the project document."""
-    uploads = project.get("user_uploaded_images", [])
+    uploads = project.get("information_gathering_uploads", [])  # ← matches actual route field
     return [u["url"] for u in uploads if u.get("url")]
 
 
