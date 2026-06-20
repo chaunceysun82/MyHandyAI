@@ -1,5 +1,6 @@
 import base64
 import time
+from io import BytesIO
 from typing import Optional
 from uuid import uuid4
 
@@ -16,6 +17,7 @@ from database.mongodb import mongodb
 
 MODEL = "gpt-image-2"
 OPENAI_IMAGE_TIMEOUT_SECONDS = 25.0
+MAX_REFERENCE_IMAGES = 8
 
 
 def _failed_preview(stage: str, message: str) -> dict:
@@ -33,7 +35,42 @@ def _public_url(key: str, public_base: Optional[str]) -> Optional[str]:
     return f"{public_base.rstrip('/')}/{key}"
 
 
-def _build_preview_prompt(project: dict, prefer_draft: bool = False) -> str:
+# ─── NEW: user uploaded image fetching ────────────────────────────────────────
+
+def _fetch_user_uploaded_image_urls(project: dict) -> list[str]:
+    """Read user-uploaded image URLs stored on the project document."""
+    uploads = project.get("user_uploaded_images", [])
+    return [u["url"] for u in uploads if u.get("url")]
+
+
+def _download_image_bytes(url: str, timeout: int = 15) -> Optional[bytes]:
+    try:
+        resp = requests.get(url, timeout=timeout)
+        resp.raise_for_status()
+        return resp.content
+    except Exception as e:
+        logger.warning(f"Failed to download reference image {url}: {e}")
+        return None
+
+
+def _prepare_reference_files(urls: list[str]) -> list[tuple]:
+    """Download user images and prepare as (filename, bytes_io, content_type) tuples."""
+    files = []
+    for i, url in enumerate(urls[:MAX_REFERENCE_IMAGES]):
+        image_bytes = _download_image_bytes(url)
+        if not image_bytes:
+            continue
+        ext = url.split(".")[-1].lower().split("?")[0]
+        content_type = {
+            "jpg": "image/jpeg", "jpeg": "image/jpeg",
+            "png": "image/png", "webp": "image/webp",
+        }.get(ext, "image/png")
+        filename = f"reference_{i}.{ext if ext in ('jpg', 'jpeg', 'png', 'webp') else 'png'}"
+        files.append((filename, BytesIO(image_bytes), content_type))
+    return files
+
+
+def _build_preview_prompt(project: dict, prefer_draft: bool = False, has_reference_images: bool = False) -> str:
     title = project.get("projectTitle") or "DIY project"
     draft = project.get("summary_preview") or {}
     summary = (
@@ -48,10 +85,20 @@ def _build_preview_prompt(project: dict, prefer_draft: bool = False) -> str:
     )
     image_analysis = project.get("image_analysis") or ""
 
+    # NEW: instruction prepended only when reference images are being passed
+    reference_instruction = (
+        "Reference photos of the user's actual room/object are provided as input images. "
+        "Use them as the visual ground truth: preserve the exact room layout, wall colors, "
+        "existing fixtures, furniture, and object appearance shown in these photos. "
+        "Generate the same space with the repair/installation completed, "
+        "keeping everything else in the photos consistent.\n\n"
+        if has_reference_images else ""
+    )
+
     return f"""
 Create a realistic finished-result preview for a home improvement project.
 
-Project title: {title}
+{reference_instruction}Project title: {title}
 
 Confirmed project summary:
 {summary}
@@ -119,11 +166,23 @@ def ensure_project_preview_image(
         )
         return preview
 
-    prompt = _build_preview_prompt(project, prefer_draft=prefer_draft)
+    # ── NEW: fetch user uploaded images for this project ──────────────────────
+    user_image_urls = _fetch_user_uploaded_image_urls(project)
+    reference_files = _prepare_reference_files(user_image_urls) if user_image_urls else []
+    has_reference_images = len(reference_files) > 0
+
+    logger.info(
+        f"Preview reference images project_id={project_id} "
+        f"user_uploads_found={len(user_image_urls)} "
+        f"downloaded_for_edit={len(reference_files)}"
+    )
+
+    prompt = _build_preview_prompt(project, prefer_draft=prefer_draft, has_reference_images=has_reference_images)
     logger.info(
         f"Preview prompt prepared project_id={project_id} "
         f"summary_chars={len(summary)} prompt_chars={len(prompt)} "
-        f"has_image_analysis={bool(project.get('image_analysis'))}"
+        f"has_image_analysis={bool(project.get('image_analysis'))} "
+        f"has_reference_images={has_reference_images}"
     )
     client = OpenAI(
         api_key=settings.OPENAI_API_KEY,
@@ -135,14 +194,33 @@ def ensure_project_preview_image(
         started_at = time.time()
         logger.info(
             f"Calling OpenAI image generation project_id={project_id} "
-            f"model={MODEL} timeout_seconds={timeout_seconds}"
+            f"model={MODEL} timeout_seconds={timeout_seconds} "
+            f"mode={'edit' if has_reference_images else 'generate'}"
         )
-        response = client.images.generate(
-            model=MODEL,
-            prompt=prompt,
-            size="1024x1024",
-            n=1,
-        )
+
+        if has_reference_images:
+            for _, buf, _ in reference_files:
+                buf.seek(0)
+            image_param = (
+                [(fname, buf, ctype) for fname, buf, ctype in reference_files]
+                if len(reference_files) > 1
+                else reference_files[0]
+            )
+            response = client.images.edit(
+                model=MODEL,
+                image=image_param,
+                prompt=prompt,
+                size="1024x1024",
+                n=1,
+            )
+        else:
+            response = client.images.generate(
+                model=MODEL,
+                prompt=prompt,
+                size="1024x1024",
+                n=1,
+            )
+
         image_bytes = _image_bytes_from_response(response)
         logger.info(
             f"OpenAI returned preview image project_id={project_id} "
