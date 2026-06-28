@@ -47,6 +47,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://my-handy-ai-amc9.vercel.app",
+        "https://my-handy-ai.vercel.app"
     ],
     allow_credentials=False,
     allow_methods=["*"],
