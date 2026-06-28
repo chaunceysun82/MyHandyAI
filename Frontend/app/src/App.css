@@ -12,3 +12,41 @@
 	border-radius: 0;
 	overflow: visible;
 }
+
+.auth-transition-screen {
+	align-items: center;
+	background: #fffef6;
+	display: flex;
+	justify-content: center;
+	min-height: 100vh;
+	padding: 24px;
+}
+
+.auth-logo-loader {
+	align-items: center;
+	display: flex;
+	justify-content: center;
+	min-height: 160px;
+	width: 160px;
+}
+
+.auth-logo-loader__image {
+	animation: auth-logo-fade 1.4s ease-in-out infinite;
+	border-radius: 9999px;
+	height: 96px;
+	object-fit: cover;
+	width: 96px;
+}
+
+@keyframes auth-logo-fade {
+	0%,
+	100% {
+		opacity: 0.35;
+		transform: scale(0.96);
+	}
+
+	50% {
+		opacity: 1;
+		transform: scale(1);
+	}
+}

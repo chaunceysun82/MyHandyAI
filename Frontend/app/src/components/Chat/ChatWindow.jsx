@@ -794,6 +794,12 @@ export default function ChatWindow({
         axiosAuthConfig({ headers: { "Content-Type": "application/json" } })
       );
 
+      if (res.data.conversation_status === "COMPLETED") {
+        setLoading(false);
+        setStatus(true);
+        return;
+      }
+
       const shouldGeneratePreview = res.data.preview_image_status === "generating";
       if (res.data.preview_image_status || res.data.preview_image_url) {
         console.log("[preview] chat response preview metadata", {
@@ -847,11 +853,6 @@ export default function ChatWindow({
         console.log("💬 Updated suggested messages:", res.data.suggested_messages);
       }
 
-      // Check conversation status - if COMPLETED, trigger generation pipeline after delay
-      if (res.data.conversation_status === "COMPLETED") {
-        // Wait 5 seconds for the user to read the final message, then trigger generation
-        setTimeout(() => setStatus(true), 5000);
-      }
     } catch (err) {
       setLoading(false);
       console.error("Chat error", err);
