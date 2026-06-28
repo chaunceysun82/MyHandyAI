@@ -2,7 +2,7 @@
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 
@@ -12,6 +12,11 @@ from database.mongodb import mongodb
 
 load_dotenv()
 settings = get_settings()
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://my-handy-ai-amc9.vercel.app",
+    "https://my-handy-ai.vercel.app"
+]
 
 # Routers
 from routes import (
@@ -44,11 +49,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://my-handy-ai-amc9.vercel.app",
-        "https://my-handy-ai.vercel.app"
-    ],
+    allow_origins=CORS_ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -61,8 +62,19 @@ def root():
 
 
 @app.options("/{full_path:path}")
-def preflight_handler(full_path: str):
-    return Response(status_code=204)
+def preflight_handler(full_path: str, request: Request):
+    origin = request.headers.get("origin")
+    allow_origin = origin if origin in CORS_ALLOWED_ORIGINS else CORS_ALLOWED_ORIGINS[0]
+
+    return Response(
+        status_code=204,
+        headers={
+            "Access-Control-Allow-Origin": allow_origin,
+            "Access-Control-Allow-Methods": "DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT",
+            "Access-Control-Allow-Headers": "*",
+            "Vary": "Origin",
+        },
+    )
 
 
 # Register routes

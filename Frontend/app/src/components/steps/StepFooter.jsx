@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toggleStepCompletion } from "../../services/steps";
 import { completeProject } from "../../services/projects";
+import { normalizeApiBaseUrl } from "../../services/api";
 import ChatWindow2 from "../Chat/ChatWindow2";
 import {ReactComponent as Bot} from '../../assets/Bot.svg';
 
@@ -42,7 +43,7 @@ export default function StepFooter({
 	const [isCompleting, setIsCompleting] = useState(false);
 	const [openModal, setOpenModal] = useState(false);
 
-	const URL = process.env.REACT_APP_BASE_URL;
+	const URL = normalizeApiBaseUrl(process.env.REACT_APP_BASE_URL);
 	
 	console.log("User ID:", userId);
 

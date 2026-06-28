@@ -1,4 +1,6 @@
-const BASE_URL = process.env.REACT_APP_BASE_URL;
+import { normalizeApiBaseUrl } from "./api";
+
+const BASE_URL = normalizeApiBaseUrl(process.env.REACT_APP_BASE_URL);
 
 const VISITOR_KEY = "metricsVisitorId";
 const SESSION_KEY = "metricsSessionId";

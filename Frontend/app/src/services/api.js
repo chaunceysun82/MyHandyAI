@@ -1,5 +1,9 @@
 import { clearAuthStorage, ensureValidCognitoSession, getCognitoIdToken } from "./cognitoAuth";
 
+export function normalizeApiBaseUrl(url) {
+	return String(url || "").replace(/\/+$/, "");
+}
+
 export function authHeaders(extraHeaders = {}) {
 	if (!ensureValidCognitoSession()) {
 		clearAuthStorage();

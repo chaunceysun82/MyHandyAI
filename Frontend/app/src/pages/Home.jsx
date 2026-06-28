@@ -8,6 +8,7 @@ import SideNavbar from "../components/SideNavbar";
 import MobileWrapper from "../components/MobileWrapper";
 import { fetchProjects, createProject, deleteProject, completeProject, updateProject, fetchGenerationStatus } from "../services/projects";
 import { getUserById, syncCognitoUser } from "../services/auth";
+import { normalizeApiBaseUrl } from "../services/api";
 import { clearAuthStorage, getCognitoIdToken, isCognitoAuthenticated } from "../services/cognitoAuth";
 import defaultHome from "../../src/assets/default-home.png";
 import defaultNavLogo from "../assets/default_nav_logo.png";
@@ -17,6 +18,7 @@ import { ReactComponent as Filter } from '../../src/assets/Frame.svg';
 export default function Home() {
   const navigate = useNavigate();
   const location = useLocation();
+  const apiBaseUrl = normalizeApiBaseUrl(process.env.REACT_APP_BASE_URL);
   const storedToken =
     localStorage.getItem("authToken") ||
     sessionStorage.getItem("authToken");
@@ -656,7 +658,7 @@ export default function Home() {
             projectName={activeChatProject.projectName}
             userId={token}
             userName={userName}
-            URL={process.env.REACT_APP_BASE_URL}
+            URL={apiBaseUrl}
           />
         )}
       </div>
