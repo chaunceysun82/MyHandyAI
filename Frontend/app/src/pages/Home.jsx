@@ -4,13 +4,13 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import ProjectCard from "../components/ProjectCard";
 import ChatWindow from "../components/Chat/ChatWindow";
-import LoadingPlaceholder from "../components/LoadingPlaceholder";
 import SideNavbar from "../components/SideNavbar";
 import MobileWrapper from "../components/MobileWrapper";
 import { fetchProjects, createProject, deleteProject, completeProject, updateProject, fetchGenerationStatus } from "../services/projects";
 import { getUserById, syncCognitoUser } from "../services/auth";
 import { clearAuthStorage, getCognitoIdToken, isCognitoAuthenticated } from "../services/cognitoAuth";
 import defaultHome from "../../src/assets/default-home.png";
+import defaultNavLogo from "../assets/default_nav_logo.png";
 import { ReactComponent as Filter } from '../../src/assets/Frame.svg';
 
 
@@ -399,7 +399,22 @@ export default function Home() {
     return false;
   };
 
-  if (loading) return <LoadingPlaceholder />;
+  if (loading) {
+    return (
+      <MobileWrapper>
+        <div className="auth-transition-screen">
+          <div className="auth-logo-loader" role="status" aria-live="polite">
+            <img
+              src={defaultNavLogo}
+              alt="MyHandyAI"
+              className="auth-logo-loader__image"
+            />
+            <span className="sr-only">Loading your projects</span>
+          </div>
+        </div>
+      </MobileWrapper>
+    );
+  }
 
   return (
     <MobileWrapper>
