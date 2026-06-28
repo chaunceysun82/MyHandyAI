@@ -18,7 +18,7 @@ class ImageGenerationAgent:
 
     def __init__(self, model: Optional[str] = None):
         self.settings = get_settings()
-        self.model = model or GEMINI_IMAGE_MODEL
+        self.model = GEMINI_IMAGE_MODEL
         self.client = genai.Client(api_key=self.settings.GOOGLE_API_KEY)
         logger.info(f"ImageGenerationAgent ready — model: {self.model}")
 

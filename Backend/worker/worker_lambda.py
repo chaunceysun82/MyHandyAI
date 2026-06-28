@@ -4,6 +4,7 @@ import re
 import traceback
 from datetime import datetime
 import time
+from typing import Any
 
 import boto3
 import requests
@@ -18,6 +19,7 @@ from agents.solution_generation_multi_agent.services.steps_generation_agent_serv
 from agents.solution_generation_multi_agent.steps_generation_agent.steps_generation_agent import StepsGenerationAgent
 from config.settings import get_settings
 from database.mongodb import mongodb
+from services.project_preview_image import ensure_project_preview_image
 from helper import (
     similar_by_project,
     store_tool_in_database,
@@ -36,6 +38,7 @@ database: Database = mongodb.get_database()
 project_collection: Collection = database.get_collection("Project")
 steps_collection: Collection = database.get_collection("ProjectSteps")
 tools_collection: Collection = database.get_collection("Tools")
+users_collection: Collection = database.get_collection("Users")
 
 def _get_image_service() -> ImageGenerationAgentService:
     """Create a fresh ImageGenerationAgentService. Called per-invocation."""
@@ -46,44 +49,107 @@ def _get_image_service() -> ImageGenerationAgentService:
     )
 
 
-def preflight_image_setup(project_id: str, summary: str) -> None:
-    """
-    Generate Visual DNA + Anchor Objects SYNCHRONOUSLY before any step
-    SQS messages are sent. Blocks until both are written to MongoDB.
+def _format_profile_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        cleaned = value.strip()
+        return cleaned or None
+    if isinstance(value, list):
+        cleaned_items = [str(item).strip() for item in value if str(item).strip()]
+        return ", ".join(cleaned_items) if cleaned_items else None
+    return str(value)
 
-    This is the fix for:
-      - "Anchor images loaded: 0"
-      - "Visual DNA generated on step 2"
-      - No reference context on step 1
+
+def _build_user_profile_context(project: dict) -> str:
     """
+    Build concise, non-sensitive user profile context for generation prompts.
+    Avoid auth identifiers and email; only include details that can improve DIY guidance.
+    """
+    user_id = project.get("userId")
+    if not user_id:
+        return ""
+
+    try:
+        user_object_id = user_id if isinstance(user_id, ObjectId) else ObjectId(str(user_id))
+        user = users_collection.find_one({"_id": user_object_id})
+    except Exception as e:
+        print(f"Unable to load user profile context: {e}")
+        return ""
+
+    if not user:
+        return ""
+
+    profile_fields = [
+        ("Experience level", user.get("experienceLevel")),
+        ("DIY confidence", user.get("confidence")),
+        ("Tools available", user.get("tools")),
+        ("Interested project types", user.get("interestedProjects")),
+        ("Country", user.get("country")),
+        ("State", user.get("state")),
+        ("User notes", user.get("describe")),
+    ]
+
+    lines = ["## User Profile Context"]
+    for label, value in profile_fields:
+        formatted = _format_profile_value(value)
+        if formatted:
+            lines.append(f"- {label}: {formatted}")
+
+    if len(lines) == 1:
+        return ""
+
+    lines.append(
+        "Use this context to tailor difficulty, safety warnings, tool choices, and explanation detail. "
+        "Do not mention this profile unless it is directly helpful."
+    )
+    return "\n".join(lines)
+
+
+def _append_user_profile_context(summary: str, user_profile_context: str) -> str:
+    if not user_profile_context:
+        return summary
+    return f"{summary.strip()}\n\n{user_profile_context}"
+
+
+def preflight_image_setup(project_id: str, summary: str) -> None:
     service = _get_image_service()
 
-    # 1. Visual DNA — needed by every step for physics rules + domain
+    # 1. Visual DNA
     existing_dna = service.get_visual_dna(project_id)
     if existing_dna:
-        print(f"✅ Visual DNA already exists — domain: {existing_dna.get('domain')}")
+        print(f"✅ Visual DNA exists — domain: {existing_dna.get('domain')}")
+        dna = existing_dna
     else:
         print(f"🔍 Generating Visual DNA for project {project_id}")
         dna = service.generate_visual_dna(summary)
         service.save_visual_dna(project_id, dna)
-        print(f"✅ Visual DNA saved — domain: {dna.get('domain')}")
+        print(f"✅ Visual DNA saved — domain: {dna.get('domain')}, "
+              f"objects: {list(dna.get('object_colors', {}).keys())}")
 
-    # 2. Anchor objects — needed by every step for object consistency
-    existing_anchors = service.get_anchor_objects(project_id)
-    if existing_anchors and existing_anchors.objects:
-        print(f"✅ Anchor objects already exist: {[o.name for o in existing_anchors.objects]}")
+    # 2. Context images — build_context_images handles all three cases
+    existing_ctx = service.get_context_images(project_id)
+    if existing_ctx and existing_ctx.objects:
+        print(f"✅ Context images exist: {[o.name for o in existing_ctx.objects]}")
     else:
-        print(f"🔍 Generating anchor objects for project {project_id}")
+        print(f"🔍 Building context images for project {project_id}")
         try:
-            anchor_result = service.generate_anchor_objects(
+            ctx_result = service.build_context_images(
                 project_id=project_id,
                 summary_text=summary,
+                dna=dna,
             )
-            print(f"✅ Anchor objects ready: {[o.name for o in anchor_result.objects]}")
+            user_count = sum(
+                1 for o in ctx_result.objects
+                if "user-uploads" in (o.s3_key or "")
+            )
+            gen_count = len(ctx_result.objects) - user_count
+            print(
+                f"✅ Context images ready: {len(ctx_result.objects)} total "
+                f"({user_count} from user, {gen_count} generated)"
+            )
         except Exception as e:
-            # Non-fatal — steps will still generate without anchors
-            print(f"⚠️ Anchor generation failed (non-fatal): {e}")
-
+            print(f"⚠️ Context image build failed (non-fatal): {e}")
 
 def enqueue_image_tasks(
         project_id: str,
@@ -173,6 +239,33 @@ def handle_image_step(msg: dict) -> None:
     print(f"✅ Step {step_id} image complete: {result.url}")
 
 
+def handle_preview_image(msg: dict) -> None:
+    """Generate + upload the project result preview image and persist result."""
+    project_id = msg["project"]
+    prefer_draft = bool(msg.get("prefer_draft", True))
+
+    print(f"Generating project preview image for {project_id}, prefer_draft={prefer_draft}")
+    project_collection.update_one(
+        {"_id": ObjectId(project_id)},
+        {
+            "$set": {
+                "result_preview_image.status": "in-progress",
+                "result_preview_image.stage": "worker_generation",
+            }
+        },
+    )
+
+    preview = ensure_project_preview_image(
+        project_id,
+        prefer_draft=prefer_draft,
+        timeout_seconds=180.0,
+    )
+    if preview and preview.get("url"):
+        print(f"Project preview image complete: {preview.get('url')}")
+    else:
+        print(f"Project preview image failed: {preview}")
+
+
 def reset_all_steps(project_id):
     cursor = project_collection.find_one({"_id": ObjectId(project_id)})
     if "step_generation" in cursor and "steps" in cursor["step_generation"]:
@@ -231,6 +324,13 @@ def lambda_handler(event, context):
                     print(f"❌ handle_image_step failed: {e}")
                 continue
 
+            if task == "preview_image":
+                try:
+                    handle_preview_image(payload)
+                except Exception as e:
+                    print(f"handle_preview_image failed: {e}")
+                continue
+
             project_id_str = payload.get("project")
             if not project_id_str:
                 print("⚠️ Incomplete message: missing project id")
@@ -253,6 +353,11 @@ def lambda_handler(event, context):
                 print("⚠️ Project has no valid summary → skipping RAG and generation")
                 update_project(str(cursor["_id"]), {"generation_status": "failed", "error": "Missing summary"})
                 continue
+
+            user_profile_context = _build_user_profile_context(cursor)
+            summary_with_user_context = _append_user_profile_context(summary, user_profile_context)
+            if user_profile_context:
+                print("User profile context will be included in generation prompts")
 
             # ------------------------------------------------------------------
             # STEP 1 — Project-level similarity (existing logic, unchanged)
@@ -350,7 +455,7 @@ def lambda_handler(event, context):
 
                 try:
                     tools_agent = ToolsAgent(
-                        new_summary=summary,
+                        new_summary=summary_with_user_context,
                         matched_summary=matched_summary,
                         matched_tools=matched_tools,
                         # NEW: pass KB knowledge if available
@@ -385,7 +490,7 @@ def lambda_handler(event, context):
             # ------------------------------------------------------------------
             try:
                 tools_result = tools_agent.recommend_tools(
-                    summary=summary,
+                    summary=summary_with_user_context,
                     include_json=True
                 )
             except Exception as e:
@@ -497,7 +602,7 @@ def lambda_handler(event, context):
                 steps_service = StepsGenerationAgentService(steps_agent)
                 steps_result = steps_service.generate_steps(
                     tools=cursor.get("tool_generation"),
-                    summary=cursor.get("summary"),
+                    summary=summary_with_user_context,
                     user_answers=cursor.get("user_answers") or cursor.get("answers"),
                     questions=cursor.get("questions", []),
                     matched_summary=matched_summary_for_steps,
@@ -521,7 +626,7 @@ def lambda_handler(event, context):
                 steps_result["youtube"] = youtube_url
                 update_project(str(cursor["_id"]), {"step_generation": steps_result})
                 enqueue_image_tasks(project_id_str, steps_result.get("steps", []),
-                                    size="1536x1024", summary=cursor.get("summary", ""))
+                                    size="1536x1024", summary=summary_with_user_context)
             except Exception as e:
                 print(f"⚠️ Failed after steps generation: {e}")
 
@@ -564,7 +669,7 @@ def lambda_handler(event, context):
                 estimation_result = estimation_agent.generate_estimation(
                     tools_data=cursor.get("tool_generation"),
                     steps_data=cursor.get("step_generation"),
-                    summary=cursor.get("summary")
+                    summary=summary_with_user_context
                 )
             except Exception as e:
                 print(f"❌ Estimation generation failed: {e}")

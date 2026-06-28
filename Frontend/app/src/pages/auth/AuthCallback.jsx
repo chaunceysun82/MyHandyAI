@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { exchangeCodeForTokens, getCognitoIdToken, getCognitoUser } from "../../services/cognitoAuth";
 import { syncCognitoUser, hasCompletedOnboarding } from "../../services/auth";
+import defaultNavLogo from "../../assets/default_nav_logo.png";
 
 export default function AuthCallback() {
 	const navigate = useNavigate();
@@ -68,23 +69,35 @@ export default function AuthCallback() {
 	}, [navigate]);
 
 	return (
-		<div className="min-h-screen flex flex-col items-center justify-center bg-[#f2f8fa] px-4 text-center">
-			<div className="w-full max-w-sm rounded-[28px] border border-[#d8e8ee] bg-white px-8 py-8 shadow-[0_24px_60px_rgba(17,63,80,0.08)]">
-				<h1 className="text-[24px] font-semibold text-[#000000]">
-					{error ? "Sign in needs attention" : "Signing you in"}
-				</h1>
-				<p className="mt-3 text-sm text-[#595959]">
-					{error || "We are finishing your secure Cognito session."}
-				</p>
-				{error && (
+		<div className="auth-transition-screen">
+			{error ? (
+				<div className="w-full max-w-sm rounded-[28px] border border-[#d8e8ee] bg-white px-8 py-8 text-center shadow-[0_24px_60px_rgba(17,63,80,0.08)]">
+					<img
+						src={defaultNavLogo}
+						alt="MyHandyAI"
+						className="mx-auto mb-5 h-20 w-20 rounded-full object-cover"
+					/>
+					<h1 className="text-[24px] font-semibold text-[#000000]">
+						Sign in needs attention
+					</h1>
+					<p className="mt-3 text-sm text-[#595959]">{error}</p>
 					<button
 						className="mt-6 w-full rounded-[20px] bg-[#1484A3] p-2 text-[16px] font-medium text-white duration-200 hover:bg-[#066580]"
 						onClick={() => navigate("/login", { replace: true })}
 					>
 						Back to login
 					</button>
-				)}
-			</div>
+				</div>
+			) : (
+				<div className="auth-logo-loader" role="status" aria-live="polite">
+					<img
+						src={defaultNavLogo}
+						alt="MyHandyAI"
+						className="auth-logo-loader__image"
+					/>
+					<span className="sr-only">Signing you in</span>
+				</div>
+			)}
 		</div>
 	);
 }

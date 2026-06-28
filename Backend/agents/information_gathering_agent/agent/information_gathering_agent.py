@@ -12,7 +12,7 @@ from loguru import logger
 
 from agents.information_gathering_agent.agent.prompt_templates.v4.information_gathering_agent import \
     build_system_prompt
-from agents.information_gathering_agent.agent.tools import store_home_issue, store_summary
+from agents.information_gathering_agent.agent.tools import store_home_issue, store_summary, store_summary_preview
 from config.settings import get_settings
 from database.llm_consumption import record_langchain_usage
 
@@ -67,7 +67,7 @@ class InformationGatheringAgent:
                 # Create agent with checkpointer
                 agent = create_agent(
                     model=self.llm,
-                    tools=[store_home_issue, store_summary],
+                    tools=[store_home_issue, store_summary_preview, store_summary],
                     system_prompt=system_prompt,
                     checkpointer=checkpointer,
                 )
@@ -134,7 +134,7 @@ class InformationGatheringAgent:
                 # Create agent with checkpointer
                 agent = create_agent(
                     model=self.llm,
-                    tools=[store_home_issue, store_summary],
+                    tools=[store_home_issue, store_summary_preview, store_summary],
                     system_prompt=system_prompt,
                     checkpointer=checkpointer,
                 )
@@ -197,7 +197,7 @@ class InformationGatheringAgent:
 
             agent = create_agent(
                 model=self.llm,
-                tools=[store_home_issue, store_summary],
+                tools=[store_home_issue, store_summary_preview, store_summary],
                 system_prompt=system_prompt,
                 checkpointer=checkpointer,
             )

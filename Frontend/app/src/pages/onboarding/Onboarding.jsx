@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import MobileWrapper from "../../components/MobileWrapper";
+import LoadingPlaceholder from "../../components/LoadingPlaceholder";
 import {
 	submitOnboardingAnswers,
 	fetchOnboardingQuestions,
@@ -251,17 +252,7 @@ const Onboarding = () => {
 	if (loading || !questions.length) {
 		return (
 			<MobileWrapper>
-				<div className="flex items-center justify-center min-h-screen">
-					<div className="flex space-x-2">
-						{[...Array(5)].map((_, i) => (
-							<div
-								key={i}
-								className="w-2 h-10 bg-indigo-500 rounded wave-bar"
-								style={{ animationDelay: `${i * 0.15}s` }}
-							/>
-						))}
-					</div>
-				</div>
+				<LoadingPlaceholder />
 			</MobileWrapper>
 		);
 	}

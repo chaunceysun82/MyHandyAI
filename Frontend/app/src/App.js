@@ -6,7 +6,7 @@ import AuthCallback from "./pages/auth/AuthCallback";
 import Home from "./pages/Home.jsx";
 import Chat from "./pages/Chat.jsx";
 import MobileWrapper from "./components/MobileWrapper";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Onboarding from "./pages/onboarding/Onboarding.jsx";
 import OnboardingWelcome from "./pages/onboarding/OnboardingWelcome.jsx";
@@ -16,6 +16,7 @@ import StepPage from "./pages/StepPage.jsx";
 import ToolsPage from "./pages/ToolsPage.jsx";
 import ProjectCompleted from "./pages/ProjectCompleted.jsx";
 import Feedback from "./pages/Feedback.jsx";
+import defaultNavLogo from "./assets/default_nav_logo.png";
 import { trackMetricOnce } from "./services/metrics";
 import {
 	clearAuthStorage,
@@ -26,6 +27,9 @@ import {
 function App() {
 	const navigate = useNavigate();
 	const location = useLocation();
+	const currentRoute = `${location.pathname}${location.search}`;
+	const previousRouteRef = useRef(currentRoute);
+	const [routeTransitioning, setRouteTransitioning] = useState(false);
 
 	useEffect(() => {
 		trackMetricOnce("app_entered", "app_entered");
@@ -60,8 +64,35 @@ function App() {
 		return () => window.clearTimeout(timeout);
 	}, [navigate, location.pathname]);
 
+	useEffect(() => {
+		if (previousRouteRef.current === currentRoute) {
+			return;
+		}
+
+		previousRouteRef.current = currentRoute;
+		setRouteTransitioning(true);
+
+		const timeout = window.setTimeout(() => {
+			setRouteTransitioning(false);
+		}, 700);
+
+		return () => window.clearTimeout(timeout);
+	}, [currentRoute]);
+
 	return (
 		<MobileWrapper>
+			{routeTransitioning && (
+				<div className="route-transition-overlay" role="status" aria-live="polite">
+					<div className="auth-logo-loader">
+						<img
+							src={defaultNavLogo}
+							alt="MyHandyAI"
+							className="auth-logo-loader__image"
+						/>
+						<span className="sr-only">Loading page</span>
+					</div>
+				</div>
+			)}
 			<Routes>
 				<Route
 					path="/"
