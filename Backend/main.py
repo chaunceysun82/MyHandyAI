@@ -89,5 +89,32 @@ app.include_router(logs.router, tags=["Logs"])
 app.include_router(information_gathering_agent.router, prefix="/api/v1", tags=["Information Gathering Agent"])
 app.include_router(project_assistant_agent.router, prefix="/api/v1", tags=["Project Assistant Agent"])
 
-# handler for AWS
-handler = Mangum(app)
+asgi_handler = Mangum(app, lifespan="off")
+
+
+def handler(event, context):
+    method = (
+        event.get("requestContext", {}).get("http", {}).get("method")
+        or event.get("httpMethod")
+    )
+
+    if method == "OPTIONS":
+        headers = event.get("headers") or {}
+        origin = headers.get("origin") or headers.get("Origin")
+        allow_origin = origin if origin in CORS_ALLOWED_ORIGINS else CORS_ALLOWED_ORIGINS[0]
+
+        return {
+            "statusCode": 204,
+            "headers": {
+                "Access-Control-Allow-Origin": allow_origin,
+                "Access-Control-Allow-Methods": "DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT",
+                "Access-Control-Allow-Headers": headers.get(
+                    "access-control-request-headers",
+                    headers.get("Access-Control-Request-Headers", "*"),
+                ),
+                "Vary": "Origin",
+            },
+            "body": "",
+        }
+
+    return asgi_handler(event, context)

@@ -1,14 +1,12 @@
 from datetime import datetime
 
 from fastapi import Depends, HTTPException, status
-from pymongo.collection import Collection
-from pymongo.database import Database
-
 from database.mongodb import mongodb
 from security.cognito import get_current_cognito_user
 
-database: Database = mongodb.get_database()
-users_collection: Collection = database.get_collection("Users")
+
+def get_users_collection():
+    return mongodb.get_collection("Users")
 
 
 def serialize_user(user: dict) -> dict:
@@ -32,6 +30,7 @@ def serialize_user(user: dict) -> dict:
 
 
 def sync_cognito_user(claims: dict) -> dict:
+    users_collection = get_users_collection()
     cognito_sub = claims["sub"]
     email = claims.get("email", "")
     firstname = claims.get("given_name") or email.split("@")[0] or "User"
