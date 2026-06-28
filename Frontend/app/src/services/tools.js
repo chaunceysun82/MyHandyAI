@@ -1,7 +1,7 @@
 // src/services/tools.js
-import { authHeaders } from "./api";
+import { authHeaders, normalizeApiBaseUrl } from "./api";
 
-const API = process.env.REACT_APP_BASE_URL;
+const API = normalizeApiBaseUrl(process.env.REACT_APP_BASE_URL);
 const log = (...args) => console.log("[Tools]", ...args);
 
 async function safeJson(res) {

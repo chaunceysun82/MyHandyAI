@@ -1,7 +1,7 @@
 // src/services/feedback.js
-import { authHeaders, jsonAuthHeaders } from "./api";
+import { authHeaders, jsonAuthHeaders, normalizeApiBaseUrl } from "./api";
 
-const API = process.env.REACT_APP_BASE_URL;
+const API = normalizeApiBaseUrl(process.env.REACT_APP_BASE_URL);
 
 async function readErr(res) {
   try {

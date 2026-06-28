@@ -1,7 +1,7 @@
 
-import { authHeaders, jsonAuthHeaders } from "./api";
+import { authHeaders, jsonAuthHeaders, normalizeApiBaseUrl } from "./api";
 
-const BASE_URL = process.env.REACT_APP_BASE_URL;
+const BASE_URL = normalizeApiBaseUrl(process.env.REACT_APP_BASE_URL);
 
 if (!BASE_URL) {
 	throw new Error("REACT_APP_BASE_URL is not defined in environment variables");

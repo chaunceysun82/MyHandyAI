@@ -1,8 +1,8 @@
 import axios from "axios";
 import { signupUserWithOnboarding, updateUser, transformOnboardingAnswers } from "./auth";
-import { authHeaders } from "./api";
+import { authHeaders, normalizeApiBaseUrl } from "./api";
 
-const BASE_URL = process.env.REACT_APP_BASE_URL;
+const BASE_URL = normalizeApiBaseUrl(process.env.REACT_APP_BASE_URL);
 
 export const fetchOnboardingQuestions = async () => {
 	try {

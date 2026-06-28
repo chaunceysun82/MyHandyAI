@@ -1,6 +1,6 @@
 // src/services/projects.js
-import { authHeaders, jsonAuthHeaders } from "./api";
-const API_BASE = process.env.REACT_APP_BASE_URL ;
+import { authHeaders, jsonAuthHeaders, normalizeApiBaseUrl } from "./api";
+const API_BASE = normalizeApiBaseUrl(process.env.REACT_APP_BASE_URL);
 
 // Log the API base URL for debugging
 console.log('🔍 projects.js: API_BASE URL:', API_BASE);

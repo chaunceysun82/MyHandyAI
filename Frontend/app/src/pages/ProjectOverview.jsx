@@ -7,11 +7,12 @@ import EstimatedBreakdown from "../components/EstimationBreakdown";
 import ChatWindow2 from "../components/Chat/ChatWindow2";
 import defaultTools from "../assets/default_tools.svg";
 import {ReactComponent as Bot} from '../assets/Bot.svg';
+import { normalizeApiBaseUrl } from "../services/api";
 
 
 export default function ProjectOverview() {
 
-	const URL = process.env.REACT_APP_BASE_URL;
+	const URL = normalizeApiBaseUrl(process.env.REACT_APP_BASE_URL);
 
 	const navigate = useNavigate();
 	const { projectId } = useParams();
