@@ -38,6 +38,17 @@
 	width: 96px;
 }
 
+.route-transition-overlay {
+	align-items: center;
+	animation: route-loader-enter 160ms ease-out;
+	background: #fffef6;
+	display: flex;
+	inset: 0;
+	justify-content: center;
+	position: fixed;
+	z-index: 3000;
+}
+
 @keyframes auth-logo-fade {
 	0%,
 	100% {
@@ -48,5 +59,15 @@
 	50% {
 		opacity: 1;
 		transform: scale(1);
+	}
+}
+
+@keyframes route-loader-enter {
+	from {
+		opacity: 0;
+	}
+
+	to {
+		opacity: 1;
 	}
 }
