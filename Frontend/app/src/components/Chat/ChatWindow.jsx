@@ -35,6 +35,45 @@ export default function ChatWindow({
     "💡 Almost there, hang tight! MyHandyAI is gathering the best tools for you..."
   ];
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
+  const previewPollingRef = useRef(new Set());
+
+  const buildSummaryPreviewContent = useCallback((summaryPreview, includePreviewIntro = true) => {
+    const summary = summaryPreview?.summary;
+    const hypotheses = summaryPreview?.hypotheses;
+    if (!summary) return null;
+
+    const lines = [
+      "Please review this project overview. Is everything correct?",
+      "",
+      summary,
+      hypotheses ? `\nHypothesis:\n${hypotheses}` : "",
+    ];
+
+    if (includePreviewIntro) {
+      lines.push("", "Generating a preview from this summary before you confirm:");
+    }
+
+    return lines.filter(Boolean).join("\n");
+  }, []);
+
+  const isStaleConfirmationOnlyMessage = useCallback((message) => {
+    if (message.sender !== "bot") return false;
+
+    const content = String(message.content || "").toLowerCase();
+    const asksForConfirmation = (
+      content.includes("wait for your confirmation") ||
+      content.includes("is the overview correct") ||
+      content.includes("please review this summary") ||
+      content.includes("everything correct")
+    );
+    const hasActualOverview = (
+      content.includes("the problem") ||
+      content.includes("the setup") ||
+      content.includes("project overview")
+    );
+
+    return asksForConfirmation && !hasActualOverview;
+  }, []);
 
   const waitForPreviewImage = useCallback(async () => {
     const maxAttempts = 36;
@@ -64,83 +103,49 @@ export default function ChatWindow({
     throw new Error("preview_poll_timeout: Preview generation did not finish in time");
   }, [URL, projectId]);
 
-  const attachStoredPreviewToMessages = useCallback(async (messagesToHydrate) => {
-    try {
-      const previewRes = await axios.get(
-        `${URL}/api/v1/information-gathering-agent/preview/${projectId}`,
-        axiosAuthConfig()
-      );
-      const previewUrl = previewRes.data?.url;
-      if (!previewUrl) return messagesToHydrate;
-
-      const targetIndex = [...messagesToHydrate]
-        .map((message, index) => ({ message, index }))
-        .reverse()
-        .find(({ message }) => {
-          const content = String(message.content || "").toLowerCase();
-          return (
-            message.sender === "bot" &&
-            (
-              content.includes("generating a preview from this summary") ||
-              content.includes("project overview") ||
-              content.includes("the problem") ||
-              content.includes("please review")
-            )
-          );
-        })?.index;
-
-      if (targetIndex === undefined) return messagesToHydrate;
-
-      return messagesToHydrate.map((message, index) =>
-        index === targetIndex
+  const applyPreviewToMessage = useCallback((messageId, previewUrl, fallbackText) => {
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.id === messageId
           ? {
               ...message,
-              images: [previewUrl],
               previewLoading: false,
+              images: previewUrl ? [previewUrl] : [],
+              content: previewUrl
+                ? message.content
+                : `${message.content}\n\n${fallbackText}`,
             }
           : message
+      )
+    );
+  }, []);
+
+  const startPreviewPolling = useCallback(async (messageId) => {
+    if (!messageId || previewPollingRef.current.has(messageId)) return;
+
+    previewPollingRef.current.add(messageId);
+    try {
+      const previewUrl = await waitForPreviewImage();
+      applyPreviewToMessage(
+        messageId,
+        previewUrl,
+        "I couldn't generate the preview this time, but we can still continue with the project confirmation."
       );
     } catch (error) {
-      console.warn("[preview] could not hydrate stored preview", {
+      console.error("[preview] polling failed", {
         message: error?.message,
         status: error?.response?.status,
         data: error?.response?.data,
       });
-      return messagesToHydrate;
+      applyPreviewToMessage(
+        messageId,
+        null,
+        "I couldn't generate the preview this time, but we can still continue with the project confirmation."
+      );
+    } finally {
+      previewPollingRef.current.delete(messageId);
     }
-  }, [URL, projectId]);
-
-  const formatHistoryMessages = useCallback((historyMessages = []) =>
-    historyMessages.map(({ role, content }) => {
-      if (!content || typeof content !== 'string') {
-        return {
-          sender: role === "user" ? "user" : "bot",
-          content: content || "",
-        };
-      }
-
-      const base64ImageRegex = /data:image\/[^;]+;base64,[^\s]+/g;
-      const imageMatches = content.match(base64ImageRegex);
-
-      if (imageMatches && imageMatches.length > 0) {
-        let textContent = content;
-        imageMatches.forEach(img => {
-          textContent = textContent.replace(img, '').trim();
-        });
-
-        return {
-          sender: role === "user" ? "user" : "bot",
-          content: textContent,
-          images: imageMatches,
-          isImageOnly: !textContent || textContent.length === 0,
-        };
-      }
-
-      return {
-        sender: role === "user" ? "user" : "bot",
-        content,
-      };
-    }), []);
+  }, [applyPreviewToMessage, waitForPreviewImage]);
 
   const generatePreviewImage = useCallback(async (messageId) => {
     try {
@@ -154,14 +159,12 @@ export default function ChatWindow({
         axiosAuthConfig({ headers: { "Content-Type": "application/json" } })
       );
       console.log("[preview] response", previewRes.data);
-      const previewUrl = previewRes.data?.url || (await waitForPreviewImage());
+      const previewUrl = previewRes.data?.url;
       if (!previewUrl) {
-        console.warn("[preview] no preview URL returned", {
-          status: previewRes.data?.status,
-          stage: previewRes.data?.stage,
-          error: previewRes.data?.error,
-        });
+        startPreviewPolling(messageId);
+        return;
       }
+
       setMessages((prev) =>
         prev.map((message) =>
           message.id === messageId
@@ -194,7 +197,139 @@ export default function ChatWindow({
         )
       );
     }
-  }, [URL, projectId, waitForPreviewImage]);
+  }, [URL, projectId, startPreviewPolling]);
+
+  const attachStoredPreviewToMessages = useCallback(async (messagesToHydrate) => {
+    try {
+      const [previewRes, projectRes] = await Promise.all([
+        axios.get(
+          `${URL}/api/v1/information-gathering-agent/preview/${projectId}`,
+          axiosAuthConfig()
+        ),
+        axios.get(`${URL}/project/${projectId}`, axiosAuthConfig()).catch(() => null),
+      ]);
+      const previewUrl = previewRes.data?.url;
+      const previewStatus = previewRes.data?.status;
+      const summaryPreviewContent = buildSummaryPreviewContent(
+        projectRes?.data?.summary_preview,
+        !previewUrl
+      );
+
+      const findTargetIndex = (messages) => [...messages]
+        .map((message, index) => ({ message, index }))
+        .reverse()
+        .find(({ message }) => {
+          const content = String(message.content || "").toLowerCase();
+          return (
+            message.sender === "bot" &&
+            (
+              content.includes("generating a preview from this summary") ||
+              content.includes("project overview") ||
+              content.includes("the problem") ||
+              content.includes("please review") ||
+              content.includes("draft saved") ||
+              content.includes("overview correct")
+            )
+          );
+        })?.index;
+
+      let targetIndex = findTargetIndex(messagesToHydrate);
+      let workingMessages = messagesToHydrate;
+
+      if (targetIndex === undefined && summaryPreviewContent) {
+        workingMessages = [
+          ...messagesToHydrate,
+          {
+            id: `preview-summary-${projectId}`,
+            sender: "bot",
+            content: summaryPreviewContent,
+          },
+        ];
+        targetIndex = workingMessages.length - 1;
+      }
+
+      if (targetIndex === undefined) return messagesToHydrate;
+
+      const messageId = workingMessages[targetIndex].id || `preview-reload-${projectId}`;
+      const shouldShowLoading = !previewUrl && ["queued", "in-progress"].includes(previewStatus);
+      const hydratedMessages = workingMessages
+        .filter((message, index) => index === targetIndex || !isStaleConfirmationOnlyMessage(message))
+        .map((message) => {
+          const isTarget = message === workingMessages[targetIndex];
+          if (!isTarget) return message;
+
+          return {
+            ...message,
+            id: messageId,
+            content: summaryPreviewContent || message.content,
+            images: previewUrl ? [previewUrl] : [],
+            previewLoading: shouldShowLoading,
+          };
+        });
+      const hydratedTargetIndex = hydratedMessages.findIndex((message) => message.id === messageId);
+
+      if (hydratedTargetIndex === -1) return hydratedMessages;
+
+      if (shouldShowLoading) {
+        window.setTimeout(() => startPreviewPolling(messageId), 0);
+      }
+
+      if (!previewUrl && previewStatus === "not_started" && summaryPreviewContent) {
+        window.setTimeout(() => generatePreviewImage(messageId), 0);
+        return hydratedMessages.map((message, index) =>
+          index === hydratedTargetIndex ? { ...message, previewLoading: true } : message
+        );
+      }
+
+      return hydratedMessages;
+    } catch (error) {
+      console.warn("[preview] could not hydrate stored preview", {
+        message: error?.message,
+        status: error?.response?.status,
+        data: error?.response?.data,
+      });
+      return messagesToHydrate;
+    }
+  }, [
+    URL,
+    projectId,
+    buildSummaryPreviewContent,
+    generatePreviewImage,
+    isStaleConfirmationOnlyMessage,
+    startPreviewPolling,
+  ]);
+
+  const formatHistoryMessages = useCallback((historyMessages = []) =>
+    historyMessages.map(({ role, content }) => {
+      if (!content || typeof content !== 'string') {
+        return {
+          sender: role === "user" ? "user" : "bot",
+          content: content || "",
+        };
+      }
+
+      const base64ImageRegex = /data:image\/[^;]+;base64,[^\s]+/g;
+      const imageMatches = content.match(base64ImageRegex);
+
+      if (imageMatches && imageMatches.length > 0) {
+        let textContent = content;
+        imageMatches.forEach(img => {
+          textContent = textContent.replace(img, '').trim();
+        });
+
+        return {
+          sender: role === "user" ? "user" : "bot",
+          content: textContent,
+          images: imageMatches,
+          isImageOnly: !textContent || textContent.length === 0,
+        };
+      }
+
+      return {
+        sender: role === "user" ? "user" : "bot",
+        content,
+      };
+    }), []);
 
   useEffect(() => {
     if (status) {
@@ -666,19 +801,41 @@ export default function ChatWindow({
           hasUrl: Boolean(res.data.preview_image_url),
         });
       }
+      let agentResponse = res.data.agent_response;
+      if (shouldGeneratePreview) {
+        try {
+          const projectRes = await axios.get(`${URL}/project/${projectId}`, axiosAuthConfig());
+          const summaryPreviewContent = buildSummaryPreviewContent(projectRes.data?.summary_preview, false);
+          if (summaryPreviewContent) {
+            agentResponse = summaryPreviewContent;
+          }
+        } catch (error) {
+          console.warn("[preview] could not load draft summary for chat response", {
+            message: error?.message,
+            status: error?.response?.status,
+            data: error?.response?.data,
+          });
+        }
+      }
       const previewImages = res.data.preview_image_url ? [res.data.preview_image_url] : [];
+      const previewIntro = previewImages.length > 0
+        ? "Here is a preview from this summary before you confirm:"
+        : "Generating a preview from this summary before you confirm:";
       const botMessageId = `bot-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const botMsg = {
         id: botMessageId,
         sender: "bot",
         content: res.data.preview_image_url || shouldGeneratePreview
-          ? `${res.data.agent_response}\n\nGenerating a preview from this summary before you confirm:`
-          : res.data.agent_response,
+          ? `${agentResponse}\n\n${previewIntro}`
+          : agentResponse,
         images: previewImages,
         previewLoading: shouldGeneratePreview && previewImages.length === 0,
       };
       setLoading(false);
-      setMessages((prev) => [...prev, botMsg]);
+      setMessages((prev) => [
+        ...(shouldGeneratePreview ? prev.filter((message) => !isStaleConfirmationOnlyMessage(message)) : prev),
+        botMsg,
+      ]);
 
       if (shouldGeneratePreview && previewImages.length === 0) {
         generatePreviewImage(botMessageId);
