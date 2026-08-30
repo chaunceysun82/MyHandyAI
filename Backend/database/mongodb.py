@@ -20,8 +20,12 @@ class MongoDB:
         try:
             uri = settings.MONGODB_URI
             db_name = settings.MONGODB_DATABASE
+
+            if not uri:
+                logger.warning("MONGODB_URI is not configured. Using a local fallback MongoDB URI.")
+                uri = "mongodb://localhost:27017"
             
-            self._client = MongoClient(uri)
+            self._client = MongoClient(uri, serverSelectionTimeoutMS=3000)
             self._db = self._client.get_database(db_name)
         except ConnectionFailure as e:
             raise RuntimeError(f"Connection Failure: {str(e)}")

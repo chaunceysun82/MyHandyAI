@@ -9,7 +9,9 @@ const LocationSelector = ({ value, onChange }) => {
 	const [state, setState] = useState(safeValue.state || "");
 	const [states, setStates] = useState([]);
 
-	const countries = getCountries();
+	const countries = getCountries().map((country) =>
+		country.code === "gb" ? { ...country, name: "United Kingdom" } : country
+	);
 
 	useEffect(() => {
 		if (countryCode) {
