@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from loguru import logger
 from pydantic import BaseModel, Field
 from pymongo import DESCENDING
 from pymongo.collection import Collection
@@ -30,7 +31,10 @@ def ensure_indexes() -> None:
     logs_collection.create_index([("projectId", DESCENDING), ("createdAt", DESCENDING)])
 
 
-ensure_indexes()
+try:
+    ensure_indexes()
+except Exception as exc:
+    logger.warning(f"Could not ensure log indexes at startup: {exc}")
 
 
 class LogEventRequest(BaseModel):

@@ -5,6 +5,8 @@ from pymongo import DESCENDING
 from pymongo.collection import Collection
 from pymongo.database import Database
 
+from loguru import logger
+
 from database.mongodb import mongodb
 
 database: Database = mongodb.get_database()
@@ -35,7 +37,10 @@ def ensure_indexes() -> None:
     llm_consumption_collection.create_index([("model", DESCENDING), ("createdAt", DESCENDING)])
 
 
-ensure_indexes()
+try:
+    ensure_indexes()
+except Exception as exc:
+    logger.warning(f"Could not ensure LLM consumption indexes at startup: {exc}")
 
 
 def normalize_usage(usage: Optional[Dict[str, Any]]) -> Dict[str, int]:
